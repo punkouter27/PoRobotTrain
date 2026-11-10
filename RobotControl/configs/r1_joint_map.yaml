@@ -1,0 +1,52 @@
+# Unitree R1 EDU (A5 arm variant, 26 motors) joint map.
+# SINGLE SOURCE OF TRUTH for joint order, motor slots, limits, gains.
+# Every tool (MJCF generator, training env, ONNX validator, sim & real interfaces) reads this file.
+#
+# policy_index : order used in observation/action vectors (Unitree SDK2 r1_low_level_example order)
+# motor_slot   : index into unitree_hg LowCmd_.motor_cmd[] / LowState_.motor_state[] (31 slots; 14,20,21,27,28 unused on A5)
+# limits       : rad, from unitree_mujoco R1_C++.xml (legs/waist/arms) and unitree_ros R1.urdf (head)
+# kp/kd        : mjlab unitree_r1 r1_constants.py (body), Unitree r1_A5_low_level_example.py (head)
+# effort       : Nm, actuatorfrcrange from MJCF (body), URDF <limit effort> (head)
+# action_scale : rad per unit action for Level 2+ velocity policies = 0.25 * effort / kp (mjlab convention); head values chosen for usable range
+# default      : rad, mjlab HOME keyframe (robot standing)
+robot: unitree_r1_a5
+num_joints: 26
+lowcmd_num_slots: 31
+lowcmd_topic: rt/lowcmd
+lowstate_topic: rt/lowstate
+msg_type: unitree_hg
+imu_body: pelvis
+groups:
+  left_leg:  [0, 1, 2, 3, 4, 5]
+  right_leg: [6, 7, 8, 9, 10, 11]
+  waist:     [12, 13]
+  left_arm:  [14, 15, 16, 17, 18]
+  right_arm: [19, 20, 21, 22, 23]
+  head:      [24, 25]
+joints:
+  - {policy_index: 0,  name: left_hip_pitch_joint,       motor_slot: 0,  axis: [0,1,0], limits: [-2.93215, 2.54818],  kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: -0.10}
+  - {policy_index: 1,  name: left_hip_roll_joint,        motor_slot: 1,  axis: [1,0,0], limits: [-1.0472,  1.74533],  kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.0}
+  - {policy_index: 2,  name: left_hip_yaw_joint,         motor_slot: 2,  axis: [0,0,1], limits: [-2.7402,  2.7402],   kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.0}
+  - {policy_index: 3,  name: left_knee_joint,            motor_slot: 3,  axis: [0,1,0], limits: [-0.174533, 2.42601], kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.30}
+  - {policy_index: 4,  name: left_ankle_pitch_joint,     motor_slot: 4,  axis: [0,1,0], limits: [-0.87266, 0.57596],  kp: 40,  kd: 2,   effort: 50,   action_scale: 0.3125, default: -0.20}
+  - {policy_index: 5,  name: left_ankle_roll_joint,      motor_slot: 5,  axis: [1,0,0], limits: [-0.2618,  0.2618],   kp: 40,  kd: 2,   effort: 50,   action_scale: 0.3125, default: 0.0}
+  - {policy_index: 6,  name: right_hip_pitch_joint,      motor_slot: 6,  axis: [0,1,0], limits: [-2.93215, 2.54818],  kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: -0.10}
+  - {policy_index: 7,  name: right_hip_roll_joint,       motor_slot: 7,  axis: [1,0,0], limits: [-1.74533, 1.0472],   kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.0}
+  - {policy_index: 8,  name: right_hip_yaw_joint,        motor_slot: 8,  axis: [0,0,1], limits: [-2.7402,  2.7402],   kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.0}
+  - {policy_index: 9,  name: right_knee_joint,           motor_slot: 9,  axis: [0,1,0], limits: [-0.17453, 2.42601],  kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.30}
+  - {policy_index: 10, name: right_ankle_pitch_joint,    motor_slot: 10, axis: [0,1,0], limits: [-0.87266, 0.57596],  kp: 40,  kd: 2,   effort: 50,   action_scale: 0.3125, default: -0.20}
+  - {policy_index: 11, name: right_ankle_roll_joint,     motor_slot: 11, axis: [1,0,0], limits: [-0.261799, 0.261799],kp: 40,  kd: 2,   effort: 50,   action_scale: 0.3125, default: 0.0}
+  - {policy_index: 12, name: waist_roll_joint,           motor_slot: 12, axis: [1,0,0], limits: [-0.5236,  0.5236],   kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.0}
+  - {policy_index: 13, name: waist_yaw_joint,            motor_slot: 13, axis: [0,0,1], limits: [-2.618,   2.618],    kp: 100, kd: 2,   effort: 60,   action_scale: 0.15,   default: 0.0}
+  - {policy_index: 14, name: left_shoulder_pitch_joint,  motor_slot: 15, axis: [0,1,0], limits: [-3.1416,  2.0944],   kp: 40,  kd: 2,   effort: 60,   action_scale: 0.375,  default: 0.35}
+  - {policy_index: 15, name: left_shoulder_roll_joint,   motor_slot: 16, axis: [1,0,0], limits: [-0.22689, 2.4784],   kp: 40,  kd: 2,   effort: 60,   action_scale: 0.375,  default: 0.18}
+  - {policy_index: 16, name: left_shoulder_yaw_joint,    motor_slot: 17, axis: [0,0,1], limits: [-1.9199,  1.9199],   kp: 20,  kd: 1,   effort: 33,   action_scale: 0.4125, default: 0.0}
+  - {policy_index: 17, name: left_elbow_joint,           motor_slot: 18, axis: [0,1,0], limits: [-0.97564, 2.1852],   kp: 20,  kd: 1,   effort: 33,   action_scale: 0.4125, default: 0.87}
+  - {policy_index: 18, name: left_wrist_roll_joint,      motor_slot: 19, axis: [1,0,0], limits: [-1.9199,  1.9199],   kp: 20,  kd: 1,   effort: 33,   action_scale: 0.4125, default: 0.0}
+  - {policy_index: 19, name: right_shoulder_pitch_joint, motor_slot: 22, axis: [0,1,0], limits: [-3.1416,  2.0944],   kp: 40,  kd: 2,   effort: 60,   action_scale: 0.375,  default: 0.35}
+  - {policy_index: 20, name: right_shoulder_roll_joint,  motor_slot: 23, axis: [1,0,0], limits: [-2.47849, 0.2268],   kp: 40,  kd: 2,   effort: 60,   action_scale: 0.375,  default: -0.18}
+  - {policy_index: 21, name: right_shoulder_yaw_joint,   motor_slot: 24, axis: [0,0,1], limits: [-1.9199,  1.9199],   kp: 20,  kd: 1,   effort: 33,   action_scale: 0.4125, default: 0.0}
+  - {policy_index: 22, name: right_elbow_joint,          motor_slot: 25, axis: [0,1,0], limits: [-0.97564, 2.1852],   kp: 20,  kd: 1,   effort: 33,   action_scale: 0.4125, default: 0.87}
+  - {policy_index: 23, name: right_wrist_roll_joint,     motor_slot: 26, axis: [1,0,0], limits: [-1.9199,  1.9199],   kp: 20,  kd: 1,   effort: 33,   action_scale: 0.4125, default: 0.0}
+  - {policy_index: 24, name: head_pitch_joint,           motor_slot: 29, axis: [0,1,0], limits: [-0.62832, 0.62832],  kp: 50,  kd: 2,   effort: 33,   action_scale: 0.30,   default: 0.0}
+  - {policy_index: 25, name: head_yaw_joint,             motor_slot: 30, axis: [0,0,1], limits: [-2.0071,  2.0071],   kp: 10,  kd: 0.1, effort: 0.86, action_scale: 0.25,   default: 0.0}

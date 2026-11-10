@@ -1,0 +1,46 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "Robotics",
+	"Description": "Unitree R1 humanoid digital twin. MuJoCo physics via the UnrealRoboticsLab (URLab) plugin, ONNX policy inference via NNE / NNERuntimeORT. NOTE: NNE itself is an engine runtime module since UE 5.3 (Engine/Source/Runtime/NNE), not a plugin, so it is a module dependency in R1Twin.Build.cs rather than an entry below. Physics must be driven by MuJoCo only: Chaos simulation is disabled per-actor (SetSimulatePhysics(false)) and in Config/DefaultEngine.ini.",
+	"Modules": [
+		{
+			"Name": "R1Twin",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"NNE"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "UnrealRoboticsLab",
+			"Enabled": true
+		},
+		{
+			"Name": "NNERuntimeORT",
+			"Enabled": true
+		},
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	],
+	"TargetPlatforms": [
+		"Windows"
+	]
+}

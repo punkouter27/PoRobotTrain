@@ -1,0 +1,114 @@
+policy_name: r1_level0_upperbody
+step_dt: 0.02
+num_obs: 23
+num_actions: 7
+joint_names:
+- right_shoulder_pitch_joint
+- right_shoulder_roll_joint
+- right_shoulder_yaw_joint
+- right_elbow_joint
+- right_wrist_roll_joint
+- head_pitch_joint
+- head_yaw_joint
+motor_slots:
+- 22
+- 23
+- 24
+- 25
+- 26
+- 29
+- 30
+default_joint_pos:
+- 0.35
+- -0.18
+- 0.0
+- 0.87
+- 0.0
+- 0.0
+- 0.0
+kp:
+- 40.0
+- 40.0
+- 20.0
+- 20.0
+- 20.0
+- 50.0
+- 10.0
+kd:
+- 2.0
+- 2.0
+- 1.0
+- 1.0
+- 1.0
+- 2.0
+- 0.1
+action_scale:
+- 0.375
+- 0.375
+- 0.4125
+- 0.4125
+- 0.4125
+- 0.3
+- 0.25
+action_clip:
+- 5.0
+- 5.0
+- 5.0
+- 5.0
+- 5.0
+- 5.0
+- 5.0
+soft_limit_factor: 0.9
+observations:
+- name: joint_pos_rel
+  size: 7
+- name: joint_vel
+  size: 7
+- name: last_action
+  size: 7
+- name: command
+  size: 2
+commands:
+  head_yaw_target: 1
+  right_shoulder_pitch_target: 1
+command_ranges:
+  head_yaw_target:
+  - -1.0472
+  - 1.0472
+  right_shoulder_pitch_target:
+  - -1.25
+  - 0.35
+passive_joints:
+- left_hip_pitch_joint
+- left_hip_roll_joint
+- left_hip_yaw_joint
+- left_knee_joint
+- left_ankle_pitch_joint
+- left_ankle_roll_joint
+- right_hip_pitch_joint
+- right_hip_roll_joint
+- right_hip_yaw_joint
+- right_knee_joint
+- right_ankle_pitch_joint
+- right_ankle_roll_joint
+passive_kd: 3.0
+held_joints:
+- waist_roll_joint
+- waist_yaw_joint
+- left_shoulder_pitch_joint
+- left_shoulder_roll_joint
+- left_shoulder_yaw_joint
+- left_elbow_joint
+- left_wrist_roll_joint
+presettle_s: 2.0
+metadata:
+  trained_at: '2026-11-09T15:18:27'
+  iters: 1500
+  num_envs: 512
+  horizon: 24
+  seed: 0
+  git: nogit
+  device: cuda
+  env: Level0StandEnv
+  joint_map_sha256: df0a086ae8017262
+  presettle_s: 2.0

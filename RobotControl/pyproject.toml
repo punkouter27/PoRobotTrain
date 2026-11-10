@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robotcontrol"
+version = "0.1.0"
+description = "Unitree R1 sim-to-real control package (interfaces, execution, tools)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pyyaml",
+    "onnx",
+    "onnxruntime",
+    "mujoco",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+# The RobotControl/ directory *is* the `robotcontrol` package; the existing
+# sub-folders are its sub-packages.  `uv pip install -e RobotControl`.
+[tool.setuptools]
+package-dir = {"robotcontrol" = "."}
+packages = [
+    "robotcontrol",
+    "robotcontrol.configs",
+    "robotcontrol.interfaces",
+    "robotcontrol.execution",
+    "robotcontrol.tools",
+    "robotcontrol.perception",
+    "robotcontrol.state_machine",
+    "robotcontrol.training",
+    "robotcontrol.tests",
+]
+
+[tool.setuptools.package-data]
+"robotcontrol.configs" = ["*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib -q"

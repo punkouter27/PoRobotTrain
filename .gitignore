@@ -1,0 +1,13 @@
+.venv/
+external/
+logs/
+__pycache__/
+*.pyc
+UnrealProject/Binaries/
+UnrealProject/Intermediate/
+UnrealProject/Saved/
+UnrealProject/DerivedDataCache/
+UnrealProject/Plugins/UnrealRoboticsLab/
+*.onnx.data
+vendor/
+dist/
