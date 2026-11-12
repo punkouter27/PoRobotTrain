@@ -1,10 +1,10 @@
-# UE 5.7 setup for the R1 digital twin (`UnrealProject/`)
+# UE setup notes for the R1 digital twin (`UnrealProject/`)
 
-> **Status: scaffold only - NOT YET COMPILED.** Unreal 5.7 and the Visual Studio C++ workload are not
-> installed on this machine (only the UE 5.8 launcher build is present, and URLab is tested on 5.7 only).
-> Every C++ file under `UnrealProject/Source/` was written against the UE 5.7 public API from memory of
-> the 5.4-5.6 headers and must be compiled and fixed up once the toolchain exists. See
-> [What is not yet compiled / verified](#what-is-not-yet-compiled--verified) before trusting anything.
+> **Historical scaffold notes, superseded 2026-11-09.** The current project targets UE 5.8
+> (`R1Twin.uproject`) and its twin/runtime was verified on UE 5.8.4 with MuJoCo 4.0.0.
+> Use the current [README](../README.md) and [runtime report](step5_runtime.md) for verified
+> setup and behavior. The UE 5.7 install steps and uncompiled-scaffold assumptions below
+> describe the earlier scaffold; do not use them as the current toolchain status.
 
 Project root: `C:\Users\punko\Downloads\CODE_MATT\PoRobotTrain`. Paths below are relative to it.
 
