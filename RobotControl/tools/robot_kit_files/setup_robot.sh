@@ -19,7 +19,14 @@ if [ ! -x .venv/bin/python ]; then
     echo "ERROR: python3 -m venv failed. Install it once with internet:  sudo apt install python3-venv"; exit 1; }
 fi
 VPY="$KIT/.venv/bin/python"
-"$VPY" -m pip --version >/dev/null 2>&1 || { echo "ERROR: pip missing in venv (sudo apt install python3-pip)"; exit 1; }
+if ! "$VPY" -m pip --version >/dev/null 2>&1; then
+  # Without python3-venv the venv has no ensurepip/pip: bootstrap pip offline by running it from the kit's wheel.
+  PIPWHL=$(ls "$WHEELS"/pip-*.whl 2>/dev/null | head -n1 || true)
+  [ -n "$PIPWHL" ] || { echo "ERROR: pip missing in venv and no pip wheel in kit (sudo apt install python3-venv)"; exit 1; }
+  echo "== bootstrapping pip into .venv from $(basename "$PIPWHL")"
+  "$VPY" "$PIPWHL/pip" install --no-index --find-links "$WHEELS" pip
+fi
+"$VPY" -m pip --version >/dev/null 2>&1 || { echo "ERROR: pip missing in venv (sudo apt install python3-venv)"; exit 1; }
 
 # 2. newer pip first (Ubuntu 20.04 pip 20.0 cannot read manylinux_2_28 wheel tags), then runner deps; all offline
 "$VPY" -m pip install --no-index --find-links "$WHEELS" --upgrade pip

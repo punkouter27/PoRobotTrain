@@ -106,6 +106,9 @@ and the arm lifts about 20 degrees. Ctrl-C (or the end of `--duration`) ramps to
 The safety guard drops to damping on joint acceleration above 80 rad/s^2, stale commands, limit violations or
 torque above the motor limit.
 
+For head-only motion (head turns left and right, arm held at its default pose) use `--command-mode head-sweep`
+instead of `sweep`; same policy, the shoulder command is simply held at default.
+
 Then repeat with `--amplitude 0.6` and `1.0`, and try `--command-mode keyboard` (arrow keys: left/right = head yaw,
 up/down = arm; `r` reset, `q` quit).
 

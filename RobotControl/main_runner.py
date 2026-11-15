@@ -6,6 +6,7 @@
 Command modes (Level 0: command = [head_yaw_target_rad, shoulder_pitch_target_rad]):
 
 * ``sweep``     head yaw +-30 deg at 0.25 Hz; shoulder pitch between default and default-1.2 rad at 0.15 Hz
+* ``head-sweep`` head yaw +-30 deg at 0.25 Hz only; shoulder pitch command held at its default (arm stays still)
 * ``keyboard``  arrows: left/right = head yaw +-5 deg, up/down = shoulder pitch -+0.1 rad, r = reset, q = quit
 * ``zero``      constant command = [0, default]
 
@@ -159,6 +160,9 @@ def make_command_fn(mode: str, deploy: DeployConfig, joint_map: JointMap, stop_e
     if mode == "sweep":
         a = min(max(float(amplitude), 0.0), 1.0)
         return SweepCommand(deploy, joint_map, head_yaw_deg=30.0 * a, shoulder_drop_rad=1.2 * a)
+    if mode == "head-sweep":
+        a = min(max(float(amplitude), 0.0), 1.0)
+        return SweepCommand(deploy, joint_map, head_yaw_deg=30.0 * a, shoulder_drop_rad=0.0)
     if mode == "keyboard":
         return KeyboardCommand(deploy, joint_map, stop_event)
     if mode == "zero":
@@ -192,10 +196,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--dry-run", action="store_true", help="real: log LowCmd instead of publishing")
     ap.add_argument("--observe", action="store_true",
                     help="real: read the live robot state and run the policy in shadow mode; NOTHING is published")
-    ap.add_argument("--command-mode", choices=["sweep", "keyboard", "zero"], default="sweep")
+    ap.add_argument("--command-mode", choices=["sweep", "head-sweep", "keyboard", "zero"], default="sweep")
     ap.add_argument("--duration", type=float, default=None, help="seconds (default: until Ctrl-C)")
     ap.add_argument("--amplitude", type=float, default=1.0,
-                    help="sweep: scale 0..1 of the motion (1.0 = head yaw +-30 deg, shoulder lift 1.2 rad)")
+                    help="sweep / head-sweep: scale 0..1 of the motion (1.0 = head yaw +-30 deg, shoulder lift 1.2 rad)")
     ap.add_argument("--no-realtime", action="store_true", help="sim: run as fast as possible")
     ap.add_argument("--no-log", action="store_true")
     ap.add_argument("--log-dir", default=str(LOGS_DIR))

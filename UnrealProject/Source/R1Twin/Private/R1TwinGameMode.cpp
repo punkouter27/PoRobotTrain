@@ -2,6 +2,7 @@
 #include "R1TwinGameMode.h"
 #include "R1Twin.h"
 #include "R1FollowCamera.h"
+#include "R1BehaviourPanel.h"
 #include "R1PolicyComponent.h"
 #include "R1Level0SweepCommand.h"
 #include "R1ArticulationBridge.h"
@@ -17,6 +18,7 @@ AR1TwinGameMode::AR1TwinGameMode()
 {
 	DefaultPawnClass = AR1FollowCamera::StaticClass();
 	PlayerControllerClass = APlayerController::StaticClass();
+	HUDClass = AR1BehaviourPanel::StaticClass();
 	bStartPlayersAsSpectators = false;
 }
 
@@ -94,13 +96,18 @@ void AR1TwinGameMode::SpawnPolicyHostIfNeeded()
 
 	// Command source first so the policy component can pick it up in BeginPlay.
 	UR1Level0SweepCommand* Cmd = NewObject<UR1Level0SweepCommand>(PolicyHost, TEXT("Level0Command"));
-	Cmd->Mode = DefaultCommandMode;
+	Cmd->Mode = bRunLevel0PolicyOnPlay ? DefaultCommandMode : ER1CommandMode::Hold;
 	PolicyHost->AddInstanceComponent(Cmd);
 	Cmd->RegisterComponent();
 
 	UR1PolicyComponent* Policy = NewObject<UR1PolicyComponent>(PolicyHost, TEXT("Policy"));
 	Policy->DeployConfigAsset = DefaultDeployConfig;
-	if (!DefaultPolicyModel && DefaultPolicyModelPath.IsValid())
+	if (!bRunLevel0PolicyOnPlay)
+	{
+		DefaultPolicyModel = nullptr;
+		UE_LOG(LogR1Twin, Log, TEXT("R1TwinGameMode: bRunLevel0PolicyOnPlay=false - no in-engine policy; the twin holds the default pose until a Python client drives it."));
+	}
+	else if (!DefaultPolicyModel && DefaultPolicyModelPath.IsValid())
 	{
 		DefaultPolicyModel = Cast<UNNEModelData>(DefaultPolicyModelPath.TryLoad());
 		UE_LOG(LogR1Twin, Log, TEXT("R1TwinGameMode: policy model from config %s -> %s"),

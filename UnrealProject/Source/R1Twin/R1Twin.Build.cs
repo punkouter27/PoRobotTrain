@@ -22,6 +22,9 @@ public class R1Twin : ModuleRules
 			"NNE",
 		});
 
+		// Behaviour panel (AR1BehaviourPanel) talks to RobotControl's local behaviour service over HTTP/JSON.
+		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json" });
+
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 		});

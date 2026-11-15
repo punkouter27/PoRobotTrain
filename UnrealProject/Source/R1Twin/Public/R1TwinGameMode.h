@@ -44,6 +44,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "R1")
 	ER1CommandMode DefaultCommandMode = ER1CommandMode::Sinusoid;
 
+	/** true: Play runs the Level 0 ONNX policy in-engine (head + right arm sweep). false: no policy is loaded,
+	 *  the twin just holds the default pose until a Python client (behaviour preview / live mirror) drives it.
+	 *  Set in Config/DefaultGame.ini. */
+	UPROPERTY(Config, EditDefaultsOnly, BlueprintReadOnly, Category = "R1")
+	bool bRunLevel0PolicyOnPlay = true;
+
 	/** Tag the placed Articulation Blueprint instance with this so it is found unambiguously. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "R1")
 	FName ArticulationActorTag = TEXT("R1Articulation");
