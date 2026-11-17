@@ -28,16 +28,28 @@ ssh -t unitree@192.168.123.164 "cd ~/porobot && ./run.sh robotcontrol.behaviours
 ## Unreal panel + live mirror
 
 1. Start the service on the PC: `.venv\Scripts\python.exe -m robotcontrol.behaviours.service`
-2. Open `UnrealProject\R1Twin.uproject`, level `R1_Stand`, press **Play**. With
-   `bRunLevel0PolicyOnPlay=False` (Config/DefaultGame.ini) the twin holds its pose; the panel is bottom left.
-3. **Preview in twin** runs the behaviour on the Unreal twin.
-4. **Check robot** runs it read-only on the robot (nothing published): robot reachable, head centred.
-5. **Run on robot** is enabled only after a clean preview *with the same settings* and a read-only check
-   less than 5 minutes old. It opens a confirmation (robot on stand, head forward, remote in hand).
-   During the run the twin switches to **live mirror**: it shows the robot's measured joint angles
-   (read-only `stream_state` on the Jetson, URLab puppet mode).
-6. **STOP** sends Ctrl-C to the robot run (the head is released to damping, then disabled). It goes over
-   the network; the **remote (L2+B for 5 s) is the emergency stop**.
+2. Start the twin: open `UnrealProject\R1Twin.uproject` and press **Play** (`R1_Stand` is the startup map), or
+   run it as a standalone window from PowerShell (Git Bash rewrites `/Game/...` into a file path):
+   `& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
+   With `bRunLevel0PolicyOnPlay=False` (Config/DefaultGame.ini) the twin holds its pose. The panel is top left;
+   URLab's debug panels are hidden (**Details** or Tab shows them, plus the raw service output).
+3. The panel has two colour-coded sections. Pick the turn size (10 / 20 / 30 deg) first.
+   * **VIRTUAL ROBOT** (blue): **Move VIRTUAL robot** runs the behaviour on the Unreal twin. Nothing real moves.
+   * **REAL ROBOT** (orange): **Check connection** runs it read-only on the robot (nothing published: robot
+     reachable, head centred). **Move REAL robot** unlocks only when both checklist steps are green for the
+     selected turn size (a clean virtual move, and a check less than 5 minutes old). It then asks for confirmation
+     (robot on stand, head forward, remote in hand). During the run the twin switches to **live mirror**: it shows
+     the robot's measured joint angles (read-only `stream_state` on the Jetson, URLab puppet mode).
+   Each section shows a **HEAD** readout (yaw, pitch, target, other-joint drift, and how old the reading is) with a
+   -30..+30 deg yaw gauge. Sources: the runner's 5 Hz `@head` line, the 1 Hz progress line older deployed runners
+   print (no pitch), and during a robot run the live mirror stream. The robot kit picks up the `@head` line on the
+   next `scripts\push_to_robot.ps1`.
+4. **STOP** sends Ctrl-C to whatever is running (robot: the head is released to damping, then disabled). It goes
+   over the network; the **remote (L2+B for 5 s) is the emergency stop**.
+
+On the twin the legs have no stiffness (the URLab MJCF is built for the upper-body Level 0 policy), so they hang
+and creep. The urlab backend lets them settle for 2 s before taking the start pose and leaves joints with model
+kp 0 out of the other-joint check on the twin only (it prints which). The real run checks all 26 joints.
 
 ## Adding a behaviour
 

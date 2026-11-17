@@ -232,6 +232,13 @@ class URLabInterface(RobotHardwareInterface):
             self._warned_raw = True
         art.set_ctrl({k: float(cmd.q[i]) for i, k in enumerate(self._act_keys)})
 
+    def model_kp(self) -> Optional[np.ndarray]:
+        """Stiffness the twin really applies per joint (joint-map order), or None when UE's PD controller
+        uses the gains we push. In raw mode it is whatever the MJCF baked into each actuator."""
+        if self._ue_controller:
+            return None
+        return np.array([self.art.actuators[k].kp or 0.0 for k in self._act_keys])
+
     # ---------------------------------------------------------------- timing
     def tick(self) -> None:
         self.client.step(n_steps=self.substeps, target_hz=self.target_hz)

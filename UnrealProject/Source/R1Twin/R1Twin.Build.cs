@@ -23,7 +23,7 @@ public class R1Twin : ModuleRules
 		});
 
 		// Behaviour panel (AR1BehaviourPanel) talks to RobotControl's local behaviour service over HTTP/JSON.
-		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json", "UMG", "Slate", "SlateCore" });  // UMG: hide URLab's debug widget; Slate: click input
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{

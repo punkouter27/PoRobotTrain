@@ -115,6 +115,9 @@ and it reclaims them when the client finishes. The follow camera frames the stan
 * Parity: a 20 s sweep in Unreal vs. the headless MuJoCo twin differs by at most 0.37 deg on any of the 26 joints.
 * URLab is pinned locally to MuJoCo 4.0.0 (branch `mujoco-4.0` in `UnrealProject/Plugins/UnrealRoboticsLab`) with small
   compile fixes for MuJoCo 4.0 and UE 5.8. Runtime numbers and known issues: `docs/step5_runtime.md`.
+  The fixes (re-applied 2026-11-16 after a fresh clone) are uncommitted in that checkout: `mjtLimited` enum
+  assignments, float to bool for `active` / `actgravcomp`, and `FString(*Key)` for UE 5.8's `FSharedString` JSON keys
+  in `RpcDispatcher.cpp` / `MsgpackHelpers.cpp`. Build with `-MaxParallelActions=6` if MSVC reports PCH heap errors.
 
 ## Real robot (Level 0 on the stand)
 

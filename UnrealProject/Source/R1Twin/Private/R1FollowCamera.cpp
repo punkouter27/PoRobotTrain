@@ -51,7 +51,7 @@ void AR1FollowCamera::BeginPlay()
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = true;
-		PC->bEnableClickEvents = false;
+		PC->bEnableClickEvents = true;   // left click = behaviour panel buttons (AR1BehaviourPanel); orbit is right mouse
 		PC->bEnableMouseOverEvents = false;
 	}
 

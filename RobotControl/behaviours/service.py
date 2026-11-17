@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import argparse
 import collections
+import math
+import re
 import json
 import os
 import signal
@@ -54,6 +56,47 @@ def parse_params(body: dict) -> dict:
     return p
 
 
+def failure_reason(line: str) -> str:
+    """Short reason for the panel from a runner output line, or "" if the line is not a failure."""
+    s = line.strip()
+    if s.startswith("ABORT"):
+        s = s.split(":", 1)[1].strip() if ":" in s else s
+        return s.split(" - ")[0][:90]
+    if s.startswith("NOT STARTED"):
+        return s.split(":", 1)[-1].strip()[:90]
+    if "Resource temporarily unavailable" in s or "zmq.error.Again" in s:
+        return "lost the connection to the Unreal twin (is it still running?)"
+    for key in ("REFUSE", "Error:", "error:", "Connection refused", "timed out", "No route to host"):
+        if key in s:
+            return s[:90]
+    return ""
+
+
+_TICK = re.compile(r"t=\s*([\d.]+)s\s+(\w+)\s+head_yaw target\s+([+-]?[\d.]+) actual\s+([+-]?[\d.]+) deg"
+                   r"\s+other joints max change ([\d.]+)")
+
+
+def parse_head(line: str) -> Optional[dict]:
+    """Head readout from a runner line: the 5 Hz '@head k=v ...' line (yaw, pitch, target, other) or the 1 Hz
+    progress line every deployed runner prints (yaw, target, other; no pitch). None if the line has neither."""
+    s = line.strip()
+    if s.startswith("@head "):
+        d = dict(kv.split("=", 1) for kv in s[6:].split() if "=" in kv)
+        out = {"phase": d.get("phase", "")}
+        for k in ("t", "yaw", "pitch", "target", "other"):
+            try:
+                v = float(d[k])
+                out[k] = None if math.isnan(v) else v
+            except (KeyError, ValueError):
+                pass
+        return out
+    m = _TICK.search(s)
+    if m:
+        return {"t": float(m.group(1)), "phase": m.group(2), "target": float(m.group(3)),
+                "yaw": float(m.group(4)), "other": float(m.group(5))}
+    return None
+
+
 def runner_args(p: dict) -> list:
     return [p["behaviour"], "--amplitude", f"{p['amplitude']:g}", "--freq", f"{p['freq']:g}",
             "--duration", f"{p['duration']:g}"]
@@ -69,6 +112,10 @@ class Service:
         self.checked: Optional[dict] = None
         self.checked_at = 0.0
         self.last_result = ""
+        # per job: {"ok": bool, "amplitude": deg, "reason": short plain-language reason, "at": epoch s}
+        self.results: dict = {}
+        # latest head readout per robot: {"virtual"|"real": {yaw, pitch, target, other, phase, t, source, at}}
+        self.head: dict = {}
         self.address = address
         self.mirror_enabled = mirror_enabled
         self.mirror_stop = threading.Event()
@@ -78,6 +125,14 @@ class Service:
     # ------------------------------------------------------------------ helpers
     def log(self, s: str) -> None:
         self.lines.append(time.strftime("%H:%M:%S ") + s.rstrip())
+
+    def update_head(self, who: str, h: dict, source: str) -> None:
+        cur = dict(self.head.get(who, {}))
+        if cur.get("source") != source:
+            cur = {}                              # a new job: drop the previous job's target / phase
+        cur.update({k: v for k, v in h.items() if v is not None})
+        cur["source"], cur["at"] = source, time.time()
+        self.head[who] = cur
 
     def why_not_run(self, p: Optional[dict]) -> Optional[str]:
         if self.job:
@@ -97,7 +152,9 @@ class Service:
                     "check_age_s": round(time.time() - self.checked_at, 1) if self.checked else None,
                     "can_run_robot": self.why_not_run(self.previewed) is None,
                     "why_not_run": self.why_not_run(self.previewed),
-                    "mirror_samples": self.mirror_samples, "lines": list(self.lines)[-12:]}
+                    "mirror_samples": self.mirror_samples, "results": dict(self.results),
+                    "head": {k: dict(v, age_s=round(time.time() - v["at"], 1)) for k, v in list(self.head.items())},
+                    "lines": list(self.lines)[-12:]}
 
     def _start(self, job: str, cmd: list, p: dict, pty: bool = False) -> None:
         self.job = job
@@ -111,15 +168,26 @@ class Service:
         threading.Thread(target=self._pump, args=(job, self.proc, p), daemon=True).start()
 
     def _pump(self, job: str, proc: subprocess.Popen, p: dict) -> None:
+        reason = ""
+        who = "virtual" if job == "preview" else "real"
         for line in proc.stdout:
             if "post-quantum" in line or "store now" in line or "pq.html" in line or not line.strip():
                 continue
+            h = parse_head(line)
+            if h is not None:
+                self.update_head(who, h, source=job)
+                if line.lstrip().startswith("@head"):
+                    continue                      # 5 Hz readout: panel only, keep the log readable
             self.log(line)
+            if not line.startswith((" ", "	")):          # skip indented traceback frames
+                reason = failure_reason(line) or reason
         code = proc.wait()
         with self.lock:
             ok = code == 0
-            if job == "preview" and ok:
-                self.previewed = p
+            self.results[job] = {"ok": ok, "amplitude": p["amplitude"], "at": time.time(),
+                                 "reason": "" if ok else (reason or f"exit code {code}")}
+            if job == "preview":
+                self.previewed = p if ok else None   # a failed virtual run clears step 1
             if job == "check" and ok:
                 self.checked, self.checked_at = p, time.time()
             self.last_result = f"{job} {'OK' if ok else f'FAILED (exit {code})'}"
@@ -143,7 +211,7 @@ class Service:
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running"}
-            remote = (f"cd {ROBOT_DIR} && timeout 60 ./run.sh robotcontrol.behaviours.runner "
+            remote = (f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 timeout 60 ./run.sh robotcontrol.behaviours.runner "
                       + " ".join(runner_args(p)) + " --target real")
             self._start("check", ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote], p)
         return {"ok": True}
@@ -155,7 +223,7 @@ class Service:
             why = self.why_not_run(p)
             if why:
                 return {"ok": False, "error": why}
-            remote = (f"cd {ROBOT_DIR} && ./run.sh robotcontrol.behaviours.runner "
+            remote = (f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 ./run.sh robotcontrol.behaviours.runner "
                       + " ".join(runner_args(p)) + " --target real --go --yes")
             self._start("run", ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote],
                         p, pty=True)
@@ -174,8 +242,12 @@ class Service:
             return
         self.log("mirror: showing the robot's measured angles in Unreal")
 
-        def count(_q):
+        i_yaw, i_pitch = self.jm.index_of("head_yaw_joint"), self.jm.index_of("head_pitch_joint")
+
+        def count(q):
             self.mirror_samples += 1
+            self.update_head("real", {"yaw": math.degrees(q[i_yaw]), "pitch": math.degrees(q[i_pitch])},
+                             source="run")
         try:
             run_mirror(robot_stream(30.0, procs), m, self.mirror_stop, count)
         except Exception as e:

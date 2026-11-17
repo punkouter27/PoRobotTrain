@@ -55,7 +55,9 @@ def run(backend, beh, jm: JointMap, log: CsvLog, stop: dict, max_other_deg: floa
     q, dq, _ = backend.read()
     beh.start(dict(zip(names, q)))
     q_start = q.copy()
-    others = [i for i, n in enumerate(names) if n not in beh.powered]
+    skip = set(getattr(backend, "unchecked", ()))
+    others = [i for i, n in enumerate(names) if n not in beh.powered and n not in skip]
+    i_yaw, i_pitch = names.index("head_yaw_joint"), names.index("head_pitch_joint")
     print(f"start: {beh.describe()}; powered joints: {', '.join(beh.powered)}")
     t0 = time.monotonic()
     t, k, next_print, max_other = 0.0, 0, 0.0, 0.0
@@ -75,6 +77,11 @@ def run(backend, beh, jm: JointMap, log: CsvLog, stop: dict, max_other_deg: floa
                 return 3
             backend.command(targets)
             log.row(t, beh.phase(t), [targets[n] for n in beh.powered], q)
+            if k % 10 == 0:   # 5 Hz head readout for the Unreal panel (behaviours/service.py parses '@head')
+                tg = targets.get("head_yaw_joint", float("nan"))
+                print(f"@head t={t:.2f} phase={beh.phase(t)} yaw={math.degrees(q[i_yaw]):.2f} "
+                      f"pitch={math.degrees(q[i_pitch]):.2f} target={math.degrees(tg):.2f} "
+                      f"other={math.degrees(max_other):.2f}", flush=True)
             if t >= next_print:
                 tg = " ".join(f"{n.replace('_joint', '')} target {math.degrees(targets[n]):+6.1f} actual "
                               f"{math.degrees(q[jm.index_of(n)]):+6.1f} deg" for n in beh.powered)

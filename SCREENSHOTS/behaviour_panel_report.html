@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Behaviour Panel Redesign</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--blue:#2a6bd9;--orange:#d9730d}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.b{color:var(--blue);font-weight:600}.o{color:var(--orange);font-weight:600}
+</style></head><body><main>
+<h1>Behaviour panel redesign (Unreal twin)</h1>
+<p>2026-11-16 · UE 5.8.4 standalone game, level R1_Stand, 1600×900 at 150 % display scaling.</p>
+
+<h2>Before</h2>
+<figure><img src="behaviour_panel_before.png" alt="Old panel half hidden behind URLab debug sliders">
+<figcaption>URLab debug panels (physics options, actuators, joints) cover the screen; the behaviour panel is half hidden and shows raw log lines.</figcaption></figure>
+
+<h2>After</h2>
+<ul>
+<li>URLab debug panels hidden on start (<b>Details</b> or Tab shows them and the raw service output).</li>
+<li><span class="b">VIRTUAL ROBOT</span> section (blue): one button, safe, nothing real moves.</li>
+<li><span class="o">REAL ROBOT</span> section (orange): Check connection (read-only) and Move REAL robot, with a two-step checklist that says why the robot button is locked.</li>
+<li>Plain-language status per section; STOP and the remote e-stop reminder kept.</li>
+<li>Click feedback: hovered buttons brighten with an outline, the clicked button flashes white and sinks, the running button's label changes ("Moving the virtual robot...", "Checking..."), and a message bar confirms each click. Clicking a locked button says why it is locked.</li>
+<li>Fix: panel clicks were ignored. The follow camera turned HUD click events off, and URLab's widget switches input modes, so the panel now reads left clicks from a Slate input pre-processor and hit-tests its own buttons.</li>
+</ul>
+<figure><img src="behaviour_panel_after_idle.png" alt="New panel, idle"><figcaption>Idle: both steps open, the real-robot button locked.</figcaption></figure>
+<figure><img src="behaviour_panel_after_moving.png" alt="New panel while the virtual robot moves"><figcaption>Virtual robot moving: all other actions locked.</figcaption></figure>
+<figure><img src="behaviour_panel_after_done.png" alt="New panel after a clean virtual run"><figcaption>After a clean virtual run (other joints moved at most 1.2 deg): step 1 green.</figcaption></figure>
+<figure><img src="behaviour_panel_after_click.png" alt="Panel right after clicking Move VIRTUAL robot"><figcaption>Right after a click: white outline, button label changes, and the message bar confirms the click.</figcaption></figure>
+<figure><img src="behaviour_panel_after_check_offline.png" alt="New panel after a failed robot check"><figcaption>Robot unreachable: the check failure is shown in plain words, and Move REAL robot stays locked.</figcaption></figure>
+
+<h2>Not verified</h2>
+<ul>
+<li>A real-robot run was not started: the robot (192.168.123.164) was unreachable.</li>
+</ul>
+</main></body></html>

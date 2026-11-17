@@ -17,6 +17,10 @@ What happens to the joints the behaviour does not power:
   urlab  held at the pose they had when the run started (PD with joint-map gains). This stands in for the
          real geared joints holding still; it is a visual twin of the motion, not a test of the reaction
          torques. The real robot run checks those with the other-joint abort.
+         The twin's MJCF gives the legs no stiffness (kp 0, built for the upper-body Level 0 policy), so after
+         the home reset they hang and keep creeping (knee ~11 deg in 2 s, ankles ~0.7 deg/s after that). The
+         backend lets the twin settle for SETTLE_S before taking the start pose, and joints the twin cannot
+         hold (model kp 0) are left out of the other-joint check on this target only.
 """
 from __future__ import annotations
 
@@ -33,6 +37,8 @@ from ..configs.joint_map import JointMap
 class _Base:
     rate_hz = 50.0
     realtime = False
+    # joints this transport cannot hold still, so the other-joint check skips them (with a printed note)
+    unchecked: Sequence[str] = ()
 
     def __init__(self, jm: JointMap, powered: Sequence[str]):
         self.jm = jm
@@ -134,6 +140,7 @@ class URLabBackend(_Base):
     """Drives the Unreal twin through ``URLabInterface`` (direct mode: Python steps the physics, 50 Hz)."""
 
     rate_hz = 50.0
+    SETTLE_S = 2.0
 
     def __init__(self, jm: JointMap, powered: Sequence[str], address: str = "tcp://localhost",
                  realtime: bool = True):
@@ -142,10 +149,20 @@ class URLabBackend(_Base):
         self.itf = URLabInterface(jm, address=address, step_mode="direct", policy_dt=1.0 / self.rate_hz)
         self.itf.connect()
         self.realtime = realtime
-        self.hold = self.itf.get_low_state().q.copy()
         self.kp = jm.kp.copy()
         self.kd = jm.kd.copy()
+        self.hold = self.itf.get_low_state().q.copy()
+        for _ in range(int(self.SETTLE_S * self.rate_hz)):     # let the limp legs hang before the start pose
+            self.itf.send_low_cmd(self.hold, self.kp, self.kd)
+            self.itf.tick()
+        self.hold = self.itf.get_low_state().q.copy()
+        model_kp = self.itf.model_kp()
+        if model_kp is not None:
+            self.unchecked = [n for i, n in enumerate(jm.names) if model_kp[i] <= 0.0 and n not in self.powered]
         print(f"[urlab] connected; powered: {self.powered}; every other joint held at its start pose")
+        if self.unchecked:
+            print(f"[urlab] twin has no stiffness on {len(self.unchecked)} joints ({', '.join(self.unchecked)}): "
+                  f"they hang freely here and are not part of the other-joint check on the twin")
 
     def read(self):
         s = self.itf.get_low_state()
