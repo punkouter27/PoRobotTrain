@@ -1,0 +1,198 @@
+diff --git a/Source/URLab/Private/Bridge/MsgpackHelpers.cpp b/Source/URLab/Private/Bridge/MsgpackHelpers.cpp
+index 117dbd5..13793fd 100644
+--- a/Source/URLab/Private/Bridge/MsgpackHelpers.cpp
++++ b/Source/URLab/Private/Bridge/MsgpackHelpers.cpp
+@@ -73,7 +73,7 @@ void PackJsonObjectInner(clmdep_msgpack::packer<Stream>& Packer,
+ 	Packer.pack_map(Obj->Values.Num());
+ 	for (const auto& Kv : Obj->Values)
+ 	{
+-		const FString& Key = Kv.Key;
++		const FString Key(*Kv.Key);
+ 		// Special-case keys with kBinSuffix: emit real msgpack bin rather
+ 		// than the base64-as-string form the JSON tree carries.
+ 		if (Key.EndsWith(kBinSuffix, ESearchCase::CaseSensitive))
+diff --git a/Source/URLab/Private/Bridge/RpcDispatcher.cpp b/Source/URLab/Private/Bridge/RpcDispatcher.cpp
+index 9758d6f..00d2f82 100644
+--- a/Source/URLab/Private/Bridge/RpcDispatcher.cpp
++++ b/Source/URLab/Private/Bridge/RpcDispatcher.cpp
+@@ -994,12 +994,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
+ 
+ 				FString CtlMode;
+ 				if ((*ArtObj)->TryGetStringField(TEXT("control_mode"), CtlMode))
+-					TmpReq.PerArticulationControlMode.Add(Pair.Key, CtlMode);
++					TmpReq.PerArticulationControlMode.Add(FString(*Pair.Key), CtlMode);
+ 
+ 				const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
+ 				if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
+ 				{
+-					if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
++					if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(FString(*Pair.Key))))
+ 					{
+ 						TArray<UMjActuator*> Acts = Art->GetActuators();
+ 						for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
+@@ -1011,7 +1011,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
+ 							FString Prefix = Art->GetName() + TEXT("_");
+ 							if (Local.StartsWith(Prefix))
+ 								Local = Local.Mid(Prefix.Len());
+-							TmpReq.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
++							TmpReq.PerArticulationCtrl.FindOrAdd(FString(*Pair.Key)).Add(
+ 								{Local, (float)(*CtrlList)[i]->AsNumber()});
+ 						}
+ 					}
+@@ -1066,7 +1066,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
+ 					ECameraInclude E = ECameraInclude::Latest;
+ 					if (Mode.Equals(TEXT("sync"), ESearchCase::IgnoreCase))
+ 						E = ECameraInclude::Sync;
+-					CameraSpec.Add(Kv.Key, E);
++					CameraSpec.Add(FString(*Kv.Key), E);
+ 				}
+ 			}
+ 		}
+@@ -1195,14 +1195,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
+ 			FString CtlMode;
+ 			if ((*ArtObj)->TryGetStringField(TEXT("control_mode"), CtlMode))
+ 			{
+-				Cmd->Request.PerArticulationControlMode.Add(Pair.Key, CtlMode);
++				Cmd->Request.PerArticulationControlMode.Add(FString(*Pair.Key), CtlMode);
+ 			}
+ 
+ 			const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
+ 			if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
+ 			{
+ 				// Positional ctrl array: indexed in articulation actuator order.
+-				if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
++				if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(FString(*Pair.Key))))
+ 				{
+ 					TArray<UMjActuator*> Acts = Art->GetActuators();
+ 					for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
+@@ -1214,7 +1214,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
+ 						FString Prefix = Art->GetName() + TEXT("_");
+ 						if (LocalName.StartsWith(Prefix))
+ 							LocalName = LocalName.Mid(Prefix.Len());
+-						Cmd->Request.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
++						Cmd->Request.PerArticulationCtrl.FindOrAdd(FString(*Pair.Key)).Add(
+ 							{LocalName, (float)(*CtrlList)[i]->AsNumber()});
+ 					}
+ 				}
+@@ -1226,8 +1226,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
+ 			{
+ 				for (auto& KV : (*CtrlMap)->Values)
+ 				{
+-					Cmd->Request.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
+-						{KV.Key, (float)KV.Value->AsNumber()});
++					Cmd->Request.PerArticulationCtrl.FindOrAdd(FString(*Pair.Key)).Add(
++						{FString(*KV.Key), (float)KV.Value->AsNumber()});
+ 				}
+ 			}
+ 
+@@ -1235,13 +1235,13 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
+ 			const TSharedPtr<FJsonObject>* XfrcMap = nullptr;
+ 			if ((*ArtObj)->TryGetObjectField(TEXT("xfrc_applied"), XfrcMap) && XfrcMap && XfrcMap->IsValid())
+ 			{
+-				TMap<FString, TArray<double>>& BodyMap = Cmd->Request.PerArticulationXfrc.FindOrAdd(Pair.Key);
++				TMap<FString, TArray<double>>& BodyMap = Cmd->Request.PerArticulationXfrc.FindOrAdd(FString(*Pair.Key));
+ 				for (auto& KV : (*XfrcMap)->Values)
+ 				{
+ 					const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
+ 					if (KV.Value->TryGetArray(Arr) && Arr && Arr->Num() == 6)
+ 					{
+-						TArray<double>& Six = BodyMap.FindOrAdd(KV.Key);
++						TArray<double>& Six = BodyMap.FindOrAdd(FString(*KV.Key));
+ 						Six.SetNum(6);
+ 						for (int i = 0; i < 6; ++i)
+ 							Six[i] = (*Arr)[i]->AsNumber();
+@@ -1827,7 +1827,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
+ 		{
+ 			for (auto& APair : (*PerArt)->Values)
+ 			{
+-				AMjArticulation* Art = Mgr->GetArticulation(APair.Key);
++				AMjArticulation* Art = Mgr->GetArticulation(FString(*APair.Key));
+ 				if (!Art)
+ 					continue;
+ 				const TSharedPtr<FJsonObject>* QObj = nullptr;
+@@ -1837,10 +1837,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
+ 				FString Prefix = Art->GetName() + TEXT("_");
+ 				for (auto& JPair : (*QObj)->Values)
+ 				{
+-					FString FullName = Prefix + JPair.Key;
++					FString FullName = Prefix + FString(*JPair.Key);
+ 					int Jid = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*FullName));
+ 					if (Jid < 0)
+-						Jid = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*JPair.Key));
++						Jid = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*FString(*JPair.Key)));
+ 					if (Jid < 0)
+ 						continue;
+ 					int QAddr = m->jnt_qposadr[Jid];
+diff --git a/Source/URLab/Private/MuJoCo/Components/Actuators/MjActuator.cpp b/Source/URLab/Private/MuJoCo/Components/Actuators/MjActuator.cpp
+index cbbe72a..8c516cf 100644
+--- a/Source/URLab/Private/MuJoCo/Components/Actuators/MjActuator.cpp
++++ b/Source/URLab/Private/MuJoCo/Components/Actuators/MjActuator.cpp
+@@ -163,11 +163,11 @@ void UMjActuator::ExportTo(mjsActuator* Element, mjsDefault* Default)
+ 	if (bOverride_delay)
+ 		Element->delay = delay;
+ 	if (bOverride_ctrllimited)
+-		Element->ctrllimited = ctrllimited ? 1 : 0;
++		Element->ctrllimited = ctrllimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+ 	if (bOverride_forcelimited)
+-		Element->forcelimited = forcelimited ? 1 : 0;
++		Element->forcelimited = forcelimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+ 	if (bOverride_actlimited)
+-		Element->actlimited = actlimited ? 1 : 0;
++		Element->actlimited = actlimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+ 	if (bOverride_ctrlrange)
+ 	{
+ 		for (int32 i = 0; i < FMath::Min(ctrlrange.Num(), 2); ++i)
+diff --git a/Source/URLab/Private/MuJoCo/Components/Constraints/MjEquality.cpp b/Source/URLab/Private/MuJoCo/Components/Constraints/MjEquality.cpp
+index 082efb5..c6587ff 100644
+--- a/Source/URLab/Private/MuJoCo/Components/Constraints/MjEquality.cpp
++++ b/Source/URLab/Private/MuJoCo/Components/Constraints/MjEquality.cpp
+@@ -153,7 +153,7 @@ void UMjEquality::ExportTo(mjsEquality* Element)
+ 
+ 	// --- CODEGEN_EXPORT_START ---
+ 	if (bOverride_active)
+-		Element->active = active;
++		Element->active = active != 0.0f;
+ 	if (bOverride_solref)
+ 	{
+ 		for (int32 i = 0; i < FMath::Min(solref.Num(), 2); ++i)
+diff --git a/Source/URLab/Private/MuJoCo/Components/Joints/MjJoint.cpp b/Source/URLab/Private/MuJoCo/Components/Joints/MjJoint.cpp
+index 1068492..d071cae 100644
+--- a/Source/URLab/Private/MuJoCo/Components/Joints/MjJoint.cpp
++++ b/Source/URLab/Private/MuJoCo/Components/Joints/MjJoint.cpp
+@@ -210,9 +210,9 @@ void UMjJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
+ 			Element->springdamper[i] = springdamper[i];
+ 	}
+ 	if (bOverride_limited)
+-		Element->limited = limited ? 1 : 0;
++		Element->limited = limited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+ 	if (bOverride_ActFrcLimited)
+-		Element->actfrclimited = ActFrcLimited ? 1 : 0;
++		Element->actfrclimited = ActFrcLimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+ 	if (bOverride_solreflimit)
+ 	{
+ 		for (int32 i = 0; i < FMath::Min(solreflimit.Num(), 2); ++i)
+@@ -244,7 +244,7 @@ void UMjJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
+ 			Element->actfrcrange[i] = ActFrcRange[i];
+ 	}
+ 	if (bOverride_actuatorgravcomp)
+-		Element->actgravcomp = actuatorgravcomp;
++		Element->actgravcomp = actuatorgravcomp != 0.0f;
+ 	if (bOverride_margin)
+ 		Element->margin = margin;
+ 	if (bOverride_armature)
+diff --git a/Source/URLab/Private/MuJoCo/Components/Tendons/MjTendon.cpp b/Source/URLab/Private/MuJoCo/Components/Tendons/MjTendon.cpp
+index 4e89d8d..e636615 100644
+--- a/Source/URLab/Private/MuJoCo/Components/Tendons/MjTendon.cpp
++++ b/Source/URLab/Private/MuJoCo/Components/Tendons/MjTendon.cpp
+@@ -132,9 +132,9 @@ void UMjTendon::ExportTo(mjsTendon* Element, mjsDefault* def)
+ 	if (bOverride_group)
+ 		Element->group = group;
+ 	if (bOverride_limited)
+-		Element->limited = limited ? 1 : 0;
++		Element->limited = limited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+ 	if (bOverride_ActFrcLimited)
+-		Element->actfrclimited = ActFrcLimited ? 1 : 0;
++		Element->actfrclimited = ActFrcLimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+ 	if (bOverride_range)
+ 	{
+ 		for (int32 i = 0; i < FMath::Min(range.Num(), 2); ++i)
