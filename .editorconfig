@@ -1,0 +1,21 @@
+# Same base editor settings in every Po repo.
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,md,xml,csproj,props,targets,html,css,js,mjs,ts,uxml,uss}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+# Unity writes these itself; leave their formatting alone.
+[*.{unity,prefab,asset,meta,mat,anim,controller,physicMaterial,mixer,shadergraph,lighting}]
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_size = unset

@@ -31,3 +31,7 @@ motor slots, limits, gains, and defaults.
   is not evidence that URLab drives the robot.
 - For UI changes, retain the five HUD anchors and document before/after
   screenshots and an HTML report under `SCREENSHOTS/`.
+
+## CI/CD and Azure
+
+- A push to `master` runs `.github/workflows/deploy.yml` on a GitHub-hosted runner to validate Python scripts and contracts. The Unreal Engine 5 project is built and tested locally.
