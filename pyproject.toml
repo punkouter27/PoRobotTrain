@@ -8,7 +8,7 @@ requires-python = ">=3.8"
 dev = ["pytest>=8.0", "ruff==0.17.6"]
 
 [tool.pytest.ini_options]
-testpaths = ["RobotControl/tests"]
+testpaths = ["RobotControl/tests", "tests"]
 addopts = "--import-mode=importlib -q"
 
 [tool.ruff]

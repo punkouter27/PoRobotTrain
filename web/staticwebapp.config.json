@@ -1,0 +1,9 @@
+{
+  "routes": [
+    { "route": "/diag", "rewrite": "/diag.html" },
+    { "route": "/version.json", "headers": { "cache-control": "no-store" } },
+    { "route": "/diag_checks.json", "headers": { "cache-control": "no-store" } }
+  ],
+  "responseOverrides": { "404": { "rewrite": "/index.html", "statusCode": 404 } },
+  "globalHeaders": { "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin" }
+}

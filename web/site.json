@@ -1,0 +1,22 @@
+{
+  "_doc": "Showcase content. web/build.py turns this into dist/index.html; screenshots are copied from SCREENSHOTS/ at build time.",
+  "title": "PoRobotTrain",
+  "tagline": "A Unitree R1 humanoid digital twin: train in MuJoCo, rehearse in Unreal Engine 5, run the same policy on the real robot.",
+  "repo": "https://github.com/punkouter27/PoRobotTrain",
+  "intro": [
+    "PoRobotTrain trains behaviours for a Unitree R1 EDU humanoid (26 motors) with reinforcement learning in MuJoCo, rehearses them in an Unreal Engine 5 digital twin that runs MuJoCo inside the engine, then runs the same ONNX file and the same controller code on the real robot through Unitree SDK2.",
+    "It starts trivially safe and grows level by level. Level 0 hangs the robot on its stand and moves only the head and one arm; a behaviour panel in the twin moves the virtual robot first and only then unlocks a read-only connection check and the real robot."
+  ],
+  "facts": [
+    ["Twin", "Unreal Engine 5.8 + MuJoCo 4.0.0 (URLab plugin); Chaos is off"],
+    ["Policy", "PPO, 50 Hz, ONNX run with Unreal NNE in the twin and onnxruntime on the robot"],
+    ["Parity", "A 20 s sweep in Unreal and in headless MuJoCo differ by at most 0.37 deg per joint"],
+    ["Safety", "Stand-mounted Level 0, virtual run first, emergency stop on the remote"]
+  ],
+  "screenshots": [
+    {"src": "SCREENSHOTS/behaviour_panel_head_readout.png", "caption": "Head turn on the virtual robot, with the live head readout"},
+    {"src": "SCREENSHOTS/behaviour_panel_before.png", "caption": "The behaviour panel before a run: real robot locked"},
+    {"src": "SCREENSHOTS/behaviour_panel_after_done.png", "caption": "After the virtual run: steps checked off"}
+  ],
+  "extra_files": []
+}

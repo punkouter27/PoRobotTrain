@@ -1,0 +1,10 @@
+{
+  "_doc": "The /diag check list. web/build.py validates it, expands each file list (with the byte sizes it wrote) and publishes it as dist/diag_checks.json; diag.js probes every entry live from the browser. This static site calls no external API (the robot and the behaviour service are on the local network, never reached from here), so the checks cover the deployed bundle.",
+  "checks": [
+    {"name": "page", "group": "api", "kind": "files", "label": "Showcase page", "purpose": "The home page and its stylesheet are served", "files": ["/index.html", "/style.css"]},
+    {"name": "status-page", "group": "api", "kind": "files", "label": "Status page", "purpose": "This page and its probe script are served", "files": ["/diag.html", "/diag.js"]},
+    {"name": "version", "group": "api", "kind": "version", "label": "Build version", "purpose": "version.json carries the same stamp as this page (no stale or mixed deploy)", "path": "/version.json"},
+    {"name": "screenshots", "group": "data", "kind": "files", "label": "Screenshots", "purpose": "Every screenshot on the home page is served and decodes", "files": "@screenshots"},
+    {"name": "external", "group": "service", "kind": "none", "label": "External services", "purpose": "APIs, databases or model files this site calls", "detail": "None: the showcase is static. The robot, its behaviour service and the twin run on the local network and are never called from this site"}
+  ]
+}
