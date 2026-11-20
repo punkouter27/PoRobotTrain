@@ -5,7 +5,7 @@ import pytest
 
 from robotcontrol.configs.joint_map import JointMap
 from robotcontrol.execution.safety_guard import SafetyConfig, SafetyGuard
-from robotcontrol.interfaces.base_interface import LowStateData, quat_to_rpy, projected_gravity_from_quat
+from robotcontrol.interfaces.base_interface import LowStateData, projected_gravity_from_quat, quat_to_rpy
 
 
 @pytest.fixture(scope="module")

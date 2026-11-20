@@ -1,13 +1,14 @@
 """Bundle a policy for deployment::
 
-    dist/<policy_name>_<yyyymmdd_hhmm>/
-        policy.onnx (+ policy.onnx.data if external data is used)
-        deploy.yaml
-        r1_joint_map.yaml
-        MANIFEST.json   (sha256 + size per file, timestamp, policy_name, metadata)
+dist/<policy_name>_<yyyymmdd_hhmm>/
+    policy.onnx (+ policy.onnx.data if external data is used)
+    deploy.yaml
+    r1_joint_map.yaml
+    MANIFEST.json   (sha256 + size per file, timestamp, policy_name, metadata)
 
-    python -m robotcontrol.tools.deploy_pack models/r1_level0_upperbody/policy.onnx [--out dist] [--scp user@host:/path]
+python -m robotcontrol.tools.deploy_pack models/r1_level0_upperbody/policy.onnx [--out dist] [--scp user@host:/path]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,15 +36,22 @@ def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
-def pack(onnx_path: str | Path, deploy_path: Optional[str | Path] = None, joint_map_path: Optional[str | Path] = None,
-         out_dir: str | Path = PROJECT_ROOT / "dist", validate: bool = True, timestamp: Optional[datetime] = None,
-         extra_files: Optional[List[Path]] = None) -> Path:
+def pack(
+    onnx_path: str | Path,
+    deploy_path: Optional[str | Path] = None,
+    joint_map_path: Optional[str | Path] = None,
+    out_dir: str | Path = PROJECT_ROOT / "dist",
+    validate: bool = True,
+    timestamp: Optional[datetime] = None,
+    extra_files: Optional[List[Path]] = None,
+) -> Path:
     onnx_path = Path(onnx_path).resolve()
     deploy_path = Path(deploy_path) if deploy_path else find_deploy_yaml(onnx_path)
     joint_map_path = Path(joint_map_path) if joint_map_path else DEFAULT_JOINT_MAP_PATH
     deploy = DeployConfig.load(deploy_path)
     if validate:
         from .onnx_validate import validate as _validate
+
         errors, _ = _validate(onnx_path, deploy_path, joint_map_path)
         if errors:
             raise SystemExit("refusing to pack an invalid policy:\n  " + "\n  ".join(errors))
@@ -80,7 +88,7 @@ def pack(onnx_path: str | Path, deploy_path: Optional[str | Path] = None, joint_
 
 def verify_bundle(bundle: str | Path) -> List[str]:
     bundle = Path(bundle)
-    with open(bundle / "MANIFEST.json", "r", encoding="utf-8") as f:
+    with open(bundle / "MANIFEST.json", encoding="utf-8") as f:
         manifest = json.load(f)
     problems = []
     for name, meta in manifest["files"].items():
@@ -108,7 +116,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--scp", default=None, help="user@host:/path -- copy the bundle with system scp")
     ap.add_argument("--extra", type=Path, nargs="*", default=None, help="additional files to include")
     args = ap.parse_args(argv)
-    bundle = pack(args.onnx, args.deploy, args.joint_map, args.out, validate=not args.no_validate, extra_files=args.extra)
+    bundle = pack(
+        args.onnx, args.deploy, args.joint_map, args.out, validate=not args.no_validate, extra_files=args.extra
+    )
     print(f"bundle: {bundle}")
     for name, meta in json.load(open(bundle / "MANIFEST.json", encoding="utf-8"))["files"].items():
         print(f"  {name:22s} {meta['bytes']:>10d} B  sha256 {meta['sha256'][:16]}...")

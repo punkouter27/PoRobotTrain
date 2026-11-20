@@ -13,6 +13,7 @@ Usage (laptop):
   .venv/Scripts/python.exe scripts/fetch_robot_vendor.py         # once, needs internet
   .venv/Scripts/python.exe -m robotcontrol.tools.robot_kit       # newest bundle in dist/
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,8 +32,9 @@ FILES_DIR = PACKAGE_DIR / "tools" / "robot_kit_files"
 
 
 def latest_bundle(dist: Path) -> Path:
-    cands = sorted([p for p in dist.iterdir() if p.is_dir() and (p / "MANIFEST.json").exists()],
-                   key=lambda p: p.stat().st_mtime)
+    cands = sorted(
+        [p for p in dist.iterdir() if p.is_dir() and (p / "MANIFEST.json").exists()], key=lambda p: p.stat().st_mtime
+    )
     if not cands:
         raise FileNotFoundError(f"no deploy bundle in {dist}; run robotcontrol.tools.deploy_pack first")
     return cands[-1]
@@ -77,8 +79,13 @@ def build(bundle: Path, out_dir: Path, vendor: Path) -> Path:
         _add_tree(tar, vendor / "src", "src", {"build", "install"})
         for script in ("setup_robot.sh", "run.sh"):
             _add_text(tar, script, (FILES_DIR / script).read_text(encoding="utf-8"), mode=0o755)
-        kit_manifest = {"policy_name": name, "bundle": bundle.name, "bundle_files": manifest["files"],
-                        "built": time.strftime("%Y-%m-%dT%H:%M:%S"), "robotcontrol_files": n_pkg}
+        kit_manifest = {
+            "policy_name": name,
+            "bundle": bundle.name,
+            "bundle_files": manifest["files"],
+            "built": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "robotcontrol_files": n_pkg,
+        }
         _add_text(tar, "KIT_MANIFEST.json", json.dumps(kit_manifest, indent=2))
     return out
 

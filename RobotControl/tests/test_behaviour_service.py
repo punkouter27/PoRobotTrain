@@ -1,4 +1,5 @@
 """Behaviour service: robot runs are gated on preview + fresh read-only check + confirmation."""
+
 import json
 import threading
 import time
@@ -17,6 +18,7 @@ def svc(monkeypatch):
     def fake_start(job, cmd, p, pty=False):
         started.append((job, cmd, pty))
         s.job = job
+
     monkeypatch.setattr(s, "_start", fake_start)
     s.started = started
     return s
@@ -38,10 +40,10 @@ def test_run_refused_until_preview_and_check(svc):
     assert "preview" in svc.run(P, confirm=True)["error"]
     svc.previewed = dict(P)
     assert "check" in svc.run(P, confirm=True)["error"]
-    svc.checked, svc.checked_at = dict(P), time.time() - S.CHECK_VALID_S - 1      # stale
+    svc.checked, svc.checked_at = dict(P), time.time() - S.CHECK_VALID_S - 1  # stale
     assert "check" in svc.run(P, confirm=True)["error"]
     svc.checked_at = time.time()
-    other = dict(P, amplitude=20.0)                                              # different settings
+    other = dict(P, amplitude=20.0)  # different settings
     assert "preview" in svc.run(other, confirm=True)["error"]
     assert svc.run(P, confirm=True) == {"ok": True}
     job, cmd, pty = svc.started[-1]
@@ -75,8 +77,10 @@ def test_http_api(svc):
 
 
 def test_failure_reason_is_short_and_plain():
-    assert S.failure_reason("ABORT at t=0.40s: right_knee_joint moved 5.1 deg (> 5.0 deg) - only head_yaw_joint may move") \
+    assert (
+        S.failure_reason("ABORT at t=0.40s: right_knee_joint moved 5.1 deg (> 5.0 deg) - only head_yaw_joint may move")
         == "right_knee_joint moved 5.1 deg (> 5.0 deg)"
+    )
     assert S.failure_reason("NOT STARTED: head is 14 deg off centre") == "head is 14 deg off centre"
     assert "Connection timed out" in S.failure_reason("ssh: connect to host 1.2.3.4 port 22: Connection timed out")
     assert S.failure_reason("t=  1.0s sweep head_yaw target +5.9 actual +7.1 deg") == ""
@@ -104,8 +108,11 @@ def test_results_reported_per_job(svc):
 def test_failed_preview_clears_step1_and_names_the_error(svc):
     svc.previewed = P
     svc.job = "preview"
-    lines = ["Traceback (most recent call last):\n", '  File "x.py", line 1\n',
-             "zmq.error.Again: Resource temporarily unavailable\n"]
+    lines = [
+        "Traceback (most recent call last):\n",
+        '  File "x.py", line 1\n',
+        "zmq.error.Again: Resource temporarily unavailable\n",
+    ]
     svc._pump("preview", _FakeProc(lines, 1), P)
     assert svc.previewed is None
     assert "Unreal twin" in svc.status()["results"]["preview"]["reason"]
@@ -122,9 +129,17 @@ def test_parse_head_lines():
 
 def test_head_readout_in_status_and_not_in_log(svc):
     svc.job = "check"
-    svc._pump("check", _FakeProc(["@head t=0.00 phase=centre yaw=2.00 pitch=-1.00 target=nan other=0.00\n",
-                                  "t=  1.0s centre   head_yaw target   +0.0 actual   +2.1 deg   other joints max change 0.0 deg\n"],
-                                 0), P)
+    svc._pump(
+        "check",
+        _FakeProc(
+            [
+                "@head t=0.00 phase=centre yaw=2.00 pitch=-1.00 target=nan other=0.00\n",
+                "t=  1.0s centre   head_yaw target   +0.0 actual   +2.1 deg   other joints max change 0.0 deg\n",
+            ],
+            0,
+        ),
+        P,
+    )
     h = svc.status()["head"]["real"]
     assert h["yaw"] == 2.1 and h["pitch"] == -1.0 and h["source"] == "check" and "target" in h
-    assert not any("@head" in l for l in svc.lines)
+    assert not any("@head" in line for line in svc.lines)

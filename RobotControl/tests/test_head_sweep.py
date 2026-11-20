@@ -1,12 +1,13 @@
 """Neck turn behaviour: trajectory, aborts, and that the real LowCmd enables ONLY the head-yaw slot."""
+
 import math
 import types
 
 import pytest
 
-from robotcontrol.configs.joint_map import JointMap
 from robotcontrol.behaviours.backends import RealBackend
 from robotcontrol.behaviours.neck_turn import HEAD_YAW, HeadSweepController, SweepParams
+from robotcontrol.configs.joint_map import JointMap
 
 
 def _ctl(**kw):
@@ -33,7 +34,7 @@ def test_trajectory_bounded_and_ends_centred():
     assert abs(tg[0] - math.radians(5.0)) < 1e-9
     assert max(abs(x) for x in tg) <= math.radians(10.0) + 1e-9
     assert abs(tg[-1]) < 1e-6
-    assert max(abs(a - b) for a, b in zip(tg, tg[1:])) < 0.01   # smooth, no jumps
+    assert max(abs(a - b) for a, b in zip(tg, tg[1:])) < 0.01  # smooth, no jumps
 
 
 def test_torque_band_respected():
@@ -49,7 +50,7 @@ def test_aborts_when_head_does_not_follow():
     out = None
     t = 0.0
     while t < 10.0 and (out is not None or t == 0.0):
-        out = c.command(t, q=0.0, dq=0.0, state_age_s=0.0)   # head stuck at 0 while target sweeps to 30
+        out = c.command(t, q=0.0, dq=0.0, state_age_s=0.0)  # head stuck at 0 while target sweeps to 30
         t += 0.01
     assert out is None and "tracking error" in c.abort_reason
 
@@ -86,14 +87,18 @@ def test_real_lowcmd_enables_only_head_yaw_slot():
 
 
 def test_sim_neck_turn_moves_only_the_head():
-    from robotcontrol.behaviours.runner import main
     import tempfile
+
+    from robotcontrol.behaviours.runner import main
+
     with tempfile.TemporaryDirectory() as d:
         assert main(["neck_turn", "--target", "sim", "--duration", "5", "--log-dir", d]) == 0
 
 
 def test_sim_refuses_off_centre_start():
-    from robotcontrol.behaviours.runner import main
     import tempfile
+
+    from robotcontrol.behaviours.runner import main
+
     with tempfile.TemporaryDirectory() as d:
         assert main(["neck_turn", "--target", "sim", "--duration", "2", "--sim-start-deg", "40", "--log-dir", d]) == 1

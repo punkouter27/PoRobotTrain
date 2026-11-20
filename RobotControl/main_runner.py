@@ -12,6 +12,7 @@ Command modes (Level 0: command = [head_yaw_target_rad, shoulder_pitch_target_ra
 
 Ctrl-C -> damping command -> exit.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,8 +41,15 @@ log = logging.getLogger("robotcontrol.main")
 class SweepCommand:
     """Slow sinusoids for the two Level 0 commands."""
 
-    def __init__(self, deploy: DeployConfig, joint_map: JointMap, head_yaw_deg: float = 30.0, head_yaw_hz: float = 0.25,
-                 shoulder_drop_rad: float = 1.2, shoulder_hz: float = 0.15):
+    def __init__(
+        self,
+        deploy: DeployConfig,
+        joint_map: JointMap,
+        head_yaw_deg: float = 30.0,
+        head_yaw_hz: float = 0.25,
+        shoulder_drop_rad: float = 1.2,
+        shoulder_hz: float = 0.15,
+    ):
         self.dim = deploy.command_dim
         self.head_yaw_amp = math.radians(head_yaw_deg)
         self.head_yaw_hz = head_yaw_hz
@@ -55,7 +63,9 @@ class SweepCommand:
             self.cmd[0] = self.head_yaw_amp * math.sin(2.0 * math.pi * self.head_yaw_hz * t)
         if self.dim >= 2:
             # oscillate in [default - drop, default]
-            self.cmd[1] = self.shoulder_default - 0.5 * self.shoulder_drop * (1.0 - math.cos(2.0 * math.pi * self.shoulder_hz * t))
+            self.cmd[1] = self.shoulder_default - 0.5 * self.shoulder_drop * (
+                1.0 - math.cos(2.0 * math.pi * self.shoulder_hz * t)
+            )
         return self.cmd
 
 
@@ -73,8 +83,14 @@ class KeyboardCommand:
     """Arrow-key teleop. Uses msvcrt on Windows, termios/select elsewhere; a background
     thread reads keys so the control loop never blocks."""
 
-    def __init__(self, deploy: DeployConfig, joint_map: JointMap, stop_event: threading.Event,
-                 yaw_step_deg: float = 5.0, pitch_step_rad: float = 0.1):
+    def __init__(
+        self,
+        deploy: DeployConfig,
+        joint_map: JointMap,
+        stop_event: threading.Event,
+        yaw_step_deg: float = 5.0,
+        pitch_step_rad: float = 0.1,
+    ):
         self.dim = deploy.command_dim
         self.stop_event = stop_event
         self.yaw_step = math.radians(yaw_step_deg)
@@ -83,7 +99,9 @@ class KeyboardCommand:
         self.cmd = np.zeros(self.dim)
         self.reset()
         jm = joint_map
-        self.yaw_lim = float(jm.soft_limits()[1][jm.index_of("head_yaw_joint")]) if "head_yaw_joint" in jm.names else 1.5
+        self.yaw_lim = (
+            float(jm.soft_limits()[1][jm.index_of("head_yaw_joint")]) if "head_yaw_joint" in jm.names else 1.5
+        )
         i_sp = jm.index_of("right_shoulder_pitch_joint") if "right_shoulder_pitch_joint" in jm.names else None
         lo, hi = jm.soft_limits()
         self.pitch_lo = float(lo[i_sp]) if i_sp is not None else -2.5
@@ -105,7 +123,9 @@ class KeyboardCommand:
         elif key == "RIGHT" and self.dim >= 1:
             self.cmd[0] = max(-self.yaw_lim, self.cmd[0] - self.yaw_step)
         elif key == "UP" and self.dim >= 2:
-            self.cmd[1] = max(self.pitch_lo, self.cmd[1] - self.pitch_step)   # raise the arm (pitch negative = forward/up)
+            self.cmd[1] = max(
+                self.pitch_lo, self.cmd[1] - self.pitch_step
+            )  # raise the arm (pitch negative = forward/up)
         elif key == "DOWN" and self.dim >= 2:
             self.cmd[1] = min(self.pitch_hi, self.cmd[1] + self.pitch_step)
         elif key in ("r", "R"):
@@ -116,6 +136,7 @@ class KeyboardCommand:
     def _reader(self) -> None:
         if sys.platform == "win32":
             import msvcrt
+
             arrows = {"H": "UP", "P": "DOWN", "K": "LEFT", "M": "RIGHT"}
             while not self.stop_event.is_set():
                 if msvcrt.kbhit():
@@ -131,6 +152,7 @@ class KeyboardCommand:
             import select
             import termios
             import tty
+
             fd = sys.stdin.fileno()
             old = termios.tcgetattr(fd)
             try:
@@ -155,8 +177,9 @@ def _shoulder_default(deploy: DeployConfig, joint_map: JointMap) -> float:
     return 0.0
 
 
-def make_command_fn(mode: str, deploy: DeployConfig, joint_map: JointMap, stop_event: threading.Event,
-                    amplitude: float = 1.0):
+def make_command_fn(
+    mode: str, deploy: DeployConfig, joint_map: JointMap, stop_event: threading.Event, amplitude: float = 1.0
+):
     if mode == "sweep":
         a = min(max(float(amplitude), 0.0), 1.0)
         return SweepCommand(deploy, joint_map, head_yaw_deg=30.0 * a, shoulder_drop_rad=1.2 * a)
@@ -194,12 +217,19 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--step-mode", default="direct", help="urlab: direct | live | puppet")
     ap.add_argument("--iface", default=None, help="real: network interface (e.g. eth0)")
     ap.add_argument("--dry-run", action="store_true", help="real: log LowCmd instead of publishing")
-    ap.add_argument("--observe", action="store_true",
-                    help="real: read the live robot state and run the policy in shadow mode; NOTHING is published")
+    ap.add_argument(
+        "--observe",
+        action="store_true",
+        help="real: read the live robot state and run the policy in shadow mode; NOTHING is published",
+    )
     ap.add_argument("--command-mode", choices=["sweep", "head-sweep", "keyboard", "zero"], default="sweep")
     ap.add_argument("--duration", type=float, default=None, help="seconds (default: until Ctrl-C)")
-    ap.add_argument("--amplitude", type=float, default=1.0,
-                    help="sweep / head-sweep: scale 0..1 of the motion (1.0 = head yaw +-30 deg, shoulder lift 1.2 rad)")
+    ap.add_argument(
+        "--amplitude",
+        type=float,
+        default=1.0,
+        help="sweep / head-sweep: scale 0..1 of the motion (1.0 = head yaw +-30 deg, shoulder lift 1.2 rad)",
+    )
     ap.add_argument("--no-realtime", action="store_true", help="sim: run as fast as possible")
     ap.add_argument("--no-log", action="store_true")
     ap.add_argument("--log-dir", default=str(LOGS_DIR))
@@ -214,17 +244,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[list] = None) -> int:
     args = build_parser().parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
     jm = JointMap.load(args.joint_map)
     onnx_path = resolve_policy_path(args.policy)
     policy, deploy = load_policy_bundle(onnx_path, args.deploy, use_cuda=args.cuda)
-    log.info("policy %s: %d obs -> %d actions, dt=%.3f, providers=%s", deploy.policy_name, policy.num_obs,
-             policy.num_actions, deploy.step_dt, policy.providers)
+    log.info(
+        "policy %s: %d obs -> %d actions, dt=%.3f, providers=%s",
+        deploy.policy_name,
+        policy.num_obs,
+        policy.num_actions,
+        deploy.step_dt,
+        policy.providers,
+    )
 
     if args.target == "real" and args.iface is None and not args.dry_run:
         from .interfaces.unitree_interface import detect_robot_iface
+
         args.iface = detect_robot_iface()
         log.info("auto-detected robot network interface: %s", args.iface)
         if args.iface is None:
@@ -235,10 +275,18 @@ def main(argv: Optional[list] = None) -> int:
         print("WARNING: real robot. Ensure it is on the stand with no obstacles around.")
         input("Press Enter to continue...")
 
-    itf = build_interface(args.target, jm, scene=args.scene, address=args.address, iface=args.iface,
-                          dry_run=args.dry_run, render=args.render, policy_dt=deploy.step_dt,
-                          **({"step_mode": args.step_mode} if args.target == "urlab" else {}),
-                          **({"observe_only": True} if args.target == "real" and args.observe else {}))
+    itf = build_interface(
+        args.target,
+        jm,
+        scene=args.scene,
+        address=args.address,
+        iface=args.iface,
+        dry_run=args.dry_run,
+        render=args.render,
+        policy_dt=deploy.step_dt,
+        **({"step_mode": args.step_mode} if args.target == "urlab" else {}),
+        **({"observe_only": True} if args.target == "real" and args.observe else {}),
+    )
     stop_event = threading.Event()
     safety = SafetyGuard(jm, SafetyConfig(max_tilt_deg=args.max_tilt_deg, check_tilt=not args.no_tilt_check))
 
@@ -250,10 +298,18 @@ def main(argv: Optional[list] = None) -> int:
 
     with itf:
         cmd_fn = make_command_fn(args.command_mode, deploy, jm, stop_event, amplitude=args.amplitude)
-        runner = PolicyRunner(itf, policy, deploy, jm, command_fn=cmd_fn, safety=safety,
-                              log_dir=None if args.no_log else args.log_dir,
-                              log_stem=f"{deploy.policy_name}_{args.target}_{time.strftime('%Y%m%d_%H%M%S')}",
-                              realtime=not args.no_realtime, status_hz=args.status_hz)
+        runner = PolicyRunner(
+            itf,
+            policy,
+            deploy,
+            jm,
+            command_fn=cmd_fn,
+            safety=safety,
+            log_dir=None if args.no_log else args.log_dir,
+            log_stem=f"{deploy.policy_name}_{args.target}_{time.strftime('%Y%m%d_%H%M%S')}",
+            realtime=not args.no_realtime,
+            status_hz=args.status_hz,
+        )
         if args.target == "real" and not args.dry_run and not args.observe:
             log.info("moving to the policy default pose over 3 s")
             itf.move_to(runner.hold_full, duration_s=3.0, kp=runner.kp_full, kd=runner.kd_full, stop_event=stop_event)

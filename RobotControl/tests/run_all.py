@@ -1,4 +1,5 @@
 """Run the whole test-suite: ``python -m robotcontrol.tests.run_all [pytest args]``."""
+
 from __future__ import annotations
 
 import sys

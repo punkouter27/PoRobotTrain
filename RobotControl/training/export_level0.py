@@ -3,6 +3,7 @@
 Called by train_level0.py at the end of training, or standalone:
   .venv/Scripts/python.exe RobotControl/training/export_level0.py --checkpoint RobotControl/models/r1_level0_upperbody/model.pt
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,14 +49,25 @@ def sweep_command(t: np.ndarray, default_shoulder_pitch: float) -> np.ndarray:
 
 def run_meta(iters, num_envs, horizon, seed, device):
     try:
-        git = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True,
-                                      stderr=subprocess.DEVNULL).strip()
+        git = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL
+        ).strip()
     except Exception:
         git = "nogit"
-    return {"trained_at": dt.datetime.now().isoformat(timespec="seconds"), "iters": iters, "num_envs": num_envs,
-            "horizon": horizon, "seed": seed, "git": git, "device": str(device), "env": "Level0StandEnv",
-            "joint_map_sha256": hashlib.sha256((ROOT / "RobotControl/configs/r1_joint_map.yaml").read_bytes()).hexdigest()[:16],
-            "presettle_s": PRESETTLE_S}
+    return {
+        "trained_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "iters": iters,
+        "num_envs": num_envs,
+        "horizon": horizon,
+        "seed": seed,
+        "git": git,
+        "device": str(device),
+        "env": "Level0StandEnv",
+        "joint_map_sha256": hashlib.sha256((ROOT / "RobotControl/configs/r1_joint_map.yaml").read_bytes()).hexdigest()[
+            :16
+        ],
+        "presettle_s": PRESETTLE_S,
+    }
 
 
 def make_eval_env() -> Level0StandEnv:
@@ -74,29 +86,54 @@ def baseline_rollout(policy_fn, out_path: pathlib.Path):
     m0, d0 = ev.models[0], ev.datas[0]
     angmom_adr = m0.sensor_adr[m0.sensor("root_angmom").id]
     passive_cols = ev.qpos_off + 7 + np.array(ev.passive_idx)
-    log = {k: [] for k in ("t", "obs", "actions", "q", "dq", "target", "cmd", "frc", "root_vel", "angmom", "ncon", "pen", "q_passive")}
+    log = {
+        k: []
+        for k in (
+            "t",
+            "obs",
+            "actions",
+            "q",
+            "dq",
+            "target",
+            "cmd",
+            "frc",
+            "root_vel",
+            "angmom",
+            "ncon",
+            "pen",
+            "q_passive",
+        )
+    }
     for k in range(T):
         t = k * POLICY_DT
         ev.set_command(sweep_command(np.array([t]), sp_default))
         obs = ev.get_obs()
         a = np.asarray(policy_fn(obs), dtype=np.float32)
-        log["t"].append(t); log["obs"].append(obs[0]); log["actions"].append(a[0])
-        log["q"].append(ev.q[0].copy()); log["dq"].append(ev.dq[0].copy())
-        log["target"].append(ev.targets_from_action(a[0])); log["cmd"].append(ev.cmd[0].copy())
+        log["t"].append(t)
+        log["obs"].append(obs[0])
+        log["actions"].append(a[0])
+        log["q"].append(ev.q[0].copy())
+        log["dq"].append(ev.dq[0].copy())
+        log["target"].append(ev.targets_from_action(a[0]))
+        log["cmd"].append(ev.cmd[0].copy())
         ev.step(a)
         log["frc"].append(ev.frc[0].copy())
-        log["root_vel"].append(ev.state[0, ev.qvel_off:ev.qvel_off + 6].copy())
+        log["root_vel"].append(ev.state[0, ev.qvel_off : ev.qvel_off + 6].copy())
         mujoco.mj_setState(m0, d0, ev.state[0], ev.spec)
         mujoco.mj_forward(m0, d0)
-        log["angmom"].append(d0.sensordata[angmom_adr:angmom_adr + 3].copy())
+        log["angmom"].append(d0.sensordata[angmom_adr : angmom_adr + 3].copy())
         log["ncon"].append(d0.ncon)
-        log["pen"].append(float(-d0.contact.dist[:d0.ncon].min()) if d0.ncon else 0.0)
+        log["pen"].append(float(-d0.contact.dist[: d0.ncon].min()) if d0.ncon else 0.0)
         log["q_passive"].append(ev.state[0, passive_cols].copy())
     ev.close()
     arrays = {k: np.array(v) for k, v in log.items()}
     if out_path is not None:
-        np.savez(out_path, **arrays, joint_names=np.array(CONTROLLED_JOINTS),
-                 passive_joint_names=np.array([ev.jm["joints"][i]["name"] for i in ev.passive_idx]))
+        np.savez(
+            out_path,
+            **arrays,
+            joint_names=np.array(CONTROLLED_JOINTS),
+            passive_joint_names=np.array([ev.jm["joints"][i]["name"] for i in ev.passive_idx]),
+        )
     return arrays
 
 
@@ -107,9 +144,16 @@ def export(ac: ActorCritic, env: Level0StandEnv, out: pathlib.Path, meta: dict):
     wrapper = ExportWrapper(ac)
     dummy = torch.zeros(1, env.num_obs)
     onnx_path = out / "policy.onnx"
-    torch.onnx.export(wrapper, dummy, str(onnx_path), input_names=["obs"], output_names=["actions"],
-                      dynamic_axes={"obs": {0: "batch"}, "actions": {0: "batch"}}, opset_version=17,
-                      dynamo=False)
+    torch.onnx.export(
+        wrapper,
+        dummy,
+        str(onnx_path),
+        input_names=["obs"],
+        output_names=["actions"],
+        dynamic_axes={"obs": {0: "batch"}, "actions": {0: "batch"}},
+        opset_version=17,
+        dynamo=False,
+    )
     model = onnx.load(str(onnx_path))
     for k, v in meta.items():
         p = model.metadata_props.add()
@@ -122,21 +166,27 @@ def export(ac: ActorCritic, env: Level0StandEnv, out: pathlib.Path, meta: dict):
     deploy = {
         "policy_name": "r1_level0_upperbody",
         "step_dt": POLICY_DT,
-        "num_obs": env.num_obs, "num_actions": env.num_actions,
+        "num_obs": env.num_obs,
+        "num_actions": env.num_actions,
         "joint_names": [j["name"] for j in joints],
         "motor_slots": [j["motor_slot"] for j in joints],
         "default_joint_pos": [float(j["default"]) for j in joints],
-        "kp": [float(j["kp"]) for j in joints], "kd": [float(j["kd"]) for j in joints],
+        "kp": [float(j["kp"]) for j in joints],
+        "kd": [float(j["kd"]) for j in joints],
         "action_scale": [float(s) for s in env.action_scale],
         "action_clip": [5.0] * env.num_actions,
         "soft_limit_factor": 0.9,
-        "observations": [{"name": "joint_pos_rel", "size": env.num_actions},
-                         {"name": "joint_vel", "size": env.num_actions},
-                         {"name": "last_action", "size": env.num_actions},
-                         {"name": "command", "size": 2}],
+        "observations": [
+            {"name": "joint_pos_rel", "size": env.num_actions},
+            {"name": "joint_vel", "size": env.num_actions},
+            {"name": "last_action", "size": env.num_actions},
+            {"name": "command", "size": 2},
+        ],
         "commands": {"head_yaw_target": 1, "right_shoulder_pitch_target": 1},
-        "command_ranges": {"head_yaw_target": [-1.0472, 1.0472],
-                           "right_shoulder_pitch_target": [float(joints[0]["default"]) - 1.6, float(joints[0]["default"])]},
+        "command_ranges": {
+            "head_yaw_target": [-1.0472, 1.0472],
+            "right_shoulder_pitch_target": [float(joints[0]["default"]) - 1.6, float(joints[0]["default"])],
+        },
         "passive_joints": passive,
         "passive_kd": 3.0,
         "held_joints": [jm["joints"][i]["name"] for i in env.held_idx],
@@ -147,7 +197,7 @@ def export(ac: ActorCritic, env: Level0StandEnv, out: pathlib.Path, meta: dict):
 
     with torch.no_grad():
         baseline_rollout(lambda o: wrapper(torch.from_numpy(o)).numpy(), out / "baseline_rollout.npz")
-    print(f"exported {onnx_path} ({onnx_path.stat().st_size/1e3:.1f} kB), deploy.yaml, baseline_rollout.npz")
+    print(f"exported {onnx_path} ({onnx_path.stat().st_size / 1e3:.1f} kB), deploy.yaml, baseline_rollout.npz")
 
 
 def main():

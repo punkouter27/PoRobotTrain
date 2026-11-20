@@ -6,6 +6,7 @@ spawns it at the origin, saves the level, and frames the viewport on the robot.
 Usage (editor must be open with the R1Twin project):
   .venv/Scripts/python.exe scripts/urlab_setup_scene.py [--force]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,8 +53,10 @@ def main():
         print(f"spawned {ACTOR_ID}: {h.actor_path} (was_existing={h.was_existing})")
         print("manager present/created:", c.scene.ensure_manager())
         # MJCF lights are MuJoCo-only; UE needs its own lights or a Lit viewport renders black.
-        for kind, aid, loc, rot, inten in [("directional", "sun", (0, 0, 5), (0.0, -50.0, 120.0), 6.0),
-                                           ("point", "fill", (2.0, -2.0, 2.2), (0, 0, 0), 8000.0)]:
+        for kind, aid, loc, rot, inten in [
+            ("directional", "sun", (0, 0, 5), (0.0, -50.0, 120.0), 6.0),
+            ("point", "fill", (2.0, -2.0, 2.2), (0, 0, 0), 8000.0),
+        ]:
             try:
                 c.scene.spawn_light(kind, actor_id=aid, location=loc, rotation_euler=rot, intensity=inten)
                 print("light:", aid)
@@ -62,7 +65,9 @@ def main():
         c.scene.save_level()
         print("level saved")
         try:
-            c.viewport.set_camera((2.2, -1.9, 1.35), rotation_euler=(0.0, -10.0, -139.0))  # location: MuJoCo-frame metres; rotation: UE-frame degrees
+            c.viewport.set_camera(
+                (2.2, -1.9, 1.35), rotation_euler=(0.0, -10.0, -139.0)
+            )  # location: MuJoCo-frame metres; rotation: UE-frame degrees
         except Exception as e:
             print("viewport framing skipped:", e)
     finally:

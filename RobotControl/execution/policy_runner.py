@@ -4,6 +4,7 @@
 
     state -> obs -> ONNX -> action -> q* = default + scale * action -> SafetyGuard -> interface
 """
+
 from __future__ import annotations
 
 import csv
@@ -33,8 +34,14 @@ class OnnxPolicy:
     """onnxruntime wrapper. Input ``obs`` float32 (1, N) -> output ``actions`` float32 (1, A).
     Buffers are pre-allocated and bound once; ``infer`` does no per-step allocation."""
 
-    def __init__(self, path: str | Path, use_cuda: bool = False, input_name: Optional[str] = None,
-                 output_name: Optional[str] = None, intra_op_threads: int = 1):
+    def __init__(
+        self,
+        path: str | Path,
+        use_cuda: bool = False,
+        input_name: Optional[str] = None,
+        output_name: Optional[str] = None,
+        intra_op_threads: int = 1,
+    ):
         import onnxruntime as ort
 
         self.path = Path(path)
@@ -184,8 +191,9 @@ class ObservationBuilder:
     def term_slices(self) -> Dict[str, slice]:
         return {name: sl for name, sl, *_ in self._plan}
 
-    def build(self, state: LowStateData, last_action: np.ndarray, command: Optional[np.ndarray] = None,
-              t: float = 0.0) -> np.ndarray:
+    def build(
+        self, state: LowStateData, last_action: np.ndarray, command: Optional[np.ndarray] = None, t: float = 0.0
+    ) -> np.ndarray:
         obs = self.obs
         for name, sl, idx, aux, scale in self._plan:
             if name == "joint_pos_rel":
@@ -214,18 +222,34 @@ class ObservationBuilder:
 class TrajectoryLogger:
     """Collects per-step arrays and writes ``<stem>.npz`` + ``<stem>.csv``."""
 
-    def __init__(self, log_dir: str | Path = LOGS_DIR, stem: Optional[str] = None, joint_names: Optional[List[str]] = None,
-                 write_csv: bool = True):
+    def __init__(
+        self,
+        log_dir: str | Path = LOGS_DIR,
+        stem: Optional[str] = None,
+        joint_names: Optional[List[str]] = None,
+        write_csv: bool = True,
+    ):
         self.log_dir = Path(log_dir)
         self.stem = stem or f"traj_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self.joint_names = joint_names
         self.write_csv = write_csv
-        self.rows: Dict[str, List[np.ndarray]] = {k: [] for k in
-                                                  ("t", "q", "dq", "tau", "target_q", "action", "obs", "command", "kp", "kd", "flags")}
+        self.rows: Dict[str, List[np.ndarray]] = {
+            k: [] for k in ("t", "q", "dq", "tau", "target_q", "action", "obs", "command", "kp", "kd", "flags")
+        }
         self.meta: Dict[str, object] = {}
 
-    def add(self, t: float, state: LowStateData, target_q: np.ndarray, action: np.ndarray, obs: np.ndarray,
-            command: Optional[np.ndarray], kp: np.ndarray, kd: np.ndarray, report: Optional[SafetyReport] = None) -> None:
+    def add(
+        self,
+        t: float,
+        state: LowStateData,
+        target_q: np.ndarray,
+        action: np.ndarray,
+        obs: np.ndarray,
+        command: Optional[np.ndarray],
+        kp: np.ndarray,
+        kd: np.ndarray,
+        report: Optional[SafetyReport] = None,
+    ) -> None:
         r = self.rows
         r["t"].append(np.float64(t))
         r["q"].append(state.q.astype(np.float64, copy=True))
@@ -239,8 +263,14 @@ class TrajectoryLogger:
         r["kd"].append(np.asarray(kd, dtype=np.float64).copy())
         flags = 0
         if report is not None:
-            flags = (1 if report.tripped else 0) | (2 if report.stale else 0) | (4 if report.limit_clipped.any() else 0) \
-                | (8 if report.slew_limited.any() else 0) | (16 if report.torque_clipped.any() else 0) | (32 if report.accel_flag.any() else 0)
+            flags = (
+                (1 if report.tripped else 0)
+                | (2 if report.stale else 0)
+                | (4 if report.limit_clipped.any() else 0)
+                | (8 if report.slew_limited.any() else 0)
+                | (16 if report.torque_clipped.any() else 0)
+                | (32 if report.accel_flag.any() else 0)
+            )
         r["flags"].append(np.int64(flags))
 
     def __len__(self) -> int:
@@ -262,35 +292,58 @@ class TrajectoryLogger:
         if self.write_csv:
             csv_path = self.log_dir / f"{self.stem}.csv"
             names = self.joint_names or [f"j{i}" for i in range(arrays["q"].shape[1])]
-            header = ["t"] + [f"q_{n}" for n in names] + [f"dq_{n}" for n in names] + \
-                [f"target_{n}" for n in names] + [f"action_{i}" for i in range(arrays["action"].shape[1])] + \
-                [f"cmd_{i}" for i in range(arrays["command"].shape[1])] + ["flags"] + \
-                [f"obs_{i}" for i in range(arrays["obs"].shape[1])]
+            header = (
+                ["t"]
+                + [f"q_{n}" for n in names]
+                + [f"dq_{n}" for n in names]
+                + [f"target_{n}" for n in names]
+                + [f"action_{i}" for i in range(arrays["action"].shape[1])]
+                + [f"cmd_{i}" for i in range(arrays["command"].shape[1])]
+                + ["flags"]
+                + [f"obs_{i}" for i in range(arrays["obs"].shape[1])]
+            )
             with open(csv_path, "w", newline="", encoding="utf-8") as f:
                 w = csv.writer(f)
                 w.writerow(header)
                 for i in range(len(arrays["t"])):
-                    w.writerow([f"{arrays['t'][i]:.4f}"] + [f"{x:.6f}" for x in arrays["q"][i]] +
-                               [f"{x:.6f}" for x in arrays["dq"][i]] + [f"{x:.6f}" for x in arrays["target_q"][i]] +
-                               [f"{x:.6f}" for x in arrays["action"][i]] + [f"{x:.6f}" for x in arrays["command"][i]] +
-                               [int(arrays["flags"][i])] + [f"{x:.6f}" for x in arrays["obs"][i]])
+                    w.writerow(
+                        [f"{arrays['t'][i]:.4f}"]
+                        + [f"{x:.6f}" for x in arrays["q"][i]]
+                        + [f"{x:.6f}" for x in arrays["dq"][i]]
+                        + [f"{x:.6f}" for x in arrays["target_q"][i]]
+                        + [f"{x:.6f}" for x in arrays["action"][i]]
+                        + [f"{x:.6f}" for x in arrays["command"][i]]
+                        + [int(arrays["flags"][i])]
+                        + [f"{x:.6f}" for x in arrays["obs"][i]]
+                    )
             out["csv"] = csv_path
         return out
 
 
 # ============================================================================
-def build_interface(target: str, joint_map: JointMap, scene: str = "stand", address: str = "tcp://localhost",
-                    iface: Optional[str] = None, dry_run: bool = False, render: bool = False,
-                    policy_dt: float = 0.02, **kw) -> RobotHardwareInterface:
+def build_interface(
+    target: str,
+    joint_map: JointMap,
+    scene: str = "stand",
+    address: str = "tcp://localhost",
+    iface: Optional[str] = None,
+    dry_run: bool = False,
+    render: bool = False,
+    policy_dt: float = 0.02,
+    **kw,
+) -> RobotHardwareInterface:
     target = target.lower()
     if target in ("sim", "mujoco"):
         from ..interfaces.mujoco_interface import MujocoInterface
+
         return MujocoInterface(joint_map, scene=scene, policy_dt=policy_dt, render=render, **kw)
     if target == "urlab":
         from ..interfaces.urlab_interface import URLabInterface
+
         return URLabInterface(joint_map, address=address, policy_dt=policy_dt, **kw)
     if target == "real":
         from ..interfaces.unitree_interface import UnitreeSDK2Interface
+
         return UnitreeSDK2Interface(joint_map, network_interface=iface, dry_run=dry_run, **kw)
     raise ValueError(f"unknown target {target!r}; choose sim|urlab|real")
 
@@ -298,13 +351,25 @@ def build_interface(target: str, joint_map: JointMap, scene: str = "stand", addr
 class PolicyRunner:
     """Fixed-rate control loop (``deploy.step_dt``, 50 Hz by default)."""
 
-    def __init__(self, interface: RobotHardwareInterface, policy: OnnxPolicy, deploy: DeployConfig,
-                 joint_map: Optional[JointMap] = None, command_fn: Optional[CommandFn] = None,
-                 safety: Optional[SafetyGuard] = None, log_dir: Optional[str | Path] = LOGS_DIR,
-                 log_stem: Optional[str] = None, realtime: bool = True, status_hz: float = 2.0,
-                 status_fn: Optional[Callable[[dict], None]] = None, exit_on_trip: bool = True,
-                 hold_non_policy_joints: bool = True, auto_reset: Optional[bool] = None,
-                 workspace_radius_m: float = 3.0, workspace_min_z_m: float = 0.25):
+    def __init__(
+        self,
+        interface: RobotHardwareInterface,
+        policy: OnnxPolicy,
+        deploy: DeployConfig,
+        joint_map: Optional[JointMap] = None,
+        command_fn: Optional[CommandFn] = None,
+        safety: Optional[SafetyGuard] = None,
+        log_dir: Optional[str | Path] = LOGS_DIR,
+        log_stem: Optional[str] = None,
+        realtime: bool = True,
+        status_hz: float = 2.0,
+        status_fn: Optional[Callable[[dict], None]] = None,
+        exit_on_trip: bool = True,
+        hold_non_policy_joints: bool = True,
+        auto_reset: Optional[bool] = None,
+        workspace_radius_m: float = 3.0,
+        workspace_min_z_m: float = 0.25,
+    ):
         self.itf = interface
         self.policy = policy
         self.deploy = deploy
@@ -318,7 +383,7 @@ class PolicyRunner:
         # Reset logic: simulated targets reset to the home keyframe on a safety trip or when the root leaves
         # the workspace (radius around the origin, minimum pelvis height). Real hardware never auto-resets:
         # it damps and exits.
-        self.auto_reset = bool(getattr(interface, 'is_simulation', False)) if auto_reset is None else auto_reset
+        self.auto_reset = bool(getattr(interface, "is_simulation", False)) if auto_reset is None else auto_reset
         self.workspace_radius_m = float(workspace_radius_m)
         self.workspace_min_z_m = float(workspace_min_z_m)
         self.reset_count = 0
@@ -328,10 +393,10 @@ class PolicyRunner:
         if problems:
             raise ValueError("deploy.yaml invalid:\n  " + "\n  ".join(problems))
         if policy.num_obs != deploy.num_obs or policy.num_actions != deploy.num_actions:
-            raise ValueError(f"ONNX io ({policy.num_obs}->{policy.num_actions}) != deploy "
-                             f"({deploy.num_obs}->{deploy.num_actions})")
+            raise ValueError(
+                f"ONNX io ({policy.num_obs}->{policy.num_actions}) != deploy ({deploy.num_obs}->{deploy.num_actions})"
+            )
 
-        n = self.jm.num_joints
         self.act_idx = deploy.policy_indices(self.jm)
         self.passive_idx = deploy.passive_indices(self.jm)
         self.default_act = np.asarray(deploy.default_joint_pos, dtype=np.float64)
@@ -344,8 +409,9 @@ class PolicyRunner:
         self.kp_full[self.act_idx] = deploy.kp
         self.kd_full[self.act_idx] = deploy.kd
         self.kp_full[self.passive_idx] = 0.0
-        self.kd_full[self.passive_idx] = (deploy.passive_kd if deploy.passive_kd is not None
-                                          else self.jm.kd[self.passive_idx])
+        self.kd_full[self.passive_idx] = (
+            deploy.passive_kd if deploy.passive_kd is not None else self.jm.kd[self.passive_idx]
+        )
         self.hold_full = self.jm.defaults.copy()
         self.hold_non_policy = hold_non_policy_joints
 
@@ -401,7 +467,7 @@ class PolicyRunner:
         self.policy.warmup()
         t_start = time.perf_counter()
         next_tick = t_start
-        next_status = 0.0                      # in loop time, so --no-realtime runs report too
+        next_status = 0.0  # in loop time, so --no-realtime runs report too
         trip_since: Optional[float] = None
         hz_count, hz_t0 = 0, t_start
         try:
@@ -413,7 +479,7 @@ class PolicyRunner:
                 info = self.step_once(self.t_elapsed)
                 hz_count += 1
                 if self.auto_reset:
-                    reason = info['report'].trip_reason if self.tripped else self.out_of_workspace(info['state'])
+                    reason = info["report"].trip_reason if self.tripped else self.out_of_workspace(info["state"])
                     if reason:
                         self.reset_episode(reason)
                         trip_since = None
@@ -442,21 +508,21 @@ class PolicyRunner:
         return self.status()
 
     def out_of_workspace(self, state: LowStateData) -> Optional[str]:
-        pos = state.extras.get('root_pos') if state.extras else None
+        pos = state.extras.get("root_pos") if state.extras else None
         if pos is None:
             return None
         r = float(np.hypot(pos[0], pos[1]))
         if r > self.workspace_radius_m:
-            return f'root left workspace (r={r:.2f} m > {self.workspace_radius_m} m)'
+            return f"root left workspace (r={r:.2f} m > {self.workspace_radius_m} m)"
         if pos[2] < self.workspace_min_z_m:
-            return f'root below workspace floor (z={pos[2]:.2f} m < {self.workspace_min_z_m} m)'
+            return f"root below workspace floor (z={pos[2]:.2f} m < {self.workspace_min_z_m} m)"
         return None
 
     def reset_episode(self, reason: str) -> None:
         """Simulation only: back to the home keyframe, clear policy and safety state, keep running."""
         self.reset_count += 1
-        log.warning('AUTO-RESET #%d: %s', self.reset_count, reason)
-        reset = getattr(self.itf, 'reset', None)
+        log.warning("AUTO-RESET #%d: %s", self.reset_count, reason)
+        reset = getattr(self.itf, "reset", None)
         if reset is not None:
             reset()
         self.safety.reset()
@@ -486,7 +552,9 @@ class PolicyRunner:
         st = self.last_state
         rep = self.last_report
         return {
-            "t": self.t_elapsed, "steps": self.step_count, "hz": self.loop_hz,
+            "t": self.t_elapsed,
+            "steps": self.step_count,
+            "hz": self.loop_hz,
             "infer_ms": self.policy.last_infer_ms,
             "command": self.command.copy(),
             "q_act": None if st is None else st.q[self.act_idx].copy(),
@@ -502,8 +570,10 @@ def format_status(d: dict) -> str:
     cmd = " ".join(f"{c:+.2f}" for c in d["command"]) if len(d["command"]) else "-"
     q = "-" if d["q_act"] is None else " ".join(f"{x:+.2f}" for x in d["q_act"])
     tq = " ".join(f"{x:+.2f}" for x in d["target_act"])
-    return (f"t={d['t']:7.2f}s step={d['steps']:6d} {d['hz']:5.1f}Hz inf={d['infer_ms']:.2f}ms "
-            f"cmd=[{cmd}] q=[{q}] q*=[{tq}] safety={d['safety']}")
+    return (
+        f"t={d['t']:7.2f}s step={d['steps']:6d} {d['hz']:5.1f}Hz inf={d['infer_ms']:.2f}ms "
+        f"cmd=[{cmd}] q=[{q}] q*=[{tq}] safety={d['safety']}"
+    )
 
 
 def load_policy_bundle(onnx_path: str | Path, deploy_path: Optional[str | Path] = None, use_cuda: bool = False):

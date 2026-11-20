@@ -1,0 +1,25 @@
+# Repo-level tooling. The Python package itself is RobotControl/pyproject.toml (`uv pip install -e RobotControl`).
+[project]
+name = "porobottrain"
+version = "0.1.0"
+requires-python = ">=3.8"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff==0.17.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["RobotControl/tests"]
+addopts = "--import-mode=importlib -q"
+
+[tool.ruff]
+# The robot kit (scripts/push_to_robot.ps1) runs RobotControl on the Jetson's Python 3.8 or 3.10: keep 3.8 syntax.
+target-version = "py38"
+line-length = 120
+extend-exclude = ["UnrealProject/Plugins", "external", "vendor", "node_modules", "dist", ".venv*", "logs"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+ignore = [
+    "UP006",  # keep typing.Dict/List: the robot kit runs on Python 3.8, where evaluated annotations need them
+    "UP045",  # keep Optional[...] for the same Python 3.8 reason
+]

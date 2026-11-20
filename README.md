@@ -75,8 +75,9 @@ Bones are driven from MuJoCo body world poses every render frame, never from joi
 
 ```
 RobotControl/           Python package `robotcontrol` (interfaces, execution, tools, training, configs)
-UnrealProject/          UE 5.7 C++ project (R1Twin), MJCF models + meshes under MJCF
-scripts/                MJCF generator and validator
+UnrealProject/          UE 5.8 C++ project (R1Twin), MJCF models + meshes under MJCF, URLab vendored in Plugins/
+scripts/                MJCF generator and validator, Unreal editor helpers, robot setup
+web/                    static showcase site + /diag (web/build.py), deployed to swa-porobottrain
 docs/                   setup and procedures
 external/               reference clones (unitree_mujoco, unitree_sdk2_python, unitree_rl_mjlab, urlab_bridge) - not committed
 logs/                   training logs, validation reports - not committed
@@ -113,10 +114,10 @@ and it reclaims them when the client finishes. The follow camera frames the stan
 * The runner pushes the training physics options (5 ms step, implicitfast), resets to `home`, and auto-resets on a
   safety trip or workspace exit in simulation (never on the real robot).
 * Parity: a 20 s sweep in Unreal vs. the headless MuJoCo twin differs by at most 0.37 deg on any of the 26 joints.
-* URLab is pinned locally to MuJoCo 4.0.0 (branch `mujoco-4.0` in `UnrealProject/Plugins/UnrealRoboticsLab`) with small
-  compile fixes for MuJoCo 4.0 and UE 5.8. Runtime numbers and known issues: `docs/step5_runtime.md`.
-  The fixes are committed locally on that branch (not upstream) and saved as `scripts/patches/urlab_mujoco4_ue58.patch`;
-  after a fresh clone run `git apply ../../../scripts/patches/urlab_mujoco4_ue58.patch` in the plugin folder. They cover `mjtLimited` enum
+* URLab is vendored in `UnrealProject/Plugins/UnrealRoboticsLab/` at a pinned upstream commit with MuJoCo 4.0.0 and
+  this repo's compile fixes for MuJoCo 4.0 and UE 5.8 already applied (pin and provenance: the README inside the
+  plugin), so a fresh clone builds without a setup step. Runtime numbers and known issues: `docs/step5_runtime.md`.
+  The fixes cover `mjtLimited` enum
   assignments, float to bool for `active` / `actgravcomp`, and `FString(*Key)` for UE 5.8's `FSharedString` JSON keys
   in `RpcDispatcher.cpp` / `MsgpackHelpers.cpp`. Build with `-MaxParallelActions=6` if MSVC reports PCH heap errors.
 

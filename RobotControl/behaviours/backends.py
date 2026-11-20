@@ -22,6 +22,7 @@ What happens to the joints the behaviour does not power:
          backend lets the twin settle for SETTLE_S before taking the start pose, and joints the twin cannot
          hold (model kp 0) are left out of the other-joint check on this target only.
 """
+
 from __future__ import annotations
 
 import copy
@@ -61,17 +62,25 @@ class SimBackend(_Base):
 
     LOCK_IF_UNPOWERED = ("waist_roll_joint", "waist_yaw_joint", "waist_pitch_joint", "head_pitch_joint")
 
-    def __init__(self, jm: JointMap, powered: Sequence[str], scene: str = "scene_stand.xml",
-                 friction_nm: float = 0.5, start_q: Optional[Dict[str, float]] = None, settle_s: float = 6.0):
+    def __init__(
+        self,
+        jm: JointMap,
+        powered: Sequence[str],
+        scene: str = "scene_stand.xml",
+        friction_nm: float = 0.5,
+        start_q: Optional[Dict[str, float]] = None,
+        settle_s: float = 6.0,
+    ):
         super().__init__(jm, powered)
         import mujoco
+
         self.mj = mujoco
         m = self.m = mujoco.MjModel.from_xml_path(str(MJCF_DIR / scene))
         d = self.d = mujoco.MjData(m)
         k = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_KEY, "home")
         if k >= 0:
             mujoco.mj_resetDataKeyframe(m, d, k)
-        m.actuator_gainprm[:, 0] = 0.0          # every actuator off; powered joints get PD torque below
+        m.actuator_gainprm[:, 0] = 0.0  # every actuator off; powered joints get PD torque below
         m.actuator_biasprm[:, :3] = 0.0
         d.ctrl[:] = 0.0
         jid = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, n) for n in jm.names]
@@ -99,7 +108,7 @@ class SimBackend(_Base):
                 m.jnt_range[j] = (qv - 1e-4, qv + 1e-4)
         d.qvel[:] = 0.0
         mujoco.mj_forward(m, d)
-        self.d_ref = copy.copy(d)                # behaviour-off reference
+        self.d_ref = copy.copy(d)  # behaviour-off reference
         self.q_start = d.qpos[self.qadr].copy()
         self.dt = m.opt.timestep
         self.t = 0.0
@@ -142,17 +151,17 @@ class URLabBackend(_Base):
     rate_hz = 50.0
     SETTLE_S = 2.0
 
-    def __init__(self, jm: JointMap, powered: Sequence[str], address: str = "tcp://localhost",
-                 realtime: bool = True):
+    def __init__(self, jm: JointMap, powered: Sequence[str], address: str = "tcp://localhost", realtime: bool = True):
         super().__init__(jm, powered)
         from ..interfaces.urlab_interface import URLabInterface
+
         self.itf = URLabInterface(jm, address=address, step_mode="direct", policy_dt=1.0 / self.rate_hz)
         self.itf.connect()
         self.realtime = realtime
         self.kp = jm.kp.copy()
         self.kd = jm.kd.copy()
         self.hold = self.itf.get_low_state().q.copy()
-        for _ in range(int(self.SETTLE_S * self.rate_hz)):     # let the limp legs hang before the start pose
+        for _ in range(int(self.SETTLE_S * self.rate_hz)):  # let the limp legs hang before the start pose
             self.itf.send_low_cmd(self.hold, self.kp, self.kd)
             self.itf.tick()
         self.hold = self.itf.get_low_state().q.copy()
@@ -161,8 +170,10 @@ class URLabBackend(_Base):
             self.unchecked = [n for i, n in enumerate(jm.names) if model_kp[i] <= 0.0 and n not in self.powered]
         print(f"[urlab] connected; powered: {self.powered}; every other joint held at its start pose")
         if self.unchecked:
-            print(f"[urlab] twin has no stiffness on {len(self.unchecked)} joints ({', '.join(self.unchecked)}): "
-                  f"they hang freely here and are not part of the other-joint check on the twin")
+            print(
+                f"[urlab] twin has no stiffness on {len(self.unchecked)} joints ({', '.join(self.unchecked)}): "
+                f"they hang freely here and are not part of the other-joint check on the twin"
+            )
 
     def read(self):
         s = self.itf.get_low_state()
@@ -199,6 +210,7 @@ class RealBackend(_Base):
         from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_, LowState_
         from unitree_sdk2py.utils.crc import CRC
+
         from ..interfaces.unitree_interface import detect_robot_iface, ensure_channel_factory
 
         iface = iface or detect_robot_iface()
@@ -217,8 +229,10 @@ class RealBackend(_Base):
             self._release_motion_mode()
             self._pub = ChannelPublisher(jm.lowcmd_topic, LowCmd_)
             self._pub.Init()
-        print(f"[real] interface {iface}, powered slots {self.pslots} ({', '.join(self.powered)}), "
-              f"{'PUBLISHING' if publish else 'READ-ONLY, nothing is published'}")
+        print(
+            f"[real] interface {iface}, powered slots {self.pslots} ({', '.join(self.powered)}), "
+            f"{'PUBLISHING' if publish else 'READ-ONLY, nothing is published'}"
+        )
 
     def _setup(self, jm, publish, new_cmd, crc):
         self.slots = jm.motor_slots.tolist()
@@ -236,6 +250,7 @@ class RealBackend(_Base):
     @staticmethod
     def _release_motion_mode():
         from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
+
         msc = MotionSwitcherClient()
         msc.SetTimeout(5.0)
         msc.Init()
@@ -265,7 +280,7 @@ class RealBackend(_Base):
         return q, dq, time.monotonic() - self._t_msg
 
     def _write(self, mode, q, kp, kd):
-        cmd = self._new_cmd()            # fresh message: every motor_cmd is mode 0 / kp 0 / kd 0
+        cmd = self._new_cmd()  # fresh message: every motor_cmd is mode 0 / kp 0 / kd 0
         cmd.mode_pr = 0
         cmd.mode_machine = int(self._msg.mode_machine)
         for k, s in enumerate(self.pslots):
@@ -285,7 +300,7 @@ class RealBackend(_Base):
             return
         q = self.read()[0][self.pidx]
         zeros = np.zeros(len(self.pidx))
-        for _ in range(250):                 # 0.5 s pure damping on the powered joints, then disable
+        for _ in range(250):  # 0.5 s pure damping on the powered joints, then disable
             self._write(1, q, zeros, self.kd)
             time.sleep(0.002)
         for _ in range(50):

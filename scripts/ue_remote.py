@@ -5,15 +5,18 @@ UnrealProject/Config/DefaultEngine.ini). Uses the engine's own client module, re
 
 Usage: .venv/Scripts/python.exe scripts/ue_remote.py scripts/ue_finalize_level.py [--timeout 60]
 """
+
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import pathlib
 import sys
 import time
 
-UE_ROOT = pathlib.Path(r"C:\Program Files\Epic Games\UE_5.8")
+# The engine install (override with UE_ROOT); default: the Epic launcher location for UE 5.8.
+UE_ROOT = pathlib.Path(os.environ.get("UE_ROOT", r"C:\Program Files\Epic Games\UE_5.8"))
 RE_PATH = UE_ROOT / "Engine/Plugins/Experimental/PythonScriptPlugin/Content/Python/remote_execution.py"
 
 
@@ -40,12 +43,15 @@ def main():
         while not rex.remote_nodes and time.time() < deadline:
             time.sleep(0.5)
         if not rex.remote_nodes:
-            sys.exit("no Unreal editor answered remote-execution discovery (is bRemoteExecution enabled and the editor open?)")
+            sys.exit(
+                "no Unreal editor answered remote-execution discovery (is bRemoteExecution enabled and the editor open?)"
+            )
         node = rex.remote_nodes[0]
         print("editor node:", node.get("project_name"), node.get("engine_version"))
         rex.open_command_connection(node["node_id"])
-        res = rex.run_command(str(args.script.resolve()).replace("\\", "/"), unattended=True,
-                              exec_mode=re_mod.MODE_EXEC_FILE)
+        res = rex.run_command(
+            str(args.script.resolve()).replace("\\", "/"), unattended=True, exec_mode=re_mod.MODE_EXEC_FILE
+        )
         for line in res.get("output", []):
             print(line.get("output", "").rstrip())
         if not res.get("success"):

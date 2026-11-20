@@ -1,5 +1,6 @@
 """Test helpers: build a tiny Level-0-shaped ONNX policy (with baked-in normalization)
 and its deploy.yaml, without needing torch."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,15 +12,28 @@ from robotcontrol.configs.deploy_config import DeployConfig, level0_deploy_confi
 from robotcontrol.configs.joint_map import JointMap
 
 
-def build_fake_onnx(path: Path, num_obs: int, num_actions: int, seed: int = 0, with_norm: bool = True,
-                    weights: Optional[np.ndarray] = None, bias: Optional[np.ndarray] = None,
-                    dynamic_batch: bool = False, mean: Optional[np.ndarray] = None, std: Optional[np.ndarray] = None) -> Path:
+def build_fake_onnx(
+    path: Path,
+    num_obs: int,
+    num_actions: int,
+    seed: int = 0,
+    with_norm: bool = True,
+    weights: Optional[np.ndarray] = None,
+    bias: Optional[np.ndarray] = None,
+    dynamic_batch: bool = False,
+    mean: Optional[np.ndarray] = None,
+    std: Optional[np.ndarray] = None,
+) -> Path:
     """obs (1,N) -> [Sub mean -> Div std] -> MatMul W -> Add b -> actions (1,A)."""
     import onnx
     from onnx import TensorProto, helper, numpy_helper
 
     rng = np.random.default_rng(seed)
-    W = (rng.standard_normal((num_obs, num_actions)) * 0.1).astype(np.float32) if weights is None else weights.astype(np.float32)
+    W = (
+        (rng.standard_normal((num_obs, num_actions)) * 0.1).astype(np.float32)
+        if weights is None
+        else weights.astype(np.float32)
+    )
     b = np.zeros(num_actions, dtype=np.float32) if bias is None else bias.astype(np.float32)
     mean = (rng.standard_normal(num_obs) * 0.1).astype(np.float32) if mean is None else mean.astype(np.float32)
     std = (1.0 + rng.random(num_obs)).astype(np.float32) if std is None else std.astype(np.float32)
@@ -60,14 +74,20 @@ def fake_policy_forward(path: Path, obs: np.ndarray) -> np.ndarray:
     return x @ inits["W"] + inits["b"]
 
 
-def make_level0_bundle(out_dir: Path, joint_map: Optional[JointMap] = None, seed: int = 0,
-                       zero_weights: bool = False, with_norm: bool = True) -> Tuple[Path, Path, DeployConfig]:
+def make_level0_bundle(
+    out_dir: Path,
+    joint_map: Optional[JointMap] = None,
+    seed: int = 0,
+    zero_weights: bool = False,
+    with_norm: bool = True,
+) -> Tuple[Path, Path, DeployConfig]:
     """Write ``policy.onnx`` + ``deploy.yaml`` for the Level 0 layout; returns (onnx, yaml, cfg)."""
     jm = joint_map or JointMap.load()
     cfg = level0_deploy_config(jm, metadata={"source": "tests.fixtures", "seed": seed})
     out_dir.mkdir(parents=True, exist_ok=True)
     W = np.zeros((cfg.num_obs, cfg.num_actions), dtype=np.float32) if zero_weights else None
-    onnx_path = build_fake_onnx(out_dir / "policy.onnx", cfg.num_obs, cfg.num_actions, seed=seed,
-                                with_norm=with_norm, weights=W)
+    onnx_path = build_fake_onnx(
+        out_dir / "policy.onnx", cfg.num_obs, cfg.num_actions, seed=seed, with_norm=with_norm, weights=W
+    )
     yaml_path = cfg.save(out_dir / "deploy.yaml")
     return onnx_path, yaml_path, cfg

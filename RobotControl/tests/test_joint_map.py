@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from robotcontrol.configs.joint_map import JointMap, actuator_name_for
 from robotcontrol.configs.deploy_config import LEVEL0_JOINTS, level0_deploy_config
+from robotcontrol.configs.joint_map import JointMap, actuator_name_for
 
 
 def test_joint_map_loads_26_joints():
@@ -70,6 +70,7 @@ def test_actuator_names_strip_suffix():
 def test_duplicate_slot_rejected():
     jm = JointMap.load()
     import yaml
+
     raw = yaml.safe_load(open(jm.source_path, encoding="utf-8"))
     raw["joints"][1]["motor_slot"] = raw["joints"][0]["motor_slot"]
     with pytest.raises(ValueError):
@@ -84,6 +85,7 @@ def test_level0_deploy_config_valid():
     assert len(cfg.passive_joints) == 19
     rt = cfg.to_dict()
     from robotcontrol.configs.deploy_config import DeployConfig
+
     cfg2 = DeployConfig.from_dict(rt)
     assert cfg2.validate(jm) == []
     assert cfg2.joint_names == LEVEL0_JOINTS

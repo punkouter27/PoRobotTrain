@@ -1,5 +1,6 @@
 """Compact PPO (rsl_rl-style: ELU MLP actor-critic, learnable log-std, GAE, adaptive LR by KL,
 empirical observation normalisation). Device: CUDA if available."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -29,7 +30,7 @@ class EmpiricalNormalization(nn.Module):
         delta = bmean - self.mean
         tot = self.count + n
         self.mean += delta * n / tot
-        self.var = (self.var * self.count + bvar * n + delta ** 2 * self.count * n / tot) / tot
+        self.var = (self.var * self.count + bvar * n + delta**2 * self.count * n / tot) / tot
         self.count = tot
 
 
@@ -62,14 +63,31 @@ class ActorCritic(nn.Module):
 
 
 class PPO:
-    def __init__(self, ac: ActorCritic, device, lr=1e-3, gamma=0.99, lam=0.95, clip=0.2,
-                 entropy_coef=0.005, value_coef=1.0, epochs=5, minibatches=4, desired_kl=0.01,
-                 max_grad_norm=1.0):
+    def __init__(
+        self,
+        ac: ActorCritic,
+        device,
+        lr=1e-3,
+        gamma=0.99,
+        lam=0.95,
+        clip=0.2,
+        entropy_coef=0.005,
+        value_coef=1.0,
+        epochs=5,
+        minibatches=4,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+    ):
         self.ac, self.device = ac.to(device), device
         self.opt = torch.optim.Adam(ac.parameters(), lr=lr)
         self.lr, self.gamma, self.lam, self.clip = lr, gamma, lam, clip
         self.entropy_coef, self.value_coef = entropy_coef, value_coef
-        self.epochs, self.minibatches, self.desired_kl, self.max_grad_norm = epochs, minibatches, desired_kl, max_grad_norm
+        self.epochs, self.minibatches, self.desired_kl, self.max_grad_norm = (
+            epochs,
+            minibatches,
+            desired_kl,
+            max_grad_norm,
+        )
 
     @torch.no_grad()
     def act(self, obs):
@@ -80,8 +98,13 @@ class PPO:
     def update(self, buf):
         obs, act, logp_old, val_old, adv, ret, mu_old, sigma_old = buf
         T, N = obs.shape[:2]
-        flat = lambda x: x.reshape(T * N, *x.shape[2:])
-        obs, act, logp_old, val_old, adv, ret, mu_old, sigma_old = map(flat, (obs, act, logp_old, val_old, adv, ret, mu_old, sigma_old))
+
+        def flat(x):
+            return x.reshape(T * N, *x.shape[2:])
+
+        obs, act, logp_old, val_old, adv, ret, mu_old, sigma_old = map(
+            flat, (obs, act, logp_old, val_old, adv, ret, mu_old, sigma_old)
+        )
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         n = T * N
         mb = n // self.minibatches
@@ -90,14 +113,18 @@ class PPO:
         for _ in range(self.epochs):
             perm = torch.randperm(n, device=self.device)
             for k in range(self.minibatches):
-                idx = perm[k * mb:(k + 1) * mb]
+                idx = perm[k * mb : (k + 1) * mb]
                 d = self.ac.dist(obs[idx])
                 logp = d.log_prob(act[idx]).sum(-1)
                 ent = d.entropy().sum(-1).mean()
                 # adaptive LR (rsl_rl)
                 with torch.no_grad():
-                    kl = torch.sum(torch.log(d.stddev / sigma_old[idx] + 1e-5)
-                                   + (sigma_old[idx] ** 2 + (mu_old[idx] - d.mean) ** 2) / (2 * d.stddev ** 2) - 0.5, -1).mean()
+                    kl = torch.sum(
+                        torch.log(d.stddev / sigma_old[idx] + 1e-5)
+                        + (sigma_old[idx] ** 2 + (mu_old[idx] - d.mean) ** 2) / (2 * d.stddev**2)
+                        - 0.5,
+                        -1,
+                    ).mean()
                     if kl > self.desired_kl * 2.0:
                         self.lr = max(1e-5, self.lr / 1.5)
                     elif kl < self.desired_kl / 2.0 and kl > 0:
@@ -116,8 +143,11 @@ class PPO:
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.ac.parameters(), self.max_grad_norm)
                 self.opt.step()
-                stats["loss_v"] += loss_v.item(); stats["loss_pi"] += loss_pi.item()
-                stats["kl"] += kl.item(); stats["entropy"] += ent.item(); cnt += 1
+                stats["loss_v"] += loss_v.item()
+                stats["loss_pi"] += loss_pi.item()
+                stats["kl"] += kl.item()
+                stats["entropy"] += ent.item()
+                cnt += 1
         return {k: v / cnt for k, v in stats.items()} | {"lr": self.lr}
 
     def compute_gae(self, rewards, dones, values, last_value):

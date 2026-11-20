@@ -7,6 +7,7 @@ Sources:
     python -m robotcontrol.behaviours.mirror --source robot
     python -m robotcontrol.behaviours.mirror --source replay --csv logs/neck_turn_real_....csv
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,9 @@ class UnrealMirror:
 
     def __init__(self, jm: JointMap, address: str = "tcp://localhost"):
         import mujoco
+
         from ..interfaces.urlab_interface import _import_urlab
+
         urlab = _import_urlab()
         self.mj = mujoco
         self.c = urlab.URLabClient(address, step_mode="puppet")
@@ -63,9 +66,21 @@ class UnrealMirror:
 def robot_stream(hz: float = 30.0, proc_out: Optional[list] = None) -> Iterator[List[float]]:
     """Yields joint-angle lists from the robot's read-only state stream over ssh."""
     p = subprocess.Popen(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT,
-         f"cd {ROBOT_DIR} && exec ./run.sh robotcontrol.behaviours.stream_state --hz {hz}"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=5",
+            ROBOT,
+            f"cd {ROBOT_DIR} && exec ./run.sh robotcontrol.behaviours.stream_state --hz {hz}",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
     if proc_out is not None:
         proc_out.append(p)
     try:
@@ -98,8 +113,12 @@ def replay_stream(csv_path: str, jm: JointMap, hz: float = 30.0) -> Iterator[Lis
         yield [float(r[c]) for c in cols]
 
 
-def run_mirror(source: Iterator[List[float]], mirror: UnrealMirror, stop: threading.Event,
-               on_sample: Optional[Callable[[List[float]], None]] = None) -> int:
+def run_mirror(
+    source: Iterator[List[float]],
+    mirror: UnrealMirror,
+    stop: threading.Event,
+    on_sample: Optional[Callable[[List[float]], None]] = None,
+) -> int:
     n = 0
     for q in source:
         if stop.is_set():

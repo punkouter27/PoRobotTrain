@@ -6,6 +6,7 @@ Every policy directory holds ``policy.onnx`` + ``deploy.yaml``::
     action_scale, action_clip, observations [{name, size, ...}], commands {name: size},
     num_obs, num_actions, passive_joints, metadata
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import yaml
 
-from .joint_map import JointMap, SOFT_LIMIT_FRACTION
+from .joint_map import SOFT_LIMIT_FRACTION, JointMap
 
 KNOWN_OBS_TERMS = (
     "joint_pos_rel",
@@ -36,7 +37,7 @@ class ObsTerm:
     params: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_entry(cls, entry: Any) -> "ObsTerm":
+    def from_entry(cls, entry: Any) -> ObsTerm:
         if isinstance(entry, str):
             return cls(name=entry, size=-1)
         if not isinstance(entry, dict) or "name" not in entry:
@@ -66,20 +67,20 @@ class DeployConfig:
     num_obs: int
     num_actions: int
     passive_joints: List[str] = field(default_factory=list)
-    passive_kd: Optional[float] = None          # damping for passive joints (None -> joint-map kd)
+    passive_kd: Optional[float] = None  # damping for passive joints (None -> joint-map kd)
     metadata: Dict[str, Any] = field(default_factory=dict)
     source_path: Optional[Path] = None
 
     # ------------------------------------------------------------------ I/O
     @classmethod
-    def load(cls, path: str | Path) -> "DeployConfig":
+    def load(cls, path: str | Path) -> DeployConfig:
         path = Path(path)
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
         return cls.from_dict(raw, source_path=path)
 
     @classmethod
-    def from_dict(cls, raw: Dict[str, Any], source_path: Optional[Path] = None) -> "DeployConfig":
+    def from_dict(cls, raw: Dict[str, Any], source_path: Optional[Path] = None) -> DeployConfig:
         joint_names = [str(n) for n in raw.get("joint_names", [])]
         a = len(joint_names)
 
@@ -170,8 +171,7 @@ class DeployConfig:
         return joint_map.indices_of(self.passive_joints)
 
     # ----------------------------------------------------------- validation
-    def validate(self, joint_map: Optional[JointMap] = None,
-                 soft_fraction: float = SOFT_LIMIT_FRACTION) -> List[str]:
+    def validate(self, joint_map: Optional[JointMap] = None, soft_fraction: float = SOFT_LIMIT_FRACTION) -> List[str]:
         """Return a list of human-readable problems (empty list == OK)."""
         errs: List[str] = []
         a = len(self.joint_names)
@@ -231,12 +231,16 @@ class DeployConfig:
                 for k, i in enumerate(idx):
                     d = float(self.default_joint_pos[k])
                     if not (lo[i] <= d <= hi[i]):
-                        errs.append(f"default_joint_pos[{k}]={d:.3f} outside soft limits "
-                                    f"[{lo[i]:.3f},{hi[i]:.3f}] of {self.joint_names[k]}")
+                        errs.append(
+                            f"default_joint_pos[{k}]={d:.3f} outside soft limits "
+                            f"[{lo[i]:.3f},{hi[i]:.3f}] of {self.joint_names[k]}"
+                        )
                     full_range = joint_map.limits_hi[i] - joint_map.limits_lo[i]
                     if self.action_scale[k] > full_range:
-                        errs.append(f"action_scale[{k}]={self.action_scale[k]:.3f} larger than the full "
-                                    f"joint range of {self.joint_names[k]}")
+                        errs.append(
+                            f"action_scale[{k}]={self.action_scale[k]:.3f} larger than the full "
+                            f"joint range of {self.joint_names[k]}"
+                        )
         return errs
 
 
@@ -254,8 +258,9 @@ LEVEL0_JOINTS = [
 LEVEL0_COMMANDS = {"head_yaw_target": 1, "shoulder_pitch_target": 1}
 
 
-def level0_deploy_config(joint_map: JointMap, policy_name: str = "r1_level0_upperbody",
-                         metadata: Optional[Dict[str, Any]] = None) -> DeployConfig:
+def level0_deploy_config(
+    joint_map: JointMap, policy_name: str = "r1_level0_upperbody", metadata: Optional[Dict[str, Any]] = None
+) -> DeployConfig:
     """Build the Level 0 deploy config from the joint map (23 obs, 7 actions)."""
     idx = joint_map.indices_of(LEVEL0_JOINTS)
     passive = [n for n in joint_map.names if n not in LEVEL0_JOINTS]

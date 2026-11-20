@@ -1,6 +1,12 @@
 """Runs inside the editor: import the trained ONNX as a UNNEModelData asset at /Game/Humanoid/Policies."""
-import unreal, os
-SRC = r"C:/Users/punko/Downloads/CODE_MATT/PoRobotTrain/RobotControl/models/r1_level0_upperbody/policy.onnx"
+
+import pathlib
+
+import unreal
+
+# The project dir is <repo>/UnrealProject/; the policy lives in <repo>/RobotControl/models/.
+PROJECT_DIR = pathlib.Path(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()))
+SRC = str(PROJECT_DIR.parent / "RobotControl" / "models" / "r1_level0_upperbody" / "policy.onnx")
 DEST = "/Game/Humanoid/Policies"
 task = unreal.AssetImportTask()
 task.filename = SRC

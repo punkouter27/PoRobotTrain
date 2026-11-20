@@ -1,4 +1,5 @@
 """Safety test: observe-only mode must never create a rt/lowcmd publisher or touch the motion switcher."""
+
 import sys
 import threading
 import types
@@ -6,7 +7,6 @@ import types
 import numpy as np
 
 from robotcontrol.configs.joint_map import JointMap
-from robotcontrol.interfaces.base_interface import MotorCommand
 from robotcontrol.interfaces import unitree_interface as ui
 
 CALLS = []
@@ -22,8 +22,9 @@ def _install_fake_sdk(monkeypatch):
             self.motor_state = [Motor() for _ in range(35)]
             self.mode_machine = 7
             self.crc = 0
-            self.imu_state = types.SimpleNamespace(quaternion=[1, 0, 0, 0], gyroscope=[0, 0, 0],
-                                                   accelerometer=[0, 0, 9.81], rpy=[0, 0, 0])
+            self.imu_state = types.SimpleNamespace(
+                quaternion=[1, 0, 0, 0], gyroscope=[0, 0, 0], accelerometer=[0, 0, 9.81], rpy=[0, 0, 0]
+            )
 
     class ChannelSubscriber:
         def __init__(self, topic, typ):
@@ -56,9 +57,11 @@ def _install_fake_sdk(monkeypatch):
     mods = {
         "unitree_sdk2py": types.ModuleType("unitree_sdk2py"),
         "unitree_sdk2py.core": types.ModuleType("unitree_sdk2py.core"),
-        "unitree_sdk2py.core.channel": types.SimpleNamespace(ChannelSubscriber=ChannelSubscriber,
-                                                             ChannelPublisher=ChannelPublisher,
-                                                             ChannelFactoryInitialize=lambda *a, **k: None),
+        "unitree_sdk2py.core.channel": types.SimpleNamespace(
+            ChannelSubscriber=ChannelSubscriber,
+            ChannelPublisher=ChannelPublisher,
+            ChannelFactoryInitialize=lambda *a, **k: None,
+        ),
         "unitree_sdk2py.idl": types.ModuleType("unitree_sdk2py.idl"),
         "unitree_sdk2py.idl.default": types.SimpleNamespace(unitree_hg_msg_dds__LowCmd_=lambda: None),
         "unitree_sdk2py.idl.unitree_hg": types.ModuleType("unitree_sdk2py.idl.unitree_hg"),
@@ -68,8 +71,9 @@ def _install_fake_sdk(monkeypatch):
         "unitree_sdk2py.utils.crc": types.SimpleNamespace(CRC=CRC),
         "unitree_sdk2py.comm": types.ModuleType("unitree_sdk2py.comm"),
         "unitree_sdk2py.comm.motion_switcher": types.ModuleType("unitree_sdk2py.comm.motion_switcher"),
-        "unitree_sdk2py.comm.motion_switcher.motion_switcher_client":
-            types.SimpleNamespace(MotionSwitcherClient=MotionSwitcherClient),
+        "unitree_sdk2py.comm.motion_switcher.motion_switcher_client": types.SimpleNamespace(
+            MotionSwitcherClient=MotionSwitcherClient
+        ),
     }
     for name, mod in mods.items():
         monkeypatch.setitem(sys.modules, name, mod)

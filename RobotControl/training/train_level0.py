@@ -5,6 +5,7 @@ Usage:
 Outputs (RobotControl/models/r1_level0_upperbody/):
   policy.onnx, deploy.yaml, model.pt, baseline_rollout.npz, train_log.csv
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,8 +46,25 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     logf = open(args.out / "train_log.csv", "w", newline="")
     writer = csv.writer(logf)
-    writer.writerow(["iter", "time_s", "reward_mean", "ep_reward", "track_err_yaw_deg", "track_err_pitch_deg",
-                     "max_acc", "curriculum", "loss_v", "loss_pi", "kl", "entropy", "lr", "std", "fps"])
+    writer.writerow(
+        [
+            "iter",
+            "time_s",
+            "reward_mean",
+            "ep_reward",
+            "track_err_yaw_deg",
+            "track_err_pitch_deg",
+            "max_acc",
+            "curriculum",
+            "loss_v",
+            "loss_pi",
+            "kl",
+            "entropy",
+            "lr",
+            "std",
+            "fps",
+        ]
+    )
 
     obs_buf = torch.zeros(T, N, env.num_obs, device=device)
     act_buf = torch.zeros(T, N, env.num_actions, device=device)
@@ -68,8 +86,12 @@ def main():
             ac.obs_norm.update(obs)
             a, logp, v, mu, sig = ppo.act(obs)
             nobs, r, d, info = env.step(a.cpu().numpy())
-            obs_buf[t] = obs; act_buf[t] = a; logp_buf[t] = logp; val_buf[t] = v
-            mu_buf[t] = mu; sig_buf[t] = sig
+            obs_buf[t] = obs
+            act_buf[t] = a
+            logp_buf[t] = logp
+            val_buf[t] = v
+            mu_buf[t] = mu
+            sig_buf[t] = sig
             rew_buf[t] = torch.from_numpy(r).to(device)
             done_buf[t] = torch.from_numpy(d.astype(np.float32)).to(device)
             ep_ret += r
@@ -87,17 +109,31 @@ def main():
         err_pitch = float(np.mean([i["track_err_pitch_deg"] for i in infos]))
         env.update_curriculum(0.5 * (err_yaw + err_pitch))
         fps = N * T / (time.time() - t_it)
-        row = [it, round(time.time() - t0, 1), float(rew_buf.mean()),
-               float(np.mean(ep_ret_hist[-100:])) if ep_ret_hist else 0.0,
-               err_yaw, err_pitch, max(i["max_acc"] for i in infos), env.curriculum,
-               stats["loss_v"], stats["loss_pi"], stats["kl"], stats["entropy"], stats["lr"],
-               ac.log_std.detach().exp().mean().item(), fps]
+        row = [
+            it,
+            round(time.time() - t0, 1),
+            float(rew_buf.mean()),
+            float(np.mean(ep_ret_hist[-100:])) if ep_ret_hist else 0.0,
+            err_yaw,
+            err_pitch,
+            max(i["max_acc"] for i in infos),
+            env.curriculum,
+            stats["loss_v"],
+            stats["loss_pi"],
+            stats["kl"],
+            stats["entropy"],
+            stats["lr"],
+            ac.log_std.detach().exp().mean().item(),
+            fps,
+        ]
         writer.writerow([f"{x:.5g}" if isinstance(x, float) else x for x in row])
         logf.flush()
         if it % 10 == 0 or it == 1:
-            print(f"it {it:5d} | rew {row[2]:7.3f} | ep {row[3]:7.1f} | err yaw {err_yaw:5.2f} pitch {err_pitch:5.2f} deg | "
-                  f"maxacc {row[6]:6.1f} | cur {env.curriculum:.2f} | std {row[13]:.3f} | lr {stats['lr']:.1e} | {fps:7.0f} fps",
-                  flush=True)
+            print(
+                f"it {it:5d} | rew {row[2]:7.3f} | ep {row[3]:7.1f} | err yaw {err_yaw:5.2f} pitch {err_pitch:5.2f} deg | "
+                f"maxacc {row[6]:6.1f} | cur {env.curriculum:.2f} | std {row[13]:.3f} | lr {stats['lr']:.1e} | {fps:7.0f} fps",
+                flush=True,
+            )
         if it % 200 == 0:
             torch.save(ac.state_dict(), args.out / f"model_{it}.pt")
     logf.close()

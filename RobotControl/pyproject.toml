@@ -12,7 +12,7 @@ dependencies = [
     "pyyaml",
     "onnx",
     "onnxruntime",
-    "mujoco",
+    "mujoco==4.0.0",  # the one MuJoCo version of this repo (URLab in UnrealProject/Plugins is built on it)
 ]
 
 [project.optional-dependencies]
@@ -36,7 +36,7 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-"robotcontrol.configs" = ["*.yaml"]
+"robotcontrol.configs" = ["*.yaml", "*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

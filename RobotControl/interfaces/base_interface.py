@@ -4,6 +4,7 @@ real Unitree SDK2 robot.
 All vectors are in *policy order* (see ``configs/r1_joint_map.yaml``), length
 ``joint_map.num_joints`` (26 for the R1 A5).
 """
+
 from __future__ import annotations
 
 import math
@@ -56,21 +57,25 @@ def projected_gravity_from_quat(q_wxyz: np.ndarray) -> np.ndarray:
 class LowStateData:
     """Snapshot of the robot state in policy order."""
 
-    q: np.ndarray                      # joint positions [rad], (N,)
-    dq: np.ndarray                     # joint velocities [rad/s], (N,)
-    tau: np.ndarray                    # estimated joint torques [Nm], (N,)
-    imu_quat: np.ndarray               # (w, x, y, z)
-    gyro: np.ndarray                   # body angular velocity [rad/s], (3,)
-    accel: np.ndarray                  # body linear acceleration [m/s^2], (3,)
-    timestamp: float                   # seconds (sim time or monotonic wall clock)
-    tick: int = 0                      # message / step counter
+    q: np.ndarray  # joint positions [rad], (N,)
+    dq: np.ndarray  # joint velocities [rad/s], (N,)
+    tau: np.ndarray  # estimated joint torques [Nm], (N,)
+    imu_quat: np.ndarray  # (w, x, y, z)
+    gyro: np.ndarray  # body angular velocity [rad/s], (3,)
+    accel: np.ndarray  # body linear acceleration [m/s^2], (3,)
+    timestamp: float  # seconds (sim time or monotonic wall clock)
+    tick: int = 0  # message / step counter
     extras: Dict[str, np.ndarray] = field(default_factory=dict)
 
     @classmethod
-    def zeros(cls, n: int, timestamp: float = 0.0) -> "LowStateData":
+    def zeros(cls, n: int, timestamp: float = 0.0) -> LowStateData:
         return cls(
-            q=np.zeros(n), dq=np.zeros(n), tau=np.zeros(n),
-            imu_quat=np.array([1.0, 0.0, 0.0, 0.0]), gyro=np.zeros(3), accel=np.zeros(3),
+            q=np.zeros(n),
+            dq=np.zeros(n),
+            tau=np.zeros(n),
+            imu_quat=np.array([1.0, 0.0, 0.0, 0.0]),
+            gyro=np.zeros(3),
+            accel=np.zeros(3),
             timestamp=timestamp,
         )
 
@@ -84,11 +89,16 @@ class LowStateData:
     def projected_gravity(self) -> np.ndarray:
         return projected_gravity_from_quat(self.imu_quat)
 
-    def copy(self) -> "LowStateData":
+    def copy(self) -> LowStateData:
         return LowStateData(
-            q=self.q.copy(), dq=self.dq.copy(), tau=self.tau.copy(),
-            imu_quat=self.imu_quat.copy(), gyro=self.gyro.copy(), accel=self.accel.copy(),
-            timestamp=self.timestamp, tick=self.tick,
+            q=self.q.copy(),
+            dq=self.dq.copy(),
+            tau=self.tau.copy(),
+            imu_quat=self.imu_quat.copy(),
+            gyro=self.gyro.copy(),
+            accel=self.accel.copy(),
+            timestamp=self.timestamp,
+            tick=self.tick,
             extras={k: v.copy() for k, v in self.extras.items()},
         )
 
@@ -105,8 +115,14 @@ class MotorCommand:
     tau: np.ndarray
 
     @classmethod
-    def from_targets(cls, target_q: np.ndarray, kp: np.ndarray, kd: np.ndarray,
-                     tau_ff: Optional[np.ndarray] = None, dq: Optional[np.ndarray] = None) -> "MotorCommand":
+    def from_targets(
+        cls,
+        target_q: np.ndarray,
+        kp: np.ndarray,
+        kd: np.ndarray,
+        tau_ff: Optional[np.ndarray] = None,
+        dq: Optional[np.ndarray] = None,
+    ) -> MotorCommand:
         target_q = np.asarray(target_q, dtype=np.float64)
         n = target_q.shape[0]
         kp = np.broadcast_to(np.asarray(kp, dtype=np.float64), (n,)).copy()
@@ -119,12 +135,12 @@ class MotorCommand:
         return cls(q=target_q.copy(), dq=dqv, kp=kp, kd=kd, tau=tau)
 
     @classmethod
-    def damping(cls, current_q: np.ndarray, kd: np.ndarray) -> "MotorCommand":
+    def damping(cls, current_q: np.ndarray, kd: np.ndarray) -> MotorCommand:
         n = len(current_q)
         return cls.from_targets(current_q, np.zeros(n), kd)
 
     @classmethod
-    def zero_torque(cls, n: int) -> "MotorCommand":
+    def zero_torque(cls, n: int) -> MotorCommand:
         return cls.from_targets(np.zeros(n), np.zeros(n), np.zeros(n))
 
     @property
@@ -183,7 +199,7 @@ class RobotHardwareInterface(ABC):
     @abstractmethod
     def close(self) -> None: ...
 
-    def __enter__(self) -> "RobotHardwareInterface":
+    def __enter__(self) -> RobotHardwareInterface:
         if not self.connected:
             self.connect()
         return self
@@ -200,8 +216,14 @@ class RobotHardwareInterface(ABC):
     def _send(self, cmd: MotorCommand) -> None:
         """Transport-specific write of a validated command."""
 
-    def send_low_cmd(self, target_q: np.ndarray, kp: np.ndarray, kd: np.ndarray,
-                     tau_ff: Optional[np.ndarray] = None, dq: Optional[np.ndarray] = None) -> MotorCommand:
+    def send_low_cmd(
+        self,
+        target_q: np.ndarray,
+        kp: np.ndarray,
+        kd: np.ndarray,
+        tau_ff: Optional[np.ndarray] = None,
+        dq: Optional[np.ndarray] = None,
+    ) -> MotorCommand:
         """Send a PD command (policy order, length N). Joints marked passive via
         :meth:`set_passive` are forced to kp=0 / kd=passive_kd."""
         cmd = MotorCommand.from_targets(target_q, kp, kd, tau_ff, dq)

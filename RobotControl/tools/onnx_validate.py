@@ -6,6 +6,7 @@ action_scale sanity, observation layout sums, passive joints. Exit code 1 on fai
 
     python -m robotcontrol.tools.onnx_validate models/r1_level0_upperbody/policy.onnx [--deploy deploy.yaml] [--joint-map ...]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,8 +18,12 @@ from ..configs.joint_map import JointMap
 from .onnx_inspect import inspect_onnx
 
 
-def validate(onnx_path: str | Path, deploy_path: Optional[str | Path] = None,
-             joint_map_path: Optional[str | Path] = None, run_session: bool = True) -> Tuple[List[str], List[str]]:
+def validate(
+    onnx_path: str | Path,
+    deploy_path: Optional[str | Path] = None,
+    joint_map_path: Optional[str | Path] = None,
+    run_session: bool = True,
+) -> Tuple[List[str], List[str]]:
     """Return ``(errors, warnings)``."""
     errors: List[str] = []
     warnings: List[str] = []
@@ -73,7 +78,9 @@ def validate(onnx_path: str | Path, deploy_path: Optional[str | Path] = None,
     if run_session and not errors:
         try:
             import numpy as np
+
             from ..execution.policy_runner import OnnxPolicy
+
             pol = OnnxPolicy(onnx_path)
             out = pol.infer(np.zeros(pol.num_obs, dtype=np.float32))
             if not np.all(np.isfinite(out)):

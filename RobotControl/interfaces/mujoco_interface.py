@@ -9,6 +9,7 @@ applied by rewriting the actuator gain/bias parameters each tick::
 
 so ``force = kp*(ctrl - q) - kd*dq`` exactly like the real motor controller.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,9 +44,15 @@ def resolve_scene(scene: str | Path) -> Path:
 
 
 class MujocoInterface(RobotHardwareInterface):
-    def __init__(self, joint_map: Optional[JointMap] = None, scene: str | Path = "stand",
-                 policy_dt: float = 0.02, render: bool = False, keyframe: Optional[str] = "home",
-                 realtime: bool = False):
+    def __init__(
+        self,
+        joint_map: Optional[JointMap] = None,
+        scene: str | Path = "stand",
+        policy_dt: float = 0.02,
+        render: bool = False,
+        keyframe: Optional[str] = "home",
+        realtime: bool = False,
+    ):
         super().__init__(joint_map)
         self.scene_path = resolve_scene(scene)
         self.policy_dt = float(policy_dt)
@@ -81,8 +88,7 @@ class MujocoInterface(RobotHardwareInterface):
             dof_adr.append(int(m.jnt_dofadr[j]))
         if names != self.joint_map.names:
             raise RuntimeError(
-                "MJCF joint order differs from joint map:\n"
-                f"  mjcf: {names}\n  map : {self.joint_map.names}"
+                f"MJCF joint order differs from joint map:\n  mjcf: {names}\n  map : {self.joint_map.names}"
             )
         self._qpos_adr = np.array(qpos_adr, dtype=np.int64)
         self._dof_adr = np.array(dof_adr, dtype=np.int64)
@@ -116,6 +122,7 @@ class MujocoInterface(RobotHardwareInterface):
         if self.render:
             try:
                 import mujoco.viewer as mjv
+
                 self._viewer = mjv.launch_passive(self.model, self.data)
             except Exception as exc:  # pragma: no cover - viewer optional
                 log.warning("mujoco viewer unavailable (%s); running headless", exc)

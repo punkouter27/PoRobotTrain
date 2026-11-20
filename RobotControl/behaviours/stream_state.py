@@ -5,6 +5,7 @@ Prints one JSON line per sample to stdout: {"t": seconds, "q": [26 joint angles 
 
     ./run.sh robotcontrol.behaviours.stream_state --hz 30
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,6 +25,7 @@ def main(argv=None) -> int:
 
     from unitree_sdk2py.core.channel import ChannelSubscriber
     from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_
+
     from ..interfaces.unitree_interface import detect_robot_iface, ensure_channel_factory
 
     jm = JointMap.load()

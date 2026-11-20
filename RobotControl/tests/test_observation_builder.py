@@ -32,9 +32,9 @@ def test_level0_layout(jm):
     cmd = np.array([0.5, -0.8])
     obs = ob.build(st, last_action, cmd, t=0.0)
     assert obs.shape == (23,) and obs.dtype == np.float32
-    assert math.isclose(obs[6], 0.3, abs_tol=1e-6)        # head yaw is action index 6
+    assert math.isclose(obs[6], 0.3, abs_tol=1e-6)  # head yaw is action index 6
     assert np.allclose(obs[0:6], 0.0)
-    assert math.isclose(obs[7 + 3], -1.5, abs_tol=1e-6)   # right_elbow is action index 3
+    assert math.isclose(obs[7 + 3], -1.5, abs_tol=1e-6)  # right_elbow is action index 3
     assert np.allclose(obs[14:21], last_action)
     assert np.allclose(obs[21:23], cmd)
 
@@ -43,13 +43,27 @@ def test_level2_layout(jm):
     joints = [n for n in jm.names if not n.startswith("head")]
     idx = jm.indices_of(joints)
     cfg = DeployConfig(
-        policy_name="walk", step_dt=0.02, joint_names=joints, motor_slots=jm.motor_slots[idx].tolist(),
-        default_joint_pos=jm.defaults[idx], kp=jm.kp[idx], kd=jm.kd[idx], action_scale=jm.action_scale[idx],
+        policy_name="walk",
+        step_dt=0.02,
+        joint_names=joints,
+        motor_slots=jm.motor_slots[idx].tolist(),
+        default_joint_pos=jm.defaults[idx],
+        kp=jm.kp[idx],
+        kd=jm.kd[idx],
+        action_scale=jm.action_scale[idx],
         action_clip=None,
-        observations=[ObsTerm("base_ang_vel", 3), ObsTerm("projected_gravity", 3), ObsTerm("command", 3),
-                      ObsTerm("gait_phase", 2, {"period": 0.8}), ObsTerm("joint_pos_rel", 24),
-                      ObsTerm("joint_vel_rel", 24), ObsTerm("last_action", 24)],
-        commands={"lin_vel_x": 1, "lin_vel_y": 1, "ang_vel_z": 1}, num_obs=83, num_actions=24,
+        observations=[
+            ObsTerm("base_ang_vel", 3),
+            ObsTerm("projected_gravity", 3),
+            ObsTerm("command", 3),
+            ObsTerm("gait_phase", 2, {"period": 0.8}),
+            ObsTerm("joint_pos_rel", 24),
+            ObsTerm("joint_vel_rel", 24),
+            ObsTerm("last_action", 24),
+        ],
+        commands={"lin_vel_x": 1, "lin_vel_y": 1, "ang_vel_z": 1},
+        num_obs=83,
+        num_actions=24,
         passive_joints=["head_pitch_joint", "head_yaw_joint"],
     )
     assert cfg.validate(jm) == []

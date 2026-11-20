@@ -18,14 +18,15 @@ Robot gating (all must hold, else /run is refused with the reason):
   * nothing else is running
 STOP is a convenience: it goes over the network. The remote (L2+B for 5 s) is the emergency stop.
 """
+
 from __future__ import annotations
 
 import argparse
 import collections
-import math
-import re
 import json
+import math
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -44,10 +45,12 @@ BEHAVIOURS = ("neck_turn",)
 
 
 def parse_params(body: dict) -> dict:
-    p = {"behaviour": str(body.get("behaviour", "neck_turn")),
-         "amplitude": float(body.get("amplitude", 10.0)),
-         "freq": float(body.get("freq", 0.2)),
-         "duration": float(body.get("duration", 20.0))}
+    p = {
+        "behaviour": str(body.get("behaviour", "neck_turn")),
+        "amplitude": float(body.get("amplitude", 10.0)),
+        "freq": float(body.get("freq", 0.2)),
+        "duration": float(body.get("duration", 20.0)),
+    }
     if p["behaviour"] not in BEHAVIOURS:
         raise ValueError(f"unknown behaviour {p['behaviour']!r}")
     for k, (lo, hi) in LIMITS.items():
@@ -72,8 +75,10 @@ def failure_reason(line: str) -> str:
     return ""
 
 
-_TICK = re.compile(r"t=\s*([\d.]+)s\s+(\w+)\s+head_yaw target\s+([+-]?[\d.]+) actual\s+([+-]?[\d.]+) deg"
-                   r"\s+other joints max change ([\d.]+)")
+_TICK = re.compile(
+    r"t=\s*([\d.]+)s\s+(\w+)\s+head_yaw target\s+([+-]?[\d.]+) actual\s+([+-]?[\d.]+) deg"
+    r"\s+other joints max change ([\d.]+)"
+)
 
 
 def parse_head(line: str) -> Optional[dict]:
@@ -92,21 +97,33 @@ def parse_head(line: str) -> Optional[dict]:
         return out
     m = _TICK.search(s)
     if m:
-        return {"t": float(m.group(1)), "phase": m.group(2), "target": float(m.group(3)),
-                "yaw": float(m.group(4)), "other": float(m.group(5))}
+        return {
+            "t": float(m.group(1)),
+            "phase": m.group(2),
+            "target": float(m.group(3)),
+            "yaw": float(m.group(4)),
+            "other": float(m.group(5)),
+        }
     return None
 
 
 def runner_args(p: dict) -> list:
-    return [p["behaviour"], "--amplitude", f"{p['amplitude']:g}", "--freq", f"{p['freq']:g}",
-            "--duration", f"{p['duration']:g}"]
+    return [
+        p["behaviour"],
+        "--amplitude",
+        f"{p['amplitude']:g}",
+        "--freq",
+        f"{p['freq']:g}",
+        "--duration",
+        f"{p['duration']:g}",
+    ]
 
 
 class Service:
     def __init__(self, address: str = "tcp://localhost", mirror_enabled: bool = True):
         self.lock = threading.Lock()
         self.lines = collections.deque(maxlen=200)
-        self.job: Optional[str] = None            # "preview" | "check" | "run"
+        self.job: Optional[str] = None  # "preview" | "check" | "run"
         self.proc: Optional[subprocess.Popen] = None
         self.previewed: Optional[dict] = None
         self.checked: Optional[dict] = None
@@ -129,7 +146,7 @@ class Service:
     def update_head(self, who: str, h: dict, source: str) -> None:
         cur = dict(self.head.get(who, {}))
         if cur.get("source") != source:
-            cur = {}                              # a new job: drop the previous job's target / phase
+            cur = {}  # a new job: drop the previous job's target / phase
         cur.update({k: v for k, v in h.items() if v is not None})
         cur["source"], cur["at"] = source, time.time()
         self.head[who] = cur
@@ -147,14 +164,19 @@ class Service:
 
     def status(self) -> dict:
         with self.lock:
-            return {"job": self.job, "last_result": self.last_result,
-                    "previewed": self.previewed, "checked": self.checked,
-                    "check_age_s": round(time.time() - self.checked_at, 1) if self.checked else None,
-                    "can_run_robot": self.why_not_run(self.previewed) is None,
-                    "why_not_run": self.why_not_run(self.previewed),
-                    "mirror_samples": self.mirror_samples, "results": dict(self.results),
-                    "head": {k: dict(v, age_s=round(time.time() - v["at"], 1)) for k, v in list(self.head.items())},
-                    "lines": list(self.lines)[-12:]}
+            return {
+                "job": self.job,
+                "last_result": self.last_result,
+                "previewed": self.previewed,
+                "checked": self.checked,
+                "check_age_s": round(time.time() - self.checked_at, 1) if self.checked else None,
+                "can_run_robot": self.why_not_run(self.previewed) is None,
+                "why_not_run": self.why_not_run(self.previewed),
+                "mirror_samples": self.mirror_samples,
+                "results": dict(self.results),
+                "head": {k: dict(v, age_s=round(time.time() - v["at"], 1)) for k, v in list(self.head.items())},
+                "lines": list(self.lines)[-12:],
+            }
 
     def _start(self, job: str, cmd: list, p: dict, pty: bool = False) -> None:
         self.job = job
@@ -163,8 +185,16 @@ class Service:
         kw = {}
         if os.name == "nt" and not pty:
             kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-        self.proc = subprocess.Popen(cmd, cwd=str(PROJECT_ROOT), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1, **kw)
+        self.proc = subprocess.Popen(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            **kw,
+        )
         threading.Thread(target=self._pump, args=(job, self.proc, p), daemon=True).start()
 
     def _pump(self, job: str, proc: subprocess.Popen, p: dict) -> None:
@@ -177,24 +207,28 @@ class Service:
             if h is not None:
                 self.update_head(who, h, source=job)
                 if line.lstrip().startswith("@head"):
-                    continue                      # 5 Hz readout: panel only, keep the log readable
+                    continue  # 5 Hz readout: panel only, keep the log readable
             self.log(line)
-            if not line.startswith((" ", "	")):          # skip indented traceback frames
+            if not line.startswith((" ", "	")):  # skip indented traceback frames
                 reason = failure_reason(line) or reason
         code = proc.wait()
         with self.lock:
             ok = code == 0
-            self.results[job] = {"ok": ok, "amplitude": p["amplitude"], "at": time.time(),
-                                 "reason": "" if ok else (reason or f"exit code {code}")}
+            self.results[job] = {
+                "ok": ok,
+                "amplitude": p["amplitude"],
+                "at": time.time(),
+                "reason": "" if ok else (reason or f"exit code {code}"),
+            }
             if job == "preview":
-                self.previewed = p if ok else None   # a failed virtual run clears step 1
+                self.previewed = p if ok else None  # a failed virtual run clears step 1
             if job == "check" and ok:
                 self.checked, self.checked_at = p, time.time()
             self.last_result = f"{job} {'OK' if ok else f'FAILED (exit {code})'}"
             self.log(self.last_result)
             self.job, self.proc = None, None
         if job == "run":
-            self.checked = None                   # a fresh check is required before the next robot run
+            self.checked = None  # a fresh check is required before the next robot run
             time.sleep(1.0)
             self.mirror_stop.set()
 
@@ -203,16 +237,22 @@ class Service:
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running"}
-            self._start("preview", [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"]
-                        + runner_args(p) + ["--target", "urlab"], p)
+            self._start(
+                "preview",
+                [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"] + runner_args(p) + ["--target", "urlab"],
+                p,
+            )
         return {"ok": True}
 
     def check(self, p: dict) -> dict:
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running"}
-            remote = (f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 timeout 60 ./run.sh robotcontrol.behaviours.runner "
-                      + " ".join(runner_args(p)) + " --target real")
+            remote = (
+                f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 timeout 60 ./run.sh robotcontrol.behaviours.runner "
+                + " ".join(runner_args(p))
+                + " --target real"
+            )
             self._start("check", ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote], p)
         return {"ok": True}
 
@@ -223,10 +263,14 @@ class Service:
             why = self.why_not_run(p)
             if why:
                 return {"ok": False, "error": why}
-            remote = (f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 ./run.sh robotcontrol.behaviours.runner "
-                      + " ".join(runner_args(p)) + " --target real --go --yes")
-            self._start("run", ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote],
-                        p, pty=True)
+            remote = (
+                f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 ./run.sh robotcontrol.behaviours.runner "
+                + " ".join(runner_args(p))
+                + " --target real --go --yes"
+            )
+            self._start(
+                "run", ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote], p, pty=True
+            )
         if self.mirror_enabled:
             threading.Thread(target=self._mirror, daemon=True).start()
         return {"ok": True}
@@ -246,8 +290,8 @@ class Service:
 
         def count(q):
             self.mirror_samples += 1
-            self.update_head("real", {"yaw": math.degrees(q[i_yaw]), "pitch": math.degrees(q[i_pitch])},
-                             source="run")
+            self.update_head("real", {"yaw": math.degrees(q[i_yaw]), "pitch": math.degrees(q[i_pitch])}, source="run")
+
         try:
             run_mirror(robot_stream(30.0, procs), m, self.mirror_stop, count)
         except Exception as e:
@@ -265,14 +309,25 @@ class Service:
             return {"ok": True, "note": "nothing running"}
         self.log(f"STOP requested ({job})")
         if job == "run":
-            try:                                   # Ctrl-C through the remote pty -> runner releases the head
+            try:  # Ctrl-C through the remote pty -> runner releases the head
                 proc.stdin.write("\x03")
                 proc.stdin.flush()
             except Exception:
                 pass
-            subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT,
-                            "pkill -INT -f robotcontrol.behaviours.runner"], timeout=15,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=5",
+                    ROBOT,
+                    "pkill -INT -f robotcontrol.behaviours.runner",
+                ],
+                timeout=15,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         elif os.name == "nt":
             proc.send_signal(signal.CTRL_BREAK_EVENT)
         else:
@@ -315,6 +370,7 @@ def make_handler(svc: Service):
                 self._send(404, {"ok": False, "error": "not found"})
             except (ValueError, json.JSONDecodeError) as e:
                 self._send(400, {"ok": False, "error": str(e)})
+
     return H
 
 
