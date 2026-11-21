@@ -23,3 +23,6 @@ ignore = [
     "UP006",  # keep typing.Dict/List: the robot kit runs on Python 3.8, where evaluated annotations need them
     "UP045",  # keep Optional[...] for the same Python 3.8 reason
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["robotcontrol"]
