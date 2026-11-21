@@ -78,6 +78,7 @@ RobotControl/           Python package `robotcontrol` (interfaces, execution, to
 UnrealProject/          UE 5.8 C++ project (R1Twin), MJCF models + meshes under MJCF, URLab vendored in Plugins/
 scripts/                MJCF generator and validator, Unreal editor helpers, robot setup
 web/                    static showcase site + /diag (web/build.py), deployed to swa-porobottrain
+src/                    Blazor WASM control UI + .NET API; browser 3D twin assets in Client/wwwroot/twin (docs/web_twin.md)
 docs/                   setup and procedures
 external/               reference clones (unitree_mujoco, unitree_sdk2_python, unitree_rl_mjlab, urlab_bridge) - not committed
 logs/                   training logs, validation reports - not committed
@@ -120,6 +121,12 @@ and it reclaims them when the client finishes. The follow camera frames the stan
   The fixes cover `mjtLimited` enum
   assignments, float to bool for `active` / `actgravcomp`, and `FString(*Key)` for UE 5.8's `FSharedString` JSON keys
   in `RpcDispatcher.cpp` / `MsgpackHelpers.cpp`. Build with `-MaxParallelActions=6` if MSVC reports PCH heap errors.
+
+## Browser twin (Blazor control UI)
+
+The control UI shows a live three.js / WebGPU twin with limit, error and temperature tints, a Rapier check of
+slider-preview poses, reach clouds and browser-side policy parity on `/diag`. Build its assets with
+`scriptsuild_web_twin.py --compress`; details and the library-by-library map are in `docs/web_twin.md`.
 
 ## Real robot (Level 0 on the stand)
 

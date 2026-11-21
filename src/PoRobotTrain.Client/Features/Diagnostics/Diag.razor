@@ -1,9 +1,13 @@
 @page "/diag"
+@using System.Text.Json
+@using PoRobotTrain.Client.Features.Dashboard.Twin
+@implements IAsyncDisposable
 @inject RobotApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>Diagnostics — PoRobotTrain</PageTitle>
 
-<div class="po-card" style="max-width:720px">
+<div class="po-card" style="max-width:860px">
     <h1 class="dash-h1">Diagnostics</h1>
     @if (_diag is null)
     {
@@ -23,11 +27,113 @@
     }
 </div>
 
+<div class="po-card" style="max-width:860px;margin-top:12px">
+    <div class="sec-hdr">
+        <h2 class="tel-title">BROWSER RUNTIME (3D TWIN, CHECKS, LOCAL AI)</h2>
+        <span class="po-pill @(Overall switch { true => "po-pill--ok", false => "po-pill--bad", _ => string.Empty })">
+            @(Overall switch { true => "ALL CHECKS PASS", false => $"{_rows.Count(r => !r.Ok)} FAILING", _ => "RUNNING…" })
+        </span>
+    </div>
+    <p class="po-muted">Probed live from this browser now. Nothing here moves the robot.</p>
+    @foreach (var section in new[] { "GPU", "Data", "Services", "Checks" })
+    {
+        var rows = _rows.Where(r => r.Section == section).ToList();
+        <h3 class="diag-sec">@SectionTitle(section)</h3>
+        @if (rows.Count == 0)
+        {
+            <div class="po-muted">@(_pending.Contains(section) ? "Probing…" : "—")</div>
+        }
+        <table class="diag-table">
+            @foreach (var r in rows)
+            {
+                <tr>
+                    <td class="@(r.Ok ? "ok" : IsOptional(r) ? "off" : "bad")">@(r.Ok ? "OK" : IsOptional(r) ? "OFF" : "FAIL")</td>
+                    <td>@r.Name</td>
+                    <td class="num">@($"{r.Ms:0} ms")</td>
+                    <td class="po-muted">@r.Detail</td>
+                </tr>
+            }
+        </table>
+    }
+</div>
+
 @code {
     private DiagSnapshotDto? _diag;
+    private IJSObjectReference? _module;
+    private readonly List<TwinProbeRow> _rows = [];
+    private readonly HashSet<string> _pending = ["GPU", "Data", "Services", "Checks"];
+
+    private static bool IsOptional(TwinProbeRow r) => r.Name.StartsWith("WebGPU", StringComparison.Ordinal);
+
+    private bool? Overall => _pending.Count > 0 ? null : _rows.All(r => r.Ok || IsOptional(r));
+
+    private static string SectionTitle(string s) => s switch
+    {
+        "GPU" => "GPU (WebGPU is optional: WebGL2 + CPU fallbacks are used without it)",
+        "Data" => "Data (twin assets, decoders)",
+        "Services" => "Services (CDN modules)",
+        _ => "Checks (contracts verified in the browser)",
+    };
 
     protected override async Task OnInitializedAsync()
     {
         _diag = await Api.GetDiagAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/twin/diag.js");
+        }
+        catch (JSException ex)
+        {
+            _rows.Add(new TwinProbeRow("Services", "Diagnostics module", false, 0, ex.Message));
+            _pending.Clear();
+            StateHasChanged();
+            return;
+        }
+        await RunAsync("GPU", "capabilitiesJson");
+        await RunAsync("Data", "filesJson");
+        await RunAsync("Services", "modulesJson");
+        await RunAsync("Checks", "selfTestsJson", keepPending: true);
+        await RunAsync("Checks", "policyParityJson");
+    }
+
+    private async Task RunAsync(string section, string fn, bool keepPending = false)
+    {
+        try
+        {
+            var json = await _module!.InvokeAsync<string>(fn);
+            _rows.AddRange(JsonSerializer.Deserialize(json, TwinInteropJsonContext.Default.ListTwinProbeRow) ?? []);
+        }
+        catch (JSException ex)
+        {
+            _rows.Add(new TwinProbeRow(section, fn, false, 0, ex.Message.Split('\n')[0]));
+        }
+        if (!keepPending)
+        {
+            _pending.Remove(section);
+        }
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
     }
 }

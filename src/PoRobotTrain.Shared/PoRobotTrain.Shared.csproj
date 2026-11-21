@@ -3,4 +3,9 @@
     <RootNamespace>PoRobotTrain.Shared</RootNamespace>
     <AssemblyName>PoRobotTrain.Shared</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Managed vector/quaternion maths for twin forward kinematics (no native code, runs in Blazor WASM). -->
+    <PackageReference Include="Silk.NET.Maths" />
+  </ItemGroup>
 </Project>

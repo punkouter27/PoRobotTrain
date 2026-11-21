@@ -17,6 +17,10 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="$(AspNetCoreVersion)" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="$(AspNetCoreVersion)" />
     <PackageVersion Include="Radzen.Blazor" Version="12.2.0" />
+    <PackageVersion Include="SkiaSharp.Views.Blazor" Version="4.157.0" />
+
+    <!-- Shared twin kinematics -->
+    <PackageVersion Include="Silk.NET.Maths" Version="2.23.0" />
 
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.2" />

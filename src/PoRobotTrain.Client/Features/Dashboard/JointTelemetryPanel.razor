@@ -1,4 +1,5 @@
 @using System.Globalization
+@using PoRobotTrain.Client.Features.Dashboard.Twin
 
 <div class="po-card">
     <div class="tel-header" style="flex-wrap:wrap">
@@ -83,6 +84,13 @@
         </div>
     }
 
+    @if (_draggingJoint is not null && _twinFeedback.HasHits)
+    {
+        <div class="status-msg warn">
+            <b>Proposed pose check (Rapier, MuJoCo collision capsules):</b> @PreviewHitText
+        </div>
+    }
+
     <div class="groups-grid">
         @foreach (var grp in RobotJointCatalog.GroupOrder)
         {
@@ -117,7 +125,7 @@
                         ? $"{temps[j.PolicyIndex]}°"
                         : "--";
 
-                    <div class="jrow">
+                    <div class="jrow @(j.Name == HighlightJoint ? "jrow--hl" : string.Empty)" id="joint-@j.Name">
                         <span class="jname" title="@j.Name">@j.DisplayLabel</span>
                         <div class="jbar">
                             <div class="jbar-track" style="position:absolute;inset:0;top:5px">
@@ -163,10 +171,26 @@
                 <button type="button" class="po-chip @(_cam == "back" ? "active" : string.Empty)" @onclick='() => _cam = "back"'>Back</button>
             </div>
         </div>
-        <div class="stand-stage">
-            <img class="stand-img" src="@StandViewUrl" alt="3D Unitree R1 on test stand" />
-        </div>
+        <Twin3DView Actual="ActiveTelemetry?.QDeg"
+                    Sim="@(_wantReal ? Virt?.QDeg : null)"
+                    Temps="@(_wantReal ? Real?.TempsC : null)"
+                    WantReal="_wantReal"
+                    RealConnected="@(Status?.RealConnected ?? false)"
+                    Camera="@_cam"
+                    Preview="TwinPreviewPose"
+                    Job="@Status?.Job"
+                    Results="@Status?.Results"
+                    PrimaryJoint="@(ActiveTelemetry?.PrimaryJoint ?? Virt?.PrimaryJoint)"
+                    Behaviour="@SelectedBehaviour"
+                    Amplitude="SelectedAmplitude"
+                    FallbackUrl="@StandViewUrl"
+                    OnFeedback="fb => _twinFeedback = fb" />
     </div>
+
+    <JointHistoryHeatmap Actual="ActiveTelemetry?.QDeg"
+                         Sim="@(_wantReal ? Virt?.QDeg : null)"
+                         SampleTime="ActiveTelemetry?.T"
+                         SourceLabel="@(_wantReal ? (PracticeActive ? "Practice stand twin" : "Physical R1") : "Virtual sim")" />
 </div>
 
 @if (_armConfirmOpen)
@@ -199,6 +223,26 @@
     [Parameter] public bool PracticeActive { get; set; }
     [Parameter] public EventCallback OnReadPhysical { get; set; }
     [Parameter] public EventCallback<MoveJointRequest> OnMoveJoint { get; set; }
+    [Parameter] public string SelectedBehaviour { get; set; } = "neck_turn";
+    [Parameter] public double SelectedAmplitude { get; set; } = 10.0;
+    [Parameter] public string? HighlightJoint { get; set; }
+
+    private TwinFeedback _twinFeedback = TwinFeedback.Empty;
+
+    private TwinPreview? TwinPreviewPose =>
+        _draggingJoint is not null && RobotJointCatalog.All.FirstOrDefault(j => j.Name == _draggingJoint) is { } dj
+            ? new TwinPreview(dj.PolicyIndex, _draggingDeg)
+            : null;
+
+    private string PreviewHitText =>
+        string.Join("; ",
+            _twinFeedback.Self.Select(h => $"{Pretty(h.A)} ↔ {Pretty(h.B)} {h.DistanceM * 1000:0} mm")
+                .Concat(_twinFeedback.Stand.Select(h => $"{Pretty(h.A)} near the stand frame ({h.DistanceM * 1000:0} mm; the stand is not in MuJoCo's contact model)")))
+        + ". Display-only warning: release the slider only if you intend this pose.";
+
+    private static string Pretty(string body) =>
+        RobotJointCatalog.All.FirstOrDefault(j => body.StartsWith(j.Name.Replace("_joint", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal))?.DisplayLabel
+        ?? body.Replace("_link", string.Empty, StringComparison.Ordinal).Replace('_', ' ');
 
     private bool _wantReal = true;
     private bool _realWriteArmed;

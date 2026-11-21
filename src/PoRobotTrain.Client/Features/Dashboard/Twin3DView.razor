@@ -1,0 +1,240 @@
+@using System.Globalization
+@using System.Text.Json
+@using PoRobotTrain.Client.Features.Dashboard.Twin
+@using PoRobotTrain.Shared.Kinematics
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject TwinKinematicsService Kinematics
+
+<div class="twin-stage">
+    @if (_failed)
+    {
+        <img class="stand-img" src="@FallbackUrl" alt="3D Unitree R1 on test stand (server render)" />
+        <div class="twin-note">Live 3D twin unavailable (@_error). Showing the server render instead.</div>
+    }
+    else
+    {
+        <canvas @ref="_canvas" class="twin-canvas" aria-label="Live 3D Unitree R1 twin on its test stand"></canvas>
+        <div class="twin-toolbar">
+            <button type="button" class="po-chip @(_ghost ? "active" : string.Empty)" title="Show the virtual sim pose as a blue ghost over the physical / practice pose" @onclick="ToggleGhostAsync">Sim ghost</button>
+            <button type="button" class="po-chip @(_reach ? "active" : string.Empty)" title="Reach cloud for the selected behaviour (dim: everything the chain can reach inside joint limits; bright: what this sweep covers)" @onclick="ToggleReachAsync">Reach</button>
+            <button type="button" class="po-chip @(_sound ? "active" : string.Empty)" title="Spatial audio cues: job start/finish, faults, near-limit ticks while dragging, collision buzz, hot motors" @onclick="ToggleSoundAsync">Sound</button>
+        </div>
+        @if (_info is not null)
+        {
+            <div class="twin-badge">
+                @(_info.Backend == "webgpu" ? "WebGPU" : "WebGL2") · glTF @($"{_info.GlbBytes / 1024.0:0} KB")@(_info.Draco ? " Draco" : string.Empty) · FK @(_info.FkOk ? "✓ MuJoCo" : "✗")
+            </div>
+        }
+        @if (!_ready)
+        {
+            <div class="twin-loading">Loading 3D twin…</div>
+        }
+    }
+</div>
+
+@if (!_failed)
+{
+    <div class="twin-legend">
+        <span><i style="background:#ffbd42"></i>near limit</span>
+        <span><i style="background:#ff5c57"></i>at limit</span>
+        <span><i style="background:#b18cff"></i>sim ≠ real &gt; 2°</span>
+        <span><i style="background:#ff7a1a"></i>motor ≥ 55 °C</span>
+        <span><i style="background:#ff2d55"></i>proposed pose contact</span>
+        <span><i style="background:#3dc7f2"></i>sim ghost</span>
+        <span><i style="background:#ffe066"></i>slider preview</span>
+    </div>
+}
+
+@if (_effectors is { Count: > 0 })
+{
+    <div class="twin-ee">
+        @foreach (var p in _effectors)
+        {
+            <span title="@p.Body (MuJoCo frame, metres; z = height above floor)">
+                <b>@p.Label</b> x @Fmt(p.Position.X) y @Fmt(p.Position.Y) z @Fmt(p.Position.Z)
+            </span>
+        }
+        <span class="po-muted">Silk.NET FK</span>
+    </div>
+}
+
+@code {
+    [Parameter] public double[]? Actual { get; set; }
+    [Parameter] public double[]? Sim { get; set; }
+    [Parameter] public int[]? Temps { get; set; }
+    [Parameter] public bool WantReal { get; set; }
+    [Parameter] public bool RealConnected { get; set; }
+    [Parameter] public string Camera { get; set; } = "iso";
+    [Parameter] public TwinPreview? Preview { get; set; }
+    [Parameter] public string? Job { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, JobResultDto>? Results { get; set; }
+    [Parameter] public string? PrimaryJoint { get; set; }
+    [Parameter] public string Behaviour { get; set; } = "neck_turn";
+    [Parameter] public double Amplitude { get; set; } = 10.0;
+    [Parameter] public string FallbackUrl { get; set; } = "/api/robot/view.png";
+    [Parameter] public EventCallback<TwinFeedback> OnFeedback { get; set; }
+
+    private ElementReference _canvas;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _twin;
+    private TwinInfo? _info;
+    private bool _failed;
+    private bool _ready;
+    private string? _error;
+    private bool _ghost = true;
+    private bool _reach;
+    private bool _sound;
+    private string? _lastCamera;
+    private string? _lastStateJson;
+    private TwinFeedback _feedback = TwinFeedback.Empty;
+    private TwinKinematics? _fk;
+    private IReadOnlyList<EndEffectorPoint>? _effectors;
+
+    private static string Fmt(double v) => v.ToString("+0.00;-0.00;+0.00", CultureInfo.InvariantCulture);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _fk = await Kinematics.GetAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_failed)
+        {
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/twin/twin.js");
+                _twin = await _module.InvokeAsync<IJSObjectReference>("create", _canvas, new Dictionary<string, string> { ["base"] = "twin/" });
+                _ready = true;
+                await RefreshInfoAsync("infoJson");
+                await PushAsync();
+                StateHasChanged();
+                await RefreshInfoAsync("readyJson");
+                StateHasChanged();
+            }
+            catch (JSException ex)
+            {
+                _failed = true;
+                _error = ex.Message.Split('\n')[0];
+                StateHasChanged();
+            }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _effectors = _fk?.EndEffectors(Actual);
+        if (_twin is not null)
+        {
+            await PushAsync();
+        }
+    }
+
+    private async Task RefreshInfoAsync(string method)
+    {
+        if (_twin is null)
+        {
+            return;
+        }
+        var json = await _twin.InvokeAsync<string>(method);
+        _info = JsonSerializer.Deserialize(json, TwinInteropJsonContext.Default.TwinInfo);
+    }
+
+    private async Task PushAsync()
+    {
+        if (_twin is null)
+        {
+            return;
+        }
+        try
+        {
+            if (_lastCamera != Camera)
+            {
+                _lastCamera = Camera;
+                await _twin.InvokeVoidAsync("setCamera", Camera);
+            }
+
+            var state = new TwinState(
+                Actual,
+                Sim,
+                Temps,
+                WantReal ? "real" : "virtual",
+                Preview,
+                Job,
+                Results?.ToDictionary(kv => kv.Key, kv => new TwinJobResult(kv.Value.Ok)),
+                PrimaryJoint,
+                RealConnected,
+                new TwinReach(_reach, Behaviour, Amplitude));
+            var json = JsonSerializer.Serialize(state, TwinInteropJsonContext.Default.TwinState);
+            if (json == _lastStateJson)
+            {
+                return;
+            }
+            _lastStateJson = json;
+            var fbJson = await _twin.InvokeAsync<string>("updateJson", json);
+            var fb = JsonSerializer.Deserialize(fbJson, TwinInteropJsonContext.Default.TwinFeedback) ?? TwinFeedback.Empty;
+            if (!SameFeedback(fb, _feedback))
+            {
+                _feedback = fb;
+                if (OnFeedback.HasDelegate)
+                {
+                    await OnFeedback.InvokeAsync(fb);
+                }
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+    }
+
+    private static bool SameFeedback(TwinFeedback a, TwinFeedback b) =>
+        a.Checked == b.Checked
+        && Math.Abs(a.Limit - b.Limit) < 0.05
+        && a.Self.Select(h => h.A + h.B).SequenceEqual(b.Self.Select(h => h.A + h.B))
+        && a.Stand.Select(h => h.A).SequenceEqual(b.Stand.Select(h => h.A));
+
+    private async Task ToggleGhostAsync()
+    {
+        _ghost = !_ghost;
+        if (_twin is not null)
+        {
+            await _twin.InvokeVoidAsync("setGhost", _ghost);
+        }
+    }
+
+    private async Task ToggleReachAsync()
+    {
+        _reach = !_reach;
+        await PushAsync();
+    }
+
+    private async Task ToggleSoundAsync()
+    {
+        if (_twin is not null)
+        {
+            _sound = await _twin.InvokeAsync<bool>("setSound", !_sound);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_twin is not null)
+            {
+                await _twin.InvokeVoidAsync("dispose");
+                await _twin.DisposeAsync();
+            }
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+    }
+}

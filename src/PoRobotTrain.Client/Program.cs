@@ -15,5 +15,6 @@ builder.Services.AddScoped(_ => new HttpClient
 
 builder.Services.AddRadzenComponents();
 builder.Services.AddScoped<RobotApiClient>();
+builder.Services.AddScoped<TwinKinematicsService>();
 
 await builder.Build().RunAsync();

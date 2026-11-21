@@ -63,7 +63,11 @@ try
     });
 
     app.UseBlazorFrameworkFiles();
-    app.UseStaticFiles();
+    // Browser twin assets (wwwroot/twin/, built by scripts/build_web_twin.py) use types the default provider lacks.
+    var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    contentTypes.Mappings[".glb"] = "model/gltf-binary";
+    contentTypes.Mappings[".onnx"] = "application/octet-stream";
+    app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
     app.UseRouting();
 
     app.MapDiagEndpoints();

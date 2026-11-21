@@ -1,0 +1,549 @@
+// Live 3D R1 stand twin for the Blazor control UI.
+// three.js WebGPURenderer (falls back to WebGL2 automatically) + TSL node materials, Draco glTF exported from the
+// compiled MuJoCo model, Rapier pose checks, WebGPU-compute reach clouds, three-nebula particles, Tone.js cues.
+// It only *displays* poses that MuJoCo / the robot produced (and checks proposed ones); it never simulates.
+import * as THREE from "three/webgpu";
+import { abs, color, dot, float, mix, normalView, positionViewDirection, pow, sin, time, uniform } from "three/tsl";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import * as fk from "./fk.js";
+
+const DRACO_PATH = "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/libs/draco/gltf/";
+const LOOKAT_MJ = [-0.08, 0.0, 0.78];
+// same presets as the server PNG renderer (RobotControl/behaviours/robot_view.py): azimuth, elevation, distance
+const CAMERA_PRESETS = { iso: [136, -14, 2.35], front: [180, -10, 2.25], side: [90, -10, 2.3], back: [25, -14, 2.35] };
+// Head behaviours: the envelope that matters is where the robot can *look*, so the tip is a gaze point 0.3 m in
+// front of the face (+x is forward in the R1 head frame). Arm behaviours use the wrist collider's far end.
+const GAZE_TIP = [0.3, 0, 0];
+const BEHAVIOUR_CHAINS = {
+  neck_turn: { end: "head_yaw_link", primary: "head_yaw_joint", tip: GAZE_TIP },
+  neck_nod: { end: "head_yaw_link", primary: "head_pitch_joint", tip: GAZE_TIP },
+  arm_raise: { end: "right_wrist_roll_link", primary: "right_shoulder_pitch_joint" },
+  hand_wave: { end: "right_wrist_roll_link", primary: "right_shoulder_roll_joint" },
+};
+// Status palette, shared with the joint panel (JointTelemetryPanel.razor)
+const C = {
+  amber: new THREE.Color("#ffbd42"),
+  red: new THREE.Color("#ff5c57"),
+  heat: new THREE.Color("#ff7a1a"),
+  error: new THREE.Color("#b18cff"),
+  hit: new THREE.Color("#ff2d55"),
+  ghostSim: new THREE.Color("#3dc7f2"),
+  ghostPreview: new THREE.Color("#ffe066"),
+};
+
+const mjToThree = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
+
+function limitStatus(j, q) {
+  const span = Math.max(1, j.maxDeg - j.minDeg);
+  const nv = Math.min(1, Math.max(0, (q - j.minDeg) / span));
+  const margin = Math.min(nv, 1 - nv);
+  const degMargin = Math.min(q - j.minDeg, j.maxDeg - q);
+  if (margin < 0.03 && degMargin < 4) return { level: 2, degMargin };
+  if (margin < 0.07 && degMargin < 8) return { level: 1, degMargin };
+  return { level: 0, degMargin };
+}
+
+class Twin {
+  constructor(canvas, opts) {
+    this.canvas = canvas;
+    this.base = opts.base ?? "twin/";
+    this.state = {};
+    this.angles = null; // displayed (smoothed) angles
+    this.target = null;
+    this.ghostTarget = null;
+    this.prevJob = null;
+    this.ghostOn = true;
+    this.reachOn = false;
+    this.feedback = { self: [], stand: [] };
+    this.clock = new THREE.Clock();
+  }
+
+  async init() {
+    const r = new THREE.WebGPURenderer({ canvas: this.canvas, antialias: true });
+    await r.init();
+    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    r.shadowMap.enabled = true;
+    r.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer = r;
+    this.backend = r.backend?.isWebGPUBackend ? "webgpu" : "webgl2";
+
+    const scene = (this.scene = new THREE.Scene());
+    scene.background = new THREE.Color("#0b0f17");
+    scene.fog = new THREE.Fog("#0b0f17", 6, 14);
+    this.camera = new THREE.PerspectiveCamera(45, 1, 0.02, 50);
+    this.controls = new OrbitControls(this.camera, this.canvas);
+    this.controls.enableDamping = true;
+    this.controls.target.copy(mjToThree(LOOKAT_MJ));
+
+    scene.add(new THREE.HemisphereLight("#cfe3ff", "#1a2030", 1.1));
+    const sun = new THREE.DirectionalLight("#ffffff", 2.2);
+    sun.position.set(2.5, 4, 2);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    Object.assign(sun.shadow.camera, { left: -1.5, right: 1.5, top: 2.5, bottom: -0.5, near: 0.5, far: 10 });
+    scene.add(sun);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardNodeMaterial({ color: "#151c2b", roughness: 0.95 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+    const grid = new THREE.GridHelper(12, 48, "#2c3954", "#1d2638");
+    grid.position.y = 0.001;
+    scene.add(grid);
+
+    this.zUp = new THREE.Group();
+    this.zUp.rotation.x = -Math.PI / 2; // MuJoCo z-up -> three.js y-up
+    scene.add(this.zUp);
+
+    const [manifest, gltf] = await Promise.all([
+      fetch(this.base + "twin_manifest.json").then((x) => {
+        if (!x.ok) throw new Error(`twin_manifest.json HTTP ${x.status}`);
+        return x.json();
+      }),
+      this._loadGlb(this.base + "r1_stand.glb"),
+    ]);
+    this.manifest = manifest;
+    this.model = fk.buildModel(manifest);
+    this.fkSelfTest = fk.selfTest(this.model);
+    this.joints = manifest.joints;
+
+    this.robot = this._prepareRobot(gltf.scene);
+    this.zUp.add(this.robot.root);
+    this.ghost = this._makeGhost(gltf.scene);
+    this.zUp.add(this.ghost.root);
+    this._buildStand(manifest.stand);
+    this._buildReachMeshes();
+
+    this.angles = this.joints.map((j) => j.defaultDeg);
+    this._applyPose(this.robot, this.angles);
+    this.setCamera("iso");
+
+    this._resize = new ResizeObserver(() => this._fit());
+    this._resize.observe(this.canvas.parentElement ?? this.canvas);
+    this._fit();
+
+    // optional subsystems load in the background; the robot view does not wait for them
+    this.extras = this._loadExtras();
+    r.setAnimationLoop(() => this._frame());
+    return this.info();
+  }
+
+  async _loadExtras() {
+    const out = {};
+    const tasks = [
+      import("./particles.js").then((m) => (this.particles = new m.TwinParticles(THREE, this.scene))),
+      import("./collide.js").then((m) => m.createChecker(this.model)).then((c) => (this.checker = c)),
+      import("./audio.js").then((m) => (this.audio = m)),
+      import("./reach.js").then((m) => (this.reach = m)),
+    ];
+    const names = ["particles", "rapier", "audio", "reach"];
+    (await Promise.allSettled(tasks)).forEach((r, i) => {
+      out[names[i]] = r.status === "fulfilled" ? "ok" : String(r.reason?.message ?? r.reason);
+      if (r.status === "rejected") console.warn(`[twin] ${names[i]} unavailable`, r.reason);
+    });
+    this.extrasStatus = out;
+    return out;
+  }
+
+  _loadGlb(url) {
+    const draco = new DRACOLoader().setDecoderPath(DRACO_PATH);
+    const loader = new GLTFLoader().setDRACOLoader(draco);
+    return loader.loadAsync(url);
+  }
+
+  _statusMaterial(src) {
+    const base = src.color?.clone() ?? new THREE.Color("#c8ccd4");
+    const uStatus = uniform(new THREE.Color(0, 0, 0));
+    const uAmt = uniform(0);
+    const m = new THREE.MeshStandardNodeMaterial({ metalness: src.metalness ?? 0.35, roughness: src.roughness ?? 0.45 });
+    const rim = pow(float(1).sub(abs(dot(normalView, positionViewDirection))), 2.5);
+    const pulse = sin(time.mul(5)).mul(0.2).add(0.8);
+    m.colorNode = mix(color(base), uStatus, uAmt.mul(0.6));
+    m.emissiveNode = uStatus.mul(uAmt).mul(rim.mul(1.4).add(0.25)).mul(pulse);
+    return { m, uStatus, uAmt };
+  }
+
+  _prepareRobot(root) {
+    const bodies = new Map();
+    for (const b of this.manifest.bodies) {
+      const node = root.getObjectByName(b.name);
+      if (!node) throw new Error(`glb is missing body node ${b.name}`);
+      const status = { uStatus: null, uAmt: null, mats: [] };
+      node.children.forEach((child) => {
+        child.traverse((o) => {
+          if (!o.isMesh) return;
+          const s = this._statusMaterial(o.material);
+          o.material = s.m;
+          o.castShadow = true;
+          status.mats.push(s);
+        });
+      });
+      bodies.set(b.name, { node, q0: node.quaternion.clone(), joint: b.joint, status });
+    }
+    return { root, bodies };
+  }
+
+  _makeGhost(src) {
+    const root = src.clone(true);
+    const uColor = uniform(C.ghostSim.clone());
+    const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+    const rim = pow(float(1).sub(abs(dot(normalView, positionViewDirection))), 2.0);
+    m.colorNode = uColor;
+    m.opacityNode = rim.mul(0.75).add(0.08);
+    root.traverse((o) => {
+      if (o.isMesh) {
+        o.material = m;
+        o.castShadow = false;
+        o.renderOrder = 2;
+      }
+    });
+    const bodies = new Map();
+    for (const b of this.manifest.bodies) {
+      const node = root.getObjectByName(b.name);
+      bodies.set(b.name, { node, q0: node.quaternion.clone(), joint: b.joint });
+    }
+    root.visible = false;
+    return { root, bodies, uColor };
+  }
+
+  _buildStand(stand) {
+    const mat = new THREE.MeshStandardNodeMaterial({ color: "#5b6273", metalness: 0.6, roughness: 0.4 });
+    for (const s of stand) {
+      let g = null;
+      if (s.type === "box") g = new THREE.BoxGeometry(2 * s.size[0], 2 * s.size[1], 2 * s.size[2]);
+      else if (s.type === "capsule") g = new THREE.CapsuleGeometry(s.size[0], 2 * s.size[1], 4, 12).rotateX(Math.PI / 2);
+      else if (s.type === "cylinder") g = new THREE.CylinderGeometry(s.size[0], s.size[0], 2 * s.size[1], 16).rotateX(Math.PI / 2);
+      else if (s.type === "sphere") g = new THREE.SphereGeometry(s.size[0], 16, 12);
+      if (!g) continue;
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.position.set(...s.pos);
+      mesh.quaternion.set(...s.quat);
+      mesh.castShadow = true;
+      this.zUp.add(mesh);
+    }
+  }
+
+  _buildReachMeshes() {
+    const geo = new THREE.IcosahedronGeometry(0.0045, 0);
+    const mk = (n, col, opacity) => {
+      const m = new THREE.MeshBasicNodeMaterial({ color: col, transparent: true, opacity, depthWrite: false });
+      const mesh = new THREE.InstancedMesh(geo, m, n);
+      mesh.count = 0;
+      mesh.frustumCulled = false;
+      mesh.visible = false;
+      this.zUp.add(mesh);
+      return mesh;
+    };
+    this.reachFull = mk(16384, "#6366f1", 0.22);
+    this.reachSweep = mk(1024, "#ffe066", 0.95);
+  }
+
+  _applyPose(rig, qDeg) {
+    const tmp = new THREE.Quaternion();
+    const axis = new THREE.Vector3();
+    for (const b of rig.bodies.values()) {
+      if (b.joint == null) continue;
+      const j = this.joints[b.joint];
+      axis.set(...j.axis);
+      tmp.setFromAxisAngle(axis, (qDeg[b.joint] ?? j.defaultDeg) * fk.DEG);
+      b.node.quaternion.copy(b.q0).multiply(tmp);
+    }
+  }
+
+  _fit() {
+    const el = this.canvas.parentElement ?? this.canvas;
+    const w = Math.max(1, el.clientWidth);
+    const h = Math.max(1, el.clientHeight);
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
+
+  _jointWorld(i, rig = this.robot) {
+    const body = this.joints[i]?.body;
+    const b = body && rig.bodies.get(body);
+    return b ? b.node.getWorldPosition(new THREE.Vector3()) : null;
+  }
+
+  _frame() {
+    const dt = Math.min(0.1, this.clock.getDelta());
+    if (this.target) {
+      const k = 1 - Math.exp(-dt / 0.12); // poll is ~350 ms; ease so motion reads as continuous
+      this.angles = this.angles.map((a, i) => (this.target[i] == null ? a : a + (this.target[i] - a) * k));
+      this._applyPose(this.robot, this.angles);
+    }
+    this.controls.update();
+    this.particles?.tick(dt);
+    if (this.audio?.isEnabled()) {
+      const fwd = this.camera.getWorldDirection(new THREE.Vector3());
+      this.audio.setListener(this.camera.position, fwd, this.camera.up);
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // ------------------------------------------------------------------ API used from Blazor
+  setCamera(name) {
+    const p = CAMERA_PRESETS[name] ?? CAMERA_PRESETS.iso;
+    const az = p[0] * fk.DEG;
+    const el = p[1] * fk.DEG;
+    const fwd = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
+    const pos = LOOKAT_MJ.map((v, i) => v - p[2] * fwd[i]);
+    this.camera.position.copy(mjToThree(pos));
+    this.controls.target.copy(mjToThree(LOOKAT_MJ));
+    this.controls.update();
+  }
+
+  setGhost(on) {
+    this.ghostOn = !!on;
+    this._refreshGhost();
+  }
+
+  async setSound(on) {
+    await this.extras;
+    if (!this.audio) return false;
+    return this.audio.setEnabled(!!on);
+  }
+
+  info() {
+    return {
+      backend: this.backend,
+      fkOk: this.fkSelfTest?.ok ?? false,
+      fkMaxPosMm: (this.fkSelfTest?.maxPosM ?? NaN) * 1000,
+      extras: this.extrasStatus ?? null,
+      glbBytes: this.manifest?.glb?.bytes ?? 0,
+      draco: this.manifest?.glb?.draco ?? false,
+    };
+  }
+
+  async ready() {
+    await this.extras;
+    return this.info();
+  }
+
+  /**
+   * state: { actual: number[26]|null, sim: number[26]|null, temps: number[26]|null, mode: 'real'|'virtual',
+   *          preview: { index, deg }|null, job: string|null, results: {job: {ok}}, primaryJoint: string|null,
+   *          reach: { on, behaviour, amplitude }|null }
+   * Returns feedback for the proposed (preview) pose: { self: [...], stand: [...], limit }.
+   */
+  update(state) {
+    this.state = state ?? {};
+    const actual = this.state.actual && this.state.actual.length >= this.joints.length ? this.state.actual : null;
+    this.target = actual ?? this.joints.map((j) => j.defaultDeg);
+    if (!actual && this.angles) this.target = [...this.angles];
+    const cur = actual ?? this.angles;
+
+    // proposed pose while a slider is dragged
+    let preview = null;
+    let feedback = { self: [], stand: [], limit: 0, checked: false };
+    if (this.state.preview && Number.isInteger(this.state.preview.index)) {
+      preview = [...cur];
+      preview[this.state.preview.index] = this.state.preview.deg;
+      if (this.checker) {
+        const res = this.checker.check(preview);
+        const toPoint = (h) => ({ ...h, point: undefined });
+        feedback = { self: res.self.map(toPoint), stand: res.stand.map(toPoint), checked: true };
+        const firstHit = res.self[0] ?? res.stand[0];
+        if (firstHit) {
+          const at = this.zUp.localToWorld(new THREE.Vector3(...firstHit.point));
+          this.particles?.sparks(at);
+          this.audio?.cue("collision", at);
+        }
+        this._hitBodies = new Set([...res.self.flatMap((h) => [h.a, h.b]), ...res.stand.map((h) => h.a)]);
+      }
+      const j = this.joints[this.state.preview.index];
+      const ls = limitStatus(j, this.state.preview.deg);
+      feedback.limit = ls.degMargin < 15 ? 1 - Math.max(0, ls.degMargin) / 15 : 0;
+      if (feedback.limit > 0) this.audio?.cue("limit", this._jointWorld(this.state.preview.index), feedback.limit);
+    } else {
+      this._hitBodies = null;
+    }
+    this.previewPose = preview;
+    this.feedback = feedback;
+    this._refreshGhost();
+    this._refreshStatus(cur);
+    this._jobCues();
+    this._refreshHeat();
+    this._refreshReach(cur);
+    return feedback;
+  }
+
+  _refreshGhost() {
+    const g = this.ghost;
+    if (!g) return;
+    if (this.previewPose) {
+      g.uColor.value.copy(C.ghostPreview);
+      this._applyPose(g, this.previewPose);
+      g.root.visible = true;
+      return;
+    }
+    const sim = this.state.sim;
+    const showSim = this.ghostOn && this.state.mode === "real" && sim && sim.length >= this.joints.length;
+    if (showSim) {
+      g.uColor.value.copy(C.ghostSim);
+      this._applyPose(g, sim);
+    }
+    g.root.visible = !!showSim;
+  }
+
+  _refreshStatus(cur) {
+    const temps = this.state.temps;
+    const sim = this.state.mode === "real" ? this.state.sim : null;
+    for (const [name, b] of this.robot.bodies) {
+      let col = null;
+      let amt = 0;
+      if (this._hitBodies?.has(name)) {
+        col = C.hit;
+        amt = 1;
+      } else if (b.joint != null) {
+        const j = this.joints[b.joint];
+        const q = cur[b.joint];
+        const ls = limitStatus(j, q);
+        const t = temps?.[b.joint];
+        const err = sim && Number.isFinite(sim[b.joint]) ? Math.abs(sim[b.joint] - q) : 0;
+        if (ls.level === 2) [col, amt] = [C.red, 0.9];
+        else if (t != null && t >= 55) [col, amt] = [C.heat, Math.min(1, 0.4 + (t - 55) / 20)];
+        else if (err > 2) [col, amt] = [C.error, Math.min(1, 0.3 + (err - 2) / 6)];
+        else if (ls.level === 1) [col, amt] = [C.amber, 0.55];
+      }
+      for (const s of b.status.mats) {
+        if (col) s.uStatus.value.copy(col);
+        s.uAmt.value = amt;
+      }
+    }
+  }
+
+  _jobCues() {
+    const job = this.state.job || null;
+    const prev = this.prevJob;
+    if (job === prev) return;
+    this.prevJob = job;
+    const real = this.state.realConnected;
+    if (job && !prev) {
+      if (job === "preview") this.audio?.cue("virtualStart");
+      else if (job === "run") this.audio?.cue(real ? "realStart" : "practiceStart");
+      this.audio?.setPowered(job === "run" && real);
+    }
+    if (prev && !job) {
+      this.audio?.setPowered(false);
+      if (!["preview", "run", "check"].includes(prev)) return;
+      const res = this.state.results?.[prev];
+      if (!res) return;
+      const pj = this.joints.findIndex((j) => j.name === this.state.primaryJoint);
+      const at = pj >= 0 ? this._jointWorld(pj) : null;
+      if (res.ok) this.audio?.cue("ok", at);
+      else {
+        this.audio?.cue("fail", at);
+        if (at) this.particles?.fault(at);
+      }
+    }
+  }
+
+  _refreshHeat() {
+    if (!this.particles) return;
+    const temps = this.state.mode === "real" ? this.state.temps : null;
+    const pos = this.joints.map((_, i) => (temps?.[i] >= 55 ? this._jointWorld(i) : null));
+    this.particles.setHeat(temps, pos, 55);
+    if (temps?.some((t) => t >= 65)) this.audio?.cue("hot");
+  }
+
+  _refreshReach(cur) {
+    const r = this.state.reach;
+    const on = !!(r && r.on && BEHAVIOUR_CHAINS[r.behaviour] && this.reach);
+    this.reachFull.visible = on;
+    this.reachSweep.visible = on;
+    if (!on) {
+      this._reachKey = null;
+      return;
+    }
+    const key = `${r.behaviour}|${r.amplitude}|${cur.map((v) => Math.round(v)).join(",")}`;
+    if (key === this._reachKey || this._reachBusy) return;
+    this._reachKey = key;
+    this._reachBusy = true;
+    this._computeReach(r, cur)
+      .catch((e) => console.warn("[twin] reach failed", e))
+      .finally(() => (this._reachBusy = false));
+  }
+
+  async _computeReach(r, cur) {
+    const spec = BEHAVIOUR_CHAINS[r.behaviour];
+    const { root, links } = fk.chainTo(this.model, spec.end);
+    const rootPose = fk.forward(this.model, cur).get(root);
+    const tip = spec.tip ?? fk.tipOffset(this.model, spec.end);
+    const mkLinks = (sweepOnly) =>
+      links.map((b) => {
+        const j = this.joints[b.joint];
+        let lo = j.minDeg;
+        let hi = j.maxDeg;
+        if (sweepOnly) {
+          const c = cur[b.joint];
+          if (j.name === spec.primary) {
+            lo = Math.max(j.minDeg, c - r.amplitude);
+            hi = Math.min(j.maxDeg, c + r.amplitude);
+          } else {
+            lo = hi = c;
+          }
+        }
+        return { pos: b.pos, quat: b.quat, axis: b.axis, lo, hi };
+      });
+    const full = await this.reach.computeReach({ root: rootPose, links: mkLinks(false), tip, count: this.reachFull.instanceMatrix.count, seed: 1 });
+    const sweep = await this.reach.computeReach({ root: rootPose, links: mkLinks(true), tip, count: this.reachSweep.instanceMatrix.count, seed: 2 });
+    this._fillCloud(this.reachFull, full.points);
+    this._fillCloud(this.reachSweep, sweep.points);
+    this.reachInfo = { backend: full.backend, ms: full.ms + sweep.ms, samples: full.points.length / 4 + sweep.points.length / 4 };
+    if (!this.reachChecked) {
+      this.reachChecked = true;
+      this.reachSelfTest = await this.reach.selfTest({ root: rootPose, links: mkLinks(false), tip, count: 256, seed: 3 });
+    }
+  }
+
+  _fillCloud(mesh, pts) {
+    const m = new THREE.Matrix4();
+    const n = pts.length / 4;
+    for (let i = 0; i < n; i++) {
+      m.makeTranslation(pts[i * 4], pts[i * 4 + 1], pts[i * 4 + 2]);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  diagnostics() {
+    return {
+      ...this.info(),
+      reach: this.reachInfo ?? null,
+      reachSelfTest: this.reachSelfTest ?? null,
+      rapierPairs: this.checker?.pairs.length ?? 0,
+    };
+  }
+
+  // JSON-string entry points for Blazor (source-generated, trim-safe serialisation on the .NET side)
+  updateJson(json) {
+    return JSON.stringify(this.update(JSON.parse(json)));
+  }
+
+  infoJson() {
+    return JSON.stringify(this.info());
+  }
+
+  async readyJson() {
+    return JSON.stringify(await this.ready());
+  }
+
+  dispose() {
+    this.renderer?.setAnimationLoop(null);
+    this._resize?.disconnect();
+    this.audio?.setPowered(false);
+    this.particles?.dispose();
+    this.controls?.dispose();
+    this.renderer?.dispose();
+  }
+}
+
+export async function create(canvas, opts) {
+  const t = new Twin(canvas, opts ?? {});
+  await t.init();
+  if (new URLSearchParams(location.search).has("twindebug")) globalThis.__poTwin = t; // test/debug hook only
+  return t;
+}

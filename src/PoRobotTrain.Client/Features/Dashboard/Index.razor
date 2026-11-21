@@ -1,6 +1,7 @@
 @page "/"
 @implements IDisposable
 @inject RobotApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>R1 Stand Explore — PoRobotTrain</PageTitle>
 
@@ -48,6 +49,8 @@
                 }
             </div>
         </div>
+        <AssistantBox Behaviours="Behaviours" ArmUnlocked="_armUnlocked" OnSelectBehaviour="ApplySuggestion" OnShowJoint="ShowJointAsync" />
+
         <div class="ctrl-top" style="align-items:center">
             <div class="po-muted">@ActiveDesc</div>
             <label class="po-muted" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
@@ -163,7 +166,8 @@
     </section>
 
     <section>
-        <JointTelemetryPanel Status="_status" IsIdle="IsIdle" PracticeActive="PracticeActive" OnReadPhysical="SnapshotAsync" OnMoveJoint="MoveJointAsync" />
+        <JointTelemetryPanel Status="_status" IsIdle="IsIdle" PracticeActive="PracticeActive" OnReadPhysical="SnapshotAsync" OnMoveJoint="MoveJointAsync"
+                             SelectedBehaviour="@_selectedBehaviour" SelectedAmplitude="EffectiveAmplitude" HighlightJoint="@_highlightJoint" />
     </section>
 </div>
 
@@ -333,6 +337,33 @@
 
     private void SelectBehaviour(string id) => _selectedBehaviour = id;
     private void SelectAmplitude(double amp) => _selectedAmp = amp;
+
+    private string? _highlightJoint;
+
+    private double EffectiveAmplitude =>
+        Math.Min(_selectedAmp, (Behaviours.FirstOrDefault(b => b.Id == _selectedBehaviour) ?? Behaviours[0]).MaxDeg);
+
+    // Assistant suggestions only change the selection (same rules as clicking the chips); they never start a job.
+    private void ApplySuggestion((string Behaviour, double? Amplitude) s)
+    {
+        if (!IsIdle || (IsArmBehaviour(s.Behaviour) && !_armUnlocked))
+        {
+            _toast = IsIdle ? "Tick 'Unlock arm motions' to select an arm behaviour." : "Wait until the current job finishes.";
+            return;
+        }
+        _selectedBehaviour = s.Behaviour;
+        if (s.Amplitude is double a)
+        {
+            _selectedAmp = a;
+        }
+        _toast = $"Selected {s.Behaviour} ({_selectedAmp:0}°). Run Step 1 (virtual) next.";
+    }
+
+    private async Task ShowJointAsync(string joint)
+    {
+        _highlightJoint = joint;
+        await JS.InvokeVoidAsync("poScrollIntoView", $"joint-{joint}");
+    }
 
     private async Task PreviewAsync(string target)
     {

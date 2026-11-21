@@ -1,0 +1,182 @@
+@using SkiaSharp
+@using SkiaSharp.Views.Blazor
+
+@* 26-joint history strip drawn with SkiaSharp: one row per joint (policy order, grouped), one column per
+   telemetry sample. Shows at a glance which joints moved, which approached their limits, and where the
+   virtual sim and the physical / practice robot disagreed during a run. *@
+<div class="hist-card">
+    <div class="sec-hdr">
+        <div>
+            <strong style="font-size:14px">JOINT HISTORY</strong>
+            <span class="po-muted" style="margin-left:8px">@SourceLabel · last @_count of @Capacity samples</span>
+        </div>
+        <div class="size-row">
+            <button type="button" class="po-chip @(_mode == HistMode.Position ? "active" : string.Empty)" @onclick="() => SetMode(HistMode.Position)">Position</button>
+            <button type="button" class="po-chip @(_mode == HistMode.Margin ? "active" : string.Empty)" @onclick="() => SetMode(HistMode.Margin)">Limit margin</button>
+            <button type="button" class="po-chip @(_mode == HistMode.Error ? "active" : string.Empty)" disabled="@(!_anyError)" title="Needs both a virtual run and a physical / practice reading" @onclick="() => SetMode(HistMode.Error)">Sim − real</button>
+            <button type="button" class="po-chip" @onclick="Clear">Clear</button>
+        </div>
+    </div>
+    <div class="hist-body">
+        <div class="hist-labels" style="height:@(RowsHeight)px">
+            @foreach (var g in RobotJointCatalog.GroupOrder)
+            {
+                var n = RobotJointCatalog.All.Count(j => j.Group == g.Group);
+                <div style="height:@(n * RowH)px;border-left:3px solid @g.ColorHex;color:@g.ColorHex">@g.Title</div>
+            }
+        </div>
+        <SKCanvasView @ref="_view" OnPaintSurface="OnPaint" class="hist-canvas" style="@($"height:{RowsHeight}px")" />
+    </div>
+    <div class="hist-scale">@ScaleText</div>
+</div>
+
+@code {
+    private const int Capacity = 240;
+    private const int RowH = 9;
+    private const int Rows = 26;
+
+    private enum HistMode { Position, Margin, Error }
+
+    [Parameter] public double[]? Actual { get; set; }
+    [Parameter] public double[]? Sim { get; set; }
+    [Parameter] public double? SampleTime { get; set; }
+    [Parameter] public string SourceLabel { get; set; } = "";
+
+    private SKCanvasView? _view;
+    private readonly double[][] _q = new double[Capacity][];
+    private readonly double[]?[] _err = new double[Capacity][];
+    private int _head;
+    private int _count;
+    private double? _lastT;
+    private string? _lastKey;
+    private HistMode _mode = HistMode.Position;
+    private bool _anyError;
+
+    private static int RowsHeight => Rows * RowH;
+
+    // row order: group order used by the panel, then policy order inside a group
+    private static readonly int[] RowJoint = RobotJointCatalog.GroupOrder
+        .SelectMany(g => RobotJointCatalog.All.Where(j => j.Group == g.Group).Select(j => j.PolicyIndex))
+        .ToArray();
+
+    private string ScaleText => _mode switch
+    {
+        HistMode.Position => "colour = angle inside its r1_joint_map.yaml range (blue = min, white = default, orange = max)",
+        HistMode.Margin => "colour = distance to the nearest limit (green ≥ 25°, amber < 8°, red < 4°)",
+        _ => "colour = |virtual sim − physical/practice| (black 0°, violet 2°, white ≥ 8°)",
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (Actual is not { Length: >= Rows })
+        {
+            return;
+        }
+        var key = SampleTime?.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ?? string.Join(',', Actual.Select(v => Math.Round(v, 1)));
+        if (key == _lastKey && SampleTime == _lastT)
+        {
+            return;
+        }
+        _lastKey = key;
+        _lastT = SampleTime;
+        _q[_head] = (double[])Actual.Clone();
+        _err[_head] = Sim is { Length: >= Rows } s ? Actual.Select((v, i) => Math.Abs(v - s[i])).ToArray() : null;
+        _anyError |= _err[_head] is not null;
+        _head = (_head + 1) % Capacity;
+        _count = Math.Min(Capacity, _count + 1);
+        _view?.Invalidate();
+    }
+
+    private void SetMode(HistMode m)
+    {
+        _mode = m;
+        _view?.Invalidate();
+    }
+
+    private void Clear()
+    {
+        _count = 0;
+        _head = 0;
+        _anyError = false;
+        _view?.Invalidate();
+    }
+
+    private void OnPaint(SKPaintSurfaceEventArgs e)
+    {
+        var canvas = e.Surface.Canvas;
+        var info = e.Info;
+        canvas.Clear(new SKColor(0x0a, 0x0c, 0x10));
+        if (_count == 0)
+        {
+            return;
+        }
+
+        var rowH = info.Height / (float)Rows;
+        var colW = info.Width / (float)Capacity;
+        using var paint = new SKPaint { IsAntialias = false };
+        for (var c = 0; c < _count; c++)
+        {
+            var idx = (_head - _count + c + Capacity) % Capacity;
+            var q = _q[idx];
+            var err = _err[idx];
+            var x = info.Width - (_count - c) * colW;
+            for (var r = 0; r < Rows; r++)
+            {
+                var j = RobotJointCatalog.All[RowJoint[r]];
+                paint.Color = _mode switch
+                {
+                    HistMode.Position => PositionColor(j, q[j.PolicyIndex]),
+                    HistMode.Margin => MarginColor(j, q[j.PolicyIndex]),
+                    _ => err is null ? new SKColor(0x15, 0x18, 0x20) : ErrorColor(err[j.PolicyIndex]),
+                };
+                canvas.DrawRect(x, r * rowH, colW + 0.6f, rowH - 0.8f, paint);
+            }
+        }
+
+        // group separators
+        using var sep = new SKPaint { Color = new SKColor(255, 255, 255, 40), StrokeWidth = 1 };
+        var row = 0;
+        foreach (var g in RobotJointCatalog.GroupOrder)
+        {
+            row += RobotJointCatalog.All.Count(j => j.Group == g.Group);
+            canvas.DrawLine(0, row * rowH - 0.4f, info.Width, row * rowH - 0.4f, sep);
+        }
+    }
+
+    private static SKColor Lerp(SKColor a, SKColor b, double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        return new SKColor(
+            (byte)(a.Red + (b.Red - a.Red) * t),
+            (byte)(a.Green + (b.Green - a.Green) * t),
+            (byte)(a.Blue + (b.Blue - a.Blue) * t));
+    }
+
+    private static readonly SKColor Blue = new(0x3d, 0xc7, 0xf2);
+    private static readonly SKColor White = new(0xee, 0xf1, 0xf7);
+    private static readonly SKColor Orange = new(0xff, 0x9c, 0x47);
+    private static readonly SKColor Green = new(0x2f, 0x9e, 0x63);
+    private static readonly SKColor Amber = new(0xff, 0xbd, 0x42);
+    private static readonly SKColor Red = new(0xff, 0x5c, 0x57);
+    private static readonly SKColor Violet = new(0xb1, 0x8c, 0xff);
+    private static readonly SKColor Black = new(0x10, 0x12, 0x18);
+
+    private static SKColor PositionColor(JointSpec j, double q)
+    {
+        if (q <= j.DefaultDeg)
+        {
+            return Lerp(Blue, White, (q - j.MinDeg) / Math.Max(1e-6, j.DefaultDeg - j.MinDeg));
+        }
+        return Lerp(White, Orange, (q - j.DefaultDeg) / Math.Max(1e-6, j.MaxDeg - j.DefaultDeg));
+    }
+
+    private static SKColor MarginColor(JointSpec j, double q)
+    {
+        var m = Math.Min(q - j.MinDeg, j.MaxDeg - q);
+        return m < 4 ? Red : m < 8 ? Amber : Lerp(Amber, Green, (m - 8) / 17.0);
+    }
+
+    private static SKColor ErrorColor(double e) =>
+        e < 2 ? Lerp(Black, Violet, e / 2) : Lerp(Violet, White, (e - 2) / 6);
+}
