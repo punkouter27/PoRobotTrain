@@ -14,8 +14,8 @@ Safety contract:
 from __future__ import annotations
 
 import json
-import threading
 import math
+import threading
 import time
 from pathlib import Path
 from typing import Optional

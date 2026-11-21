@@ -50,8 +50,8 @@ from urllib.parse import parse_qs, urlparse
 from .. import LOGS_DIR, PROJECT_ROOT
 from ..configs.joint_map import JointMap
 from ..configs.sim_calibration import SimCalibration
-from .mirror import ROBOT, ROBOT_DIR, UnrealMirror, robot_stream
 from .console import Console
+from .mirror import ROBOT, ROBOT_DIR, UnrealMirror, robot_stream
 from .move_joint import validate_move_request
 from .robot_view import StandRenderer
 from .stand_behaviours import BEHAVIOUR_SPECS

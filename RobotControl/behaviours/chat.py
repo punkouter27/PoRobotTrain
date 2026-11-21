@@ -35,7 +35,7 @@ class ChatAssistant:
         self.ctx = ctx
         self.interpret = interpret
         self.poses = poses
-        self.sessions: "collections.OrderedDict[str, dict]" = collections.OrderedDict()
+        self.sessions: collections.OrderedDict[str, dict] = collections.OrderedDict()
         self._lock = threading.Lock()
 
     # ---------------------------------------------------------------- memory
