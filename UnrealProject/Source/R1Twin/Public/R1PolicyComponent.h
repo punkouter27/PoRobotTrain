@@ -156,6 +156,15 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category = "R1|State")
 	float LastInferenceMs = 0.f;
 
+	/** This episode's reward penalty terms that the twin can measure (action rate + joint velocity, weights from
+	 *  UR1RewardConfig): what the diagnostics overlay shows as the episode reward. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category = "R1|State")
+	float EpisodePenalty = 0.f;
+
+	/** Name of the loaded policy model (the overlay's curriculum line). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category = "R1|State")
+	FString ModelName;
+
 	/** Rolling profile window (reset every PerfLogPeriodS). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "R1|Debug")
 	float PerfLogPeriodS = 5.f;
@@ -193,6 +202,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	void ReportShowcase();
 	bool ResolveConfig();
 	bool CreateBridge();
 	bool LoadModel();

@@ -7,7 +7,9 @@ UnrealProject/Binaries/
 UnrealProject/Intermediate/
 UnrealProject/Saved/
 UnrealProject/DerivedDataCache/
-UnrealProject/Plugins/UnrealRoboticsLab/
+# URLab is vendored in UnrealProject/Plugins/UnrealRoboticsLab (tracked); only its build output is ignored
+UnrealProject/Plugins/*/Binaries/
+UnrealProject/Plugins/*/Intermediate/
 *.onnx.data
 vendor/
 dist/
