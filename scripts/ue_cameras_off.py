@@ -1,5 +1,7 @@
 """Runs inside the editor during PIE: stop per-frame scene captures (robot head camera) when no consumer needs them."""
+
 import unreal
+
 w = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_game_world()
 n = 0
 for a in unreal.GameplayStatics.get_all_actors_of_class(w, unreal.Actor):

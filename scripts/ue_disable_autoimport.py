@@ -1,5 +1,7 @@
 """Runs inside the editor: stop the content-directory monitor from auto-importing URLab's generated *_ue.xml files."""
+
 import unreal
+
 s = unreal.get_default_object(unreal.EditorLoadingSavingSettings)
 for prop in ("monitor_content_directories", "auto_reimport_textures", "auto_reimport_csv"):
     try:

@@ -7,6 +7,7 @@ kp * |target - q| never exceeds the motor's effort limit (0.86 Nm for head yaw).
 Aborts (returns None, see ``abort_reason``) on: start not within --start-tol of straight ahead (refuses to
 start), tracking error > max_err for > 0.3 s, head beyond A + 15 deg, stale state, non-finite state.
 """
+
 from __future__ import annotations
 
 import math
@@ -20,9 +21,9 @@ HEAD_YAW = "head_yaw_joint"
 class SweepParams:
     amplitude_deg: float = 10.0
     freq_hz: float = 0.2
-    duration_s: float = 20.0      # sweeping time, excluding centre and fades
-    centre_s: float = 2.0         # move from the start angle to 0
-    fade_s: float = 2.0           # amplitude fade in / out
+    duration_s: float = 20.0  # sweeping time, excluding centre and fades
+    centre_s: float = 2.0  # move from the start angle to 0
+    fade_s: float = 2.0  # amplitude fade in / out
     start_tol_deg: float = 10.0
     max_err_deg: float = 12.0
     max_err_time_s: float = 0.3
@@ -42,15 +43,23 @@ def _smoothstep(x: float) -> float:
 class HeadSweepController:
     """Pure logic for one joint: target trajectory + abort checks."""
 
-    def __init__(self, params: SweepParams, kp: float, kd: float, effort: float, q_lo: float, q_hi: float,
-                 check_tracking: bool = True):
+    def __init__(
+        self,
+        params: SweepParams,
+        kp: float,
+        kd: float,
+        effort: float,
+        q_lo: float,
+        q_hi: float,
+        check_tracking: bool = True,
+    ):
         if not 0.0 < params.amplitude_deg <= params.max_amplitude_deg:
             raise ValueError(f"amplitude must be in (0, {params.max_amplitude_deg}] deg")
         self.p = params
         self.kp, self.kd, self.effort = float(kp), float(kd), float(effort)
         self.q_lo, self.q_hi = float(q_lo), float(q_hi)
         self.A = math.radians(params.amplitude_deg)
-        self.check_tracking = check_tracking   # off in read-only runs, where the head cannot follow
+        self.check_tracking = check_tracking  # off in read-only runs, where the head cannot follow
         self.q0: Optional[float] = None
         self._err_since: Optional[float] = None
         self.abort_reason: Optional[str] = None
@@ -61,7 +70,8 @@ class HeadSweepController:
         if abs(q0) > math.radians(self.p.start_tol_deg):
             raise RuntimeError(
                 f"head yaw is {math.degrees(q0):+.1f} deg; turn the head to face straight ahead by hand "
-                f"(within +-{self.p.start_tol_deg:.0f} deg) and run again")
+                f"(within +-{self.p.start_tol_deg:.0f} deg) and run again"
+            )
         self.q0 = q0
 
     def phase(self, t: float) -> str:
@@ -96,11 +106,13 @@ class HeadSweepController:
         if self.check_tracking and abs(target - q) > math.radians(self.p.max_err_deg):
             self._err_since = t if self._err_since is None else self._err_since
             if t - self._err_since > self.p.max_err_time_s:
-                return self._abort(f"tracking error {math.degrees(target - q):+.1f} deg for "
-                                   f">{self.p.max_err_time_s} s (head not following: wrong direction or blocked)")
+                return self._abort(
+                    f"tracking error {math.degrees(target - q):+.1f} deg for "
+                    f">{self.p.max_err_time_s} s (head not following: wrong direction or blocked)"
+                )
         else:
             self._err_since = None
-        band = self.effort / self.kp          # torque limit: kp * |target - q| <= effort
+        band = self.effort / self.kp  # torque limit: kp * |target - q| <= effort
         target = min(max(target, q - band), q + band)
         return min(max(target, self.q_lo), self.q_hi)
 
@@ -120,8 +132,15 @@ class NeckTurn:
 
     def __init__(self, joint_map, params: SweepParams, check_tracking: bool = True):
         i = joint_map.index_of(HEAD_YAW)
-        self.ctl = HeadSweepController(params, joint_map.kp[i], joint_map.kd[i], joint_map.effort[i],
-                                       joint_map.limits_lo[i], joint_map.limits_hi[i], check_tracking)
+        self.ctl = HeadSweepController(
+            params,
+            joint_map.kp[i],
+            joint_map.kd[i],
+            joint_map.effort[i],
+            joint_map.limits_lo[i],
+            joint_map.limits_hi[i],
+            check_tracking,
+        )
 
     @property
     def duration_s(self) -> float:
@@ -147,5 +166,7 @@ class NeckTurn:
 
     def describe(self) -> str:
         p = self.ctl.p
-        return (f"neck turn +-{p.amplitude_deg:.0f} deg at {p.freq_hz} Hz for {p.duration_s:.0f} s "
-                f"(total {p.total_s:.0f} s)")
+        return (
+            f"neck turn +-{p.amplitude_deg:.0f} deg at {p.freq_hz} Hz for {p.duration_s:.0f} s "
+            f"(total {p.total_s:.0f} s)"
+        )

@@ -1,4 +1,5 @@
 """Loader and MuJoCo helpers for ``sim_calibration.yaml`` (sim-to-real digital twin fidelity)."""
+
 from __future__ import annotations
 
 import math
@@ -56,7 +57,7 @@ class SimCalibration:
     source_path: Optional[Path] = None
 
     @classmethod
-    def load(cls, path: Optional[str | Path] = None, jm: Optional[JointMap] = None) -> "SimCalibration":
+    def load(cls, path: Optional[str | Path] = None, jm: Optional[JointMap] = None) -> SimCalibration:
         jm = jm or JointMap.load()
         p = Path(path) if path is not None else DEFAULT_CALIBRATION_PATH
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}

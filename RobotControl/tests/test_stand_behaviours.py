@@ -1,4 +1,5 @@
 """Stand-safe upper-body behaviours and telemetry extraction."""
+
 import math
 import tempfile
 import types
@@ -6,18 +7,19 @@ import types
 import pytest
 
 from robotcontrol.behaviours.backends import RealBackend, extract_lowstate_telemetry
-from robotcontrol.behaviours.move_joint import MoveJoint, main as move_joint_main, validate_move_request
+from robotcontrol.behaviours.move_joint import MoveJoint, validate_move_request
+from robotcontrol.behaviours.move_joint import main as move_joint_main
 from robotcontrol.behaviours.neck_turn import SweepParams
 from robotcontrol.behaviours.runner import main as runner_main
 from robotcontrol.behaviours.stand_behaviours import (
-    ArmRaise,
     BEHAVIOUR_SPECS,
     HEAD_PITCH,
-    HandWave,
-    NeckNod,
     R_ELBOW,
     R_SHOULDER_PITCH,
     R_SHOULDER_ROLL,
+    ArmRaise,
+    HandWave,
+    NeckNod,
 )
 from robotcontrol.configs.joint_map import JointMap
 
@@ -127,7 +129,9 @@ def test_move_joint_smooth_ramp_and_sim_execution(capsys):
     beh.start(_default_q(jm))
     assert beh.targets(0.0, _default_q(jm), {n: 0.0 for n in jm.names}, 0.0)["head_yaw_joint"] == pytest.approx(0.0)
     # Effort cap keeps step within effort/kp (0.86 / 10 = 0.086 rad) above current q=0; near rad it reaches rad
-    assert beh.targets(beh.duration_s, _default_q(jm), {n: 0.0 for n in jm.names}, 0.0)["head_yaw_joint"] == pytest.approx(0.086)
+    assert beh.targets(beh.duration_s, _default_q(jm), {n: 0.0 for n in jm.names}, 0.0)[
+        "head_yaw_joint"
+    ] == pytest.approx(0.086)
     q_near = dict(_default_q(jm), head_yaw_joint=rad)
     assert beh.targets(beh.duration_s, q_near, {n: 0.0 for n in jm.names}, 0.0)["head_yaw_joint"] == pytest.approx(rad)
 

@@ -1,4 +1,4 @@
-# Same base editor settings in every Po repo.
+# Editor settings for this repo.
 root = true
 
 [*]

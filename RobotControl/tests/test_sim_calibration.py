@@ -1,4 +1,5 @@
 """Tests covering all 10 sim-to-real digital twin fidelity upgrades and calibration CLI."""
+
 import math
 import tempfile
 from pathlib import Path
@@ -10,7 +11,6 @@ from robotcontrol.behaviours.backends import SimBackend
 from robotcontrol.behaviours.neck_turn import HEAD_YAW
 from robotcontrol.configs.joint_map import JointMap
 from robotcontrol.configs.sim_calibration import SimCalibration
-from robotcontrol.interfaces.base_interface import MotorCommand
 from robotcontrol.interfaces.mujoco_interface import MujocoInterface
 from robotcontrol.tools.calibrate_sim import (
     fit_calibration,
@@ -72,7 +72,9 @@ def test_calibrate_sim_noise_and_fit_against_simulated_real_log():
     with tempfile.TemporaryDirectory() as tmp:
         real_csv = Path(tmp) / "real_neck.csv"
         cal_copy = Path(tmp) / "sim_calibration.yaml"
-        cal_copy.write_text(Path("RobotControl/configs/sim_calibration.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+        cal_copy.write_text(
+            Path("RobotControl/configs/sim_calibration.yaml").read_text(encoding="utf-8"), encoding="utf-8"
+        )
         hdr = ["t", "phase", "target_head_yaw_joint"] + list(jm.names)
         lines = [",".join(hdr)]
         for t, qrow in zip(ts, qs):

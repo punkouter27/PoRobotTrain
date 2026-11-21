@@ -11,7 +11,9 @@
 //   P                           toggle inference       IA_R1_ToggleInference (Digital)
 //   A / D                       manual head yaw        IA_R1_HeadYawAxis (Axis1D, A negated)
 //   W / S                       manual shoulder pitch  IA_R1_ShoulderAxis (Axis1D, S negated)
-//   Tab                         cycle command mode     IA_R1_ToggleCmdMode (Digital)
+//   C                           cycle command mode     IA_R1_ToggleCmdMode (Digital)
+//   Tab                         diagnostics overlay    (R1Showcase: FPS, episode reward, inference latency, curriculum)
+// After 30 s without input the idle demo mode (R1Showcase) hides the HUD, runs the policy and cycles the camera.
 //   R                           reset command clock    IA_R1_ResetClock (Digital)
 // DefaultInput.ini sets DefaultViewportMouseCaptureMode=CaptureDuringRightMouseDown so the cursor is
 // free unless orbiting.
@@ -143,6 +145,11 @@ protected:
 	void OnResetClock(const FInputActionValue& Value);
 
 private:
+	// idle demo mode (R1Showcase): the HUD hides, the policy drives, the orbit cycles; input restores this
+	void HandleDemoMode(bool bActive);
+	void HandleDemoCamera(FName CameraName, int32 Index);
+	float PreDemoYawDeg = 0.f, PreDemoPitchDeg = 0.f;
+	bool bPreDemoInference = true;
 	bool bOrbiting = false;
 	bool bFocusInitialised = false;
 	FVector FocusSmoothed = FVector::ZeroVector;

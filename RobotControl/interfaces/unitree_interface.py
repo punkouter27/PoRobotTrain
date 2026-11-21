@@ -15,6 +15,7 @@ Sequence (same as the examples)::
 installed, using an in-memory LowCmd stand-in; the fake state tracks the commanded
 targets so the control loop can be exercised offline).
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,6 +47,7 @@ def detect_robot_iface(subnet_prefix: str = "192.168.123.") -> Optional[str]:
     no such interface exists or the platform has no ``ip`` tool (e.g. Windows).
     """
     import subprocess
+
     try:
         out = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
@@ -103,10 +105,18 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
     MODE_AB = 1
     LOWCMD_SLOTS = 35  # size of the unitree_hg motor_cmd array
 
-    def __init__(self, joint_map: Optional[JointMap] = None, network_interface: Optional[str] = None,
-                 dry_run: bool = False, domain_id: int = 0, release_motion_mode: bool = True,
-                 state_timeout_s: float = 5.0, log_every: int = 50, check_crc: bool = True,
-                 observe_only: bool = False):
+    def __init__(
+        self,
+        joint_map: Optional[JointMap] = None,
+        network_interface: Optional[str] = None,
+        dry_run: bool = False,
+        domain_id: int = 0,
+        release_motion_mode: bool = True,
+        state_timeout_s: float = 5.0,
+        log_every: int = 50,
+        check_crc: bool = True,
+        observe_only: bool = False,
+    ):
         super().__init__(joint_map)
         self.network_interface = network_interface
         self.dry_run = bool(dry_run)
@@ -142,11 +152,11 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
             return
 
         try:
+            from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
             from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber
             from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
             from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_, LowState_
             from unitree_sdk2py.utils.crc import CRC
-            from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
         except ImportError as exc:
             raise ImportError(SDK_INSTALL_HINT) from exc
 
@@ -161,12 +171,16 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
             t_end = time.monotonic() + self.state_timeout_s
             while self._low_state is None:
                 if time.monotonic() > t_end:
-                    raise TimeoutError(f"no {self.joint_map.lowstate_topic} message within {self.state_timeout_s}s "
-                                       f"on interface {self.network_interface!r}")
+                    raise TimeoutError(
+                        f"no {self.joint_map.lowstate_topic} message within {self.state_timeout_s}s "
+                        f"on interface {self.network_interface!r}"
+                    )
                 time.sleep(0.01)
             self.connected = True
-            log.info("UnitreeSDK2Interface OBSERVE ONLY: reading %s, nothing is published, motion mode untouched",
-                     self.joint_map.lowstate_topic)
+            log.info(
+                "UnitreeSDK2Interface OBSERVE ONLY: reading %s, nothing is published, motion mode untouched",
+                self.joint_map.lowstate_topic,
+            )
             return
 
         if self.release_motion_mode:
@@ -193,8 +207,10 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
         t_end = time.monotonic() + self.state_timeout_s
         while self._low_state is None:
             if time.monotonic() > t_end:
-                raise TimeoutError(f"no {self.joint_map.lowstate_topic} message within {self.state_timeout_s}s "
-                                   f"on interface {self.network_interface!r}")
+                raise TimeoutError(
+                    f"no {self.joint_map.lowstate_topic} message within {self.state_timeout_s}s "
+                    f"on interface {self.network_interface!r}"
+                )
             time.sleep(0.01)
         self.connected = True
         log.info("UnitreeSDK2Interface connected (mode_machine=%d)", self.mode_machine)
@@ -237,9 +253,14 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
         if self.dry_run:
             n = self.num_joints
             return LowStateData(
-                q=self._fake_q.copy(), dq=np.zeros(n), tau=np.zeros(n),
-                imu_quat=np.array([1.0, 0.0, 0.0, 0.0]), gyro=np.zeros(3), accel=np.zeros(3),
-                timestamp=time.monotonic() - self._t0, tick=self._cmd_count,
+                q=self._fake_q.copy(),
+                dq=np.zeros(n),
+                tau=np.zeros(n),
+                imu_quat=np.array([1.0, 0.0, 0.0, 0.0]),
+                gyro=np.zeros(3),
+                accel=np.zeros(3),
+                timestamp=time.monotonic() - self._t0,
+                tick=self._cmd_count,
             )
         with self._state_lock:
             msg = self._low_state
@@ -253,11 +274,14 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
         tau = np.array([msg.motor_state[s].tau_est for s in slots], dtype=np.float64)
         imu = msg.imu_state
         return LowStateData(
-            q=q, dq=dq, tau=tau,
-            imu_quat=np.array(imu.quaternion, dtype=np.float64),      # (w, x, y, z)
+            q=q,
+            dq=dq,
+            tau=tau,
+            imu_quat=np.array(imu.quaternion, dtype=np.float64),  # (w, x, y, z)
             gyro=np.array(imu.gyroscope, dtype=np.float64),
             accel=np.array(imu.accelerometer, dtype=np.float64),
-            timestamp=ts, tick=count,
+            timestamp=ts,
+            tick=count,
             extras={"rpy": np.array(imu.rpy, dtype=np.float64)},
         )
 
@@ -277,8 +301,13 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
         if self.dry_run:
             self._fake_q = np.where(cmd.kp > 0, cmd.q, self._fake_q)
             if self.log_every and self._cmd_count % self.log_every == 1:
-                log.info("[dry-run] cmd #%d q=%s kp=%s kd=%s", self._cmd_count,
-                         np.round(cmd.q, 3).tolist(), np.round(cmd.kp, 1).tolist(), np.round(cmd.kd, 2).tolist())
+                log.info(
+                    "[dry-run] cmd #%d q=%s kp=%s kd=%s",
+                    self._cmd_count,
+                    np.round(cmd.q, 3).tolist(),
+                    np.round(cmd.kp, 1).tolist(),
+                    np.round(cmd.kd, 2).tolist(),
+                )
             return
         self.low_cmd.crc = self._crc.Crc(self.low_cmd)
         self._publisher.Write(self.low_cmd)
@@ -290,12 +319,21 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
 
     def damping(self, kd: Optional[float | np.ndarray] = None) -> MotorCommand:
         """kp=0, kd>0 on all mapped joints."""
-        kd_arr = self.joint_map.kd if kd is None else np.broadcast_to(np.asarray(kd, dtype=np.float64), (self.num_joints,))
+        kd_arr = (
+            self.joint_map.kd if kd is None else np.broadcast_to(np.asarray(kd, dtype=np.float64), (self.num_joints,))
+        )
         state = self.get_low_state()
         return self.send_low_cmd(state.q, np.zeros(self.num_joints), kd_arr)
 
-    def move_to(self, target_q: np.ndarray, duration_s: float = 3.0, kp: Optional[np.ndarray] = None,
-                kd: Optional[np.ndarray] = None, rate_hz: float = 250.0, stop_event: Optional[threading.Event] = None) -> None:
+    def move_to(
+        self,
+        target_q: np.ndarray,
+        duration_s: float = 3.0,
+        kp: Optional[np.ndarray] = None,
+        kd: Optional[np.ndarray] = None,
+        rate_hz: float = 250.0,
+        stop_event: Optional[threading.Event] = None,
+    ) -> None:
         """Linearly interpolate from the current pose to ``target_q`` over ``duration_s``
         (the Stage-1 pattern of the Unitree examples)."""
         target_q = np.asarray(target_q, dtype=np.float64)
@@ -316,5 +354,10 @@ class UnitreeSDK2Interface(RobotHardwareInterface):
                 time.sleep(slack)
 
     def stats(self) -> dict:
-        return {"states": self._state_count, "crc_errors": self._crc_errors, "cmds": self._cmd_count,
-                "mode_machine": self.mode_machine, "dry_run": self.dry_run}
+        return {
+            "states": self._state_count,
+            "crc_errors": self._crc_errors,
+            "cmds": self._cmd_count,
+            "mode_machine": self.mode_machine,
+            "dry_run": self.dry_run,
+        }

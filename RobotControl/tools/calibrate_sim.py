@@ -5,6 +5,7 @@ Implements automated sim-to-real system identification across:
   - fit     : fit zero-offset biases + per-joint (armature, damping, frictionloss) via coordinate search
   - verify  : run `sim_real_diff` parity check comparing calibrated SimBackend vs. a real CSV/NPZ log
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,8 +19,8 @@ import numpy as np
 import yaml
 
 from ..behaviours.backends import SimBackend
-from ..behaviours.stand_behaviours import BEHAVIOUR_SPECS
 from ..behaviours.neck_turn import SweepParams
+from ..behaviours.stand_behaviours import BEHAVIOUR_SPECS
 from ..configs.joint_map import JointMap
 from ..configs.sim_calibration import DEFAULT_CALIBRATION_PATH, SimCalibration
 from .sim_real_diff import compare, format_table, load_log
@@ -30,7 +31,7 @@ def load_behaviour_or_traj_log(path: str | Path, jm: JointMap) -> Tuple[np.ndarr
     p = Path(path)
     if p.suffix == ".npz":
         return load_log(p, "q")
-    with open(p, "r", encoding="utf-8", newline="") as f:
+    with open(p, encoding="utf-8", newline="") as f:
         rows = list(csv.reader(f))
     if not rows:
         raise ValueError(f"empty log {p}")
@@ -110,7 +111,9 @@ def fit_calibration(
     dur = float(t_real[-1] - t_real[0])
 
     # Baseline parity before fitting
-    t_b, q_b = simulate_behaviour_trajectory(jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=dur, start_q=start_q)
+    t_b, q_b = simulate_behaviour_trajectory(
+        jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=dur, start_q=start_q
+    )
     before = compare(t_real, q_real, t_b, q_b, align_start=True)
 
     spec = BEHAVIOUR_SPECS[behaviour]
@@ -122,7 +125,9 @@ def fit_calibration(
         cal.zero_offset_rad[i] += float(mean_err_rad[i]) * 0.5
 
     def loss(c: SimCalibration) -> float:
-        ts, qs = simulate_behaviour_trajectory(jm, c, behaviour, amplitude_deg, freq_hz, duration_s=min(dur, 4.0), start_q=start_q)
+        ts, qs = simulate_behaviour_trajectory(
+            jm, c, behaviour, amplitude_deg, freq_hz, duration_s=min(dur, 4.0), start_q=start_q
+        )
         res = compare(t_real[t_real <= t_real[0] + 4.0], q_real[t_real <= t_real[0] + 4.0], ts, qs, align_start=True)
         return float(np.sqrt(np.mean(res["rms_deg"][pidx] ** 2)))
 
@@ -130,17 +135,18 @@ def fit_calibration(
     for attr in ("frictionloss", "damping", "armature"):
         arr = getattr(cal, attr)
         for scale in (0.7, 0.85, 1.15, 1.35):
-            cand = yaml.safe_load(yaml.safe_dump(cal.raw))
             cand_cal = SimCalibration.load(cal_path, jm=jm)
             cand_cal.zero_offset_rad[:] = cal.zero_offset_rad
             cand_arr = getattr(cand_cal, attr)
             cand_arr[pidx] = np.clip(arr[pidx] * scale, 1e-4, 10.0)
-            l = loss(cand_cal)
-            if l < best_loss:
-                best_loss = l
+            cand_loss = loss(cand_cal)
+            if cand_loss < best_loss:
+                best_loss = cand_loss
                 arr[pidx] = cand_arr[pidx]
 
-    t_a, q_a = simulate_behaviour_trajectory(jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=dur, start_q=start_q)
+    t_a, q_a = simulate_behaviour_trajectory(
+        jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=dur, start_q=start_q
+    )
     after = compare(t_real, q_real, t_a, q_a, align_start=True)
 
     rms_before = float(np.sqrt(np.mean(before["rms_deg"][pidx] ** 2)))
@@ -199,15 +205,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
     if args.cmd == "fit":
         res = fit_calibration(args.real_log, args.behaviour, args.amplitude, args.freq, write=args.write)
-        print(f"RMS before: {res['rms_before_deg']:.3f} deg -> after: {res['rms_after_deg']:.3f} deg "
-              f"(max {res['max_after_deg']:.3f} deg)")
+        print(
+            f"RMS before: {res['rms_before_deg']:.3f} deg -> after: {res['rms_after_deg']:.3f} deg "
+            f"(max {res['max_after_deg']:.3f} deg)"
+        )
         print(res["table"])
         return 0
     cal = SimCalibration.load(jm=jm)
     t_real, q_real, _ = load_behaviour_or_traj_log(args.real_log, jm)
     start_q = dict(zip(jm.names, q_real[0].tolist()))
-    ts, qs = simulate_behaviour_trajectory(jm, cal, args.behaviour, args.amplitude, args.freq,
-                                           duration_s=float(t_real[-1] - t_real[0]), start_q=start_q)
+    ts, qs = simulate_behaviour_trajectory(
+        jm, cal, args.behaviour, args.amplitude, args.freq, duration_s=float(t_real[-1] - t_real[0]), start_q=start_q
+    )
     cmp = compare(t_real, q_real, ts, qs, align_start=True)
     print(format_table(jm.names, cmp, args.tol_deg))
     return 0 if cmp["max_deg"].max() < args.tol_deg else 1

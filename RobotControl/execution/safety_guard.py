@@ -12,6 +12,7 @@ Checks, in order:
 On a trip (latched until :meth:`reset`) the guard returns a damping-only command:
 ``target = current q``, ``kp = 0``, ``kd = trip_kd``.
 """
+
 from __future__ import annotations
 
 import math
@@ -20,16 +21,16 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from ..configs.joint_map import JointMap, SOFT_LIMIT_FRACTION
+from ..configs.joint_map import SOFT_LIMIT_FRACTION, JointMap
 from ..interfaces.base_interface import LowStateData, quat_to_rpy
 
 
 @dataclass
 class SafetyConfig:
     soft_limit_fraction: float = SOFT_LIMIT_FRACTION
-    max_slew_arms_head: float = 6.0     # rad/s
-    max_slew_legs_waist: float = 10.0   # rad/s
-    max_accel: float = 80.0             # rad/s^2
+    max_slew_arms_head: float = 6.0  # rad/s
+    max_slew_legs_waist: float = 10.0  # rad/s
+    max_accel: float = 80.0  # rad/s^2
     trip_on_accel: bool = False
     max_tilt_deg: float = 25.0
     check_tilt: bool = True
@@ -37,8 +38,8 @@ class SafetyConfig:
     stale_after_s: float = 0.1
     trip_on_stale: bool = False
     latch_trips: bool = True
-    max_slew: Optional[np.ndarray] = None   # explicit per-joint override
-    trip_kd: Optional[np.ndarray] = None    # damping used after a trip (default: joint map kd)
+    max_slew: Optional[np.ndarray] = None  # explicit per-joint override
+    trip_kd: Optional[np.ndarray] = None  # damping used after a trip (default: joint map kd)
 
 
 @dataclass
@@ -59,8 +60,14 @@ class SafetyReport:
 
     @property
     def any_flag(self) -> bool:
-        return bool(self.tripped or self.stale or self.limit_clipped.any() or self.slew_limited.any()
-                    or self.torque_clipped.any() or self.accel_flag.any())
+        return bool(
+            self.tripped
+            or self.stale
+            or self.limit_clipped.any()
+            or self.slew_limited.any()
+            or self.torque_clipped.any()
+            or self.accel_flag.any()
+        )
 
     def summary(self) -> str:
         if self.tripped:
@@ -93,8 +100,9 @@ class SafetyGuard:
             for g in ("left_leg", "right_leg", "waist"):
                 if g in joint_map.groups:
                     self.max_slew[joint_map.groups[g]] = self.cfg.max_slew_legs_waist
-        self.trip_kd = (np.asarray(self.cfg.trip_kd, dtype=np.float64) if self.cfg.trip_kd is not None
-                        else joint_map.kd.copy())
+        self.trip_kd = (
+            np.asarray(self.cfg.trip_kd, dtype=np.float64) if self.cfg.trip_kd is not None else joint_map.kd.copy()
+        )
         self.reset()
 
     # ------------------------------------------------------------------ state
@@ -111,9 +119,14 @@ class SafetyGuard:
         self.trip_reason = reason
 
     # ------------------------------------------------------------------ apply
-    def apply(self, target_q: Optional[np.ndarray], state: LowStateData,
-              kp: Optional[np.ndarray] = None, kd: Optional[np.ndarray] = None,
-              t: Optional[float] = None) -> Tuple[np.ndarray, SafetyReport]:
+    def apply(
+        self,
+        target_q: Optional[np.ndarray],
+        state: LowStateData,
+        kp: Optional[np.ndarray] = None,
+        kd: Optional[np.ndarray] = None,
+        t: Optional[float] = None,
+    ) -> Tuple[np.ndarray, SafetyReport]:
         """Filter ``target_q`` (policy order; ``None`` = no new target this tick).
         Returns ``(safe_target_q, report)``; ``report.kp`` / ``report.kd`` are the gains to
         send (zeros / trip_kd when tripped)."""
@@ -122,8 +135,10 @@ class SafetyGuard:
         kp_in = self.jm.kp if kp is None else np.asarray(kp, dtype=np.float64)
         kd_in = self.jm.kd if kd is None else np.asarray(kd, dtype=np.float64)
         rep = SafetyReport(
-            limit_clipped=np.zeros(n, dtype=bool), slew_limited=np.zeros(n, dtype=bool),
-            torque_clipped=np.zeros(n, dtype=bool), accel_flag=np.zeros(n, dtype=bool),
+            limit_clipped=np.zeros(n, dtype=bool),
+            slew_limited=np.zeros(n, dtype=bool),
+            torque_clipped=np.zeros(n, dtype=bool),
+            accel_flag=np.zeros(n, dtype=bool),
         )
         dt = 0.0 if self._last_t is None else max(0.0, t - self._last_t)
         rep.dt = dt
@@ -162,7 +177,9 @@ class SafetyGuard:
             rpy = quat_to_rpy(state.imu_quat)
             rep.roll_deg = math.degrees(rpy[0])
             rep.pitch_deg = math.degrees(rpy[1])
-            if (abs(rep.roll_deg) > self.cfg.max_tilt_deg or abs(rep.pitch_deg) > self.cfg.max_tilt_deg) and not self.tripped:
+            if (
+                abs(rep.roll_deg) > self.cfg.max_tilt_deg or abs(rep.pitch_deg) > self.cfg.max_tilt_deg
+            ) and not self.tripped:
                 self.trip(f"tilt roll={rep.roll_deg:.1f} pitch={rep.pitch_deg:.1f} deg")
 
         if self.tripped:

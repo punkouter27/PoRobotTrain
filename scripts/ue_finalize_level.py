@@ -8,6 +8,7 @@
 
 Everything is idempotent: actors are found by label and updated, never duplicated.
 """
+
 import unreal
 
 LEVEL = "/Game/Levels/R1_Stand"
@@ -96,7 +97,9 @@ smc = floor.static_mesh_component
 smc.set_static_mesh(unreal.load_asset("/Engine/BasicShapes/Plane"))
 floor.set_actor_scale3d(unreal.Vector(400, 400, 1))  # 400 m: no visible floor edge
 smc.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
-mat = unreal.load_asset("/Engine/MapTemplates/Materials/BasicGrid01") or unreal.load_asset("/Engine/BasicShapes/BasicShapeMaterial")
+mat = unreal.load_asset("/Engine/MapTemplates/Materials/BasicGrid01") or unreal.load_asset(
+    "/Engine/BasicShapes/BasicShapeMaterial"
+)
 if mat:
     smc.set_material(0, mat)
 

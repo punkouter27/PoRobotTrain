@@ -11,6 +11,7 @@ Usage on the robot:
   python3 -m robotcontrol.tools.robot_preflight --bundle bundle [--iface eth0] [--seconds 3]
 Exit code 0 = all PASS (warnings allowed), 1 = at least one FAIL.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,13 +56,23 @@ def check_bundle(bundle: Path) -> None:
     jm = JointMap.load(bundle / "r1_joint_map.yaml") if (bundle / "r1_joint_map.yaml").exists() else JointMap.load()
     deploy = DeployConfig.load(bundle / "deploy.yaml")
     problems = deploy.validate(jm)
-    record("FAIL" if problems else "PASS", "deploy.yaml vs joint map", "; ".join(problems) or
-           f"{deploy.policy_name}: {deploy.num_obs} obs -> {deploy.num_actions} actions @ {1 / deploy.step_dt:.0f} Hz")
+    record(
+        "FAIL" if problems else "PASS",
+        "deploy.yaml vs joint map",
+        "; ".join(problems)
+        or f"{deploy.policy_name}: {deploy.num_obs} obs -> {deploy.num_actions} actions @ {1 / deploy.step_dt:.0f} Hz",
+    )
     try:
         import onnxruntime as ort
+
         sess = ort.InferenceSession(str(bundle / "policy.onnx"), providers=["CPUExecutionProvider"])
         i, o = sess.get_inputs()[0], sess.get_outputs()[0]
-        ok = i.name == "obs" and o.name == "actions" and i.shape[-1] == deploy.num_obs and o.shape[-1] == deploy.num_actions
+        ok = (
+            i.name == "obs"
+            and o.name == "actions"
+            and i.shape[-1] == deploy.num_obs
+            and o.shape[-1] == deploy.num_actions
+        )
         x = np.zeros((1, deploy.num_obs), dtype=np.float32)
         for _ in range(20):
             sess.run(None, {"obs": x})
@@ -69,7 +80,9 @@ def check_bundle(bundle: Path) -> None:
         for _ in range(200):
             sess.run(None, {"obs": x})
         ms = (time.perf_counter() - t0) / 200 * 1000
-        record("PASS" if ok else "FAIL", "ONNX session", f"{i.name}{i.shape} -> {o.name}{o.shape}, {ms:.3f} ms/inference")
+        record(
+            "PASS" if ok else "FAIL", "ONNX session", f"{i.name}{i.shape} -> {o.name}{o.shape}, {ms:.3f} ms/inference"
+        )
         if ms > 5.0:
             record("WARN", "inference time", f"{ms:.2f} ms is high for a 20 ms control period")
     except Exception as exc:  # noqa: BLE001
@@ -78,12 +91,18 @@ def check_bundle(bundle: Path) -> None:
 
 def check_network(iface: Optional[str]) -> Optional[str]:
     from ..interfaces.unitree_interface import detect_robot_iface
+
     found = iface or detect_robot_iface()
     record("PASS" if found else "FAIL", "robot network interface", found or "no interface with a 192.168.123.x address")
     try:
-        r = subprocess.run(["ping", "-c", "2", "-W", "1", "192.168.123.161"], capture_output=True, text=True, timeout=10)
-        record("PASS" if r.returncode == 0 else "WARN", "ping motion controller 192.168.123.161",
-               "reachable" if r.returncode == 0 else "no reply (may block ICMP; DDS check below is authoritative)")
+        r = subprocess.run(
+            ["ping", "-c", "2", "-W", "1", "192.168.123.161"], capture_output=True, text=True, timeout=10
+        )
+        record(
+            "PASS" if r.returncode == 0 else "WARN",
+            "ping motion controller 192.168.123.161",
+            "reachable" if r.returncode == 0 else "no reply (may block ICMP; DDS check below is authoritative)",
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         record("WARN", "ping motion controller", str(exc))
     return found
@@ -105,23 +124,36 @@ def check_live_state(iface: Optional[str], seconds: float, bundle: Path) -> None
         t0 = time.monotonic()
         time.sleep(seconds)
         rate = (itf._state_count - n0) / (time.monotonic() - t0)
-        record("PASS" if rate > 100 else "WARN", "rt/lowstate rate", f"{rate:.0f} Hz, CRC errors {itf._crc_errors}, "
-               f"mode_machine {itf.mode_machine}")
+        record(
+            "PASS" if rate > 100 else "WARN",
+            "rt/lowstate rate",
+            f"{rate:.0f} Hz, CRC errors {itf._crc_errors}, mode_machine {itf.mode_machine}",
+        )
         st = itf.get_low_state()
         lo, hi = jm.limits_lo, jm.limits_hi
         margin = np.deg2rad(2.0)
-        outside = [f"{n}={np.rad2deg(q):.1f}deg" for n, q, a, b in zip(jm.names, st.q, lo, hi) if q < a - margin or q > b + margin]
+        outside = [
+            f"{n}={np.rad2deg(q):.1f}deg"
+            for n, q, a, b in zip(jm.names, st.q, lo, hi)
+            if q < a - margin or q > b + margin
+        ]
         record("FAIL" if outside else "PASS", "26 joint angles inside limits", ", ".join(outside) or "ok")
         msg = itf._low_state
         temps = [max(msg.motor_state[s].temperature) for s in jm.motor_slots.tolist()]
         hot = max(temps)
         record("PASS" if hot < 60 else "WARN", "motor temperatures", f"max {hot} C")
         head = [jm.names.index("head_pitch_joint"), jm.names.index("head_yaw_joint")]
-        record("PASS", "head motors (slots 29/30)",
-               f"pitch {np.rad2deg(st.q[head[0]]):.1f} deg, yaw {np.rad2deg(st.q[head[1]]):.1f} deg")
+        record(
+            "PASS",
+            "head motors (slots 29/30)",
+            f"pitch {np.rad2deg(st.q[head[0]]):.1f} deg, yaw {np.rad2deg(st.q[head[1]]):.1f} deg",
+        )
         rpy = np.rad2deg(st.extras.get("rpy", np.zeros(3)))
-        record("PASS", "IMU attitude", f"roll {rpy[0]:.1f}, pitch {rpy[1]:.1f}, yaw {rpy[2]:.1f} deg "
-               "(on the stand roll/pitch should be small)")
+        record(
+            "PASS",
+            "IMU attitude",
+            f"roll {rpy[0]:.1f}, pitch {rpy[1]:.1f}, yaw {rpy[2]:.1f} deg (on the stand roll/pitch should be small)",
+        )
         print("\njoint            angle[deg]   limits[deg]")
         for n, q, a, b in zip(jm.names, st.q, lo, hi):
             print(f"  {n:28s} {np.rad2deg(q):8.1f}   [{np.rad2deg(a):7.1f}, {np.rad2deg(b):7.1f}]")
@@ -137,15 +169,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--skip-robot", action="store_true", help="only check software and bundle")
     args = ap.parse_args(argv)
 
-    print("== software"); check_python()
-    print("== policy bundle"); check_bundle(args.bundle)
+    print("== software")
+    check_python()
+    print("== policy bundle")
+    check_bundle(args.bundle)
     if not args.skip_robot:
-        print("== network"); iface = check_network(args.iface)
-        print("== live robot state (read-only)"); check_live_state(iface, args.seconds, args.bundle)
+        print("== network")
+        iface = check_network(args.iface)
+        print("== live robot state (read-only)")
+        check_live_state(iface, args.seconds, args.bundle)
     fails = [r for r in RESULTS if r[0] == "FAIL"]
     warns = [r for r in RESULTS if r[0] == "WARN"]
-    print(f"\nPREFLIGHT {'PASSED' if not fails else 'FAILED'}: {len(RESULTS) - len(fails) - len(warns)} pass, "
-          f"{len(warns)} warn, {len(fails)} fail")
+    print(
+        f"\nPREFLIGHT {'PASSED' if not fails else 'FAILED'}: {len(RESULTS) - len(fails) - len(warns)} pass, "
+        f"{len(warns)} warn, {len(fails)} fail"
+    )
     return 1 if fails else 0
 
 

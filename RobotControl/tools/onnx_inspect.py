@@ -3,6 +3,7 @@ whether an observation-normalization ``Sub -> Div`` (or ``Mul``) pair follows th
 
     python -m robotcontrol.tools.onnx_inspect models/r1_level0_upperbody/policy.onnx
 """
+
 from __future__ import annotations
 
 import argparse
@@ -91,9 +92,11 @@ def inspect_onnx(path: str | Path) -> Dict[str, Any]:
 
 
 def format_report(info: Dict[str, Any]) -> str:
-    lines = [f"ONNX: {info['path']}",
-             f"  ir_version {info['ir_version']}  producer '{info['producer']}'  opsets {info['opsets']}",
-             f"  nodes {info['num_nodes']}  initializers {info['num_initializers']}  params {info['num_parameters']}"]
+    lines = [
+        f"ONNX: {info['path']}",
+        f"  ir_version {info['ir_version']}  producer '{info['producer']}'  opsets {info['opsets']}",
+        f"  nodes {info['num_nodes']}  initializers {info['num_initializers']}  params {info['num_parameters']}",
+    ]
     lines.append("  inputs:")
     for i in info["inputs"]:
         lines.append(f"    {i['name']:12s} {i['dtype']:8s} {i['shape']}")
@@ -103,8 +106,10 @@ def format_report(info: Dict[str, Any]) -> str:
     lines.append(f"  ops: {info['ops']}")
     n = info["normalization"]
     if n.get("detected"):
-        lines.append(f"  normalization: YES ({n['pattern']}) mean{n['mean_shape']} std{n['std_shape']}"
-                     + (f" std in [{n['std_min']:.3g}, {n['std_max']:.3g}]" if "std_min" in n else ""))
+        lines.append(
+            f"  normalization: YES ({n['pattern']}) mean{n['mean_shape']} std{n['std_shape']}"
+            + (f" std in [{n['std_min']:.3g}, {n['std_max']:.3g}]" if "std_min" in n else "")
+        )
     else:
         lines.append(f"  normalization: not detected after input (first consumer: {n.get('first_consumer')})")
     if info["metadata_props"]:

@@ -1,5 +1,4 @@
 """Step 5 reset logic: simulated targets auto-reset on trip / workspace exit; real targets do not."""
-import numpy as np
 
 from robotcontrol.configs.joint_map import JointMap
 from robotcontrol.execution.policy_runner import OnnxPolicy, PolicyRunner
@@ -12,8 +11,7 @@ def _runner(tmp_path, **kw):
     onnx_path, _yaml, deploy = make_level0_bundle(tmp_path, jm)
     itf = MujocoInterface(jm, scene="stand")
     itf.connect()
-    return PolicyRunner(itf, OnnxPolicy(onnx_path), deploy, jm, log_dir=None, realtime=False,
-                        status_hz=0, **kw), itf
+    return PolicyRunner(itf, OnnxPolicy(onnx_path), deploy, jm, log_dir=None, realtime=False, status_hz=0, **kw), itf
 
 
 def test_sim_auto_reset_defaults_on(tmp_path):

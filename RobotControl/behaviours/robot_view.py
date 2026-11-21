@@ -1,4 +1,5 @@
 """Live 3D MuJoCo offscreen render of the Unitree R1 mounted on its test stand."""
+
 from __future__ import annotations
 
 import math
@@ -31,10 +32,7 @@ def _rgb_to_png(rgb: np.ndarray) -> bytes:
 
     ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
     return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", zlib.compress(raw, level=4))
-        + chunk(b"IEND", b"")
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw, level=4)) + chunk(b"IEND", b"")
     )
 
 
@@ -62,6 +60,7 @@ class _GlRenderWorker:
 
     def _run(self) -> None:
         import mujoco
+
         jm = JointMap.load()
         m = mujoco.MjModel.from_xml_path(str(MJCF_DIR / "scene_stand.xml"))
         d = mujoco.MjData(m)

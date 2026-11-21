@@ -23,8 +23,8 @@ def test_blender_linear_ramp():
 def test_blender_slew_clamp():
     b = PolicyBlender(num_steps=2, max_slew=0.1)
     b.start(last_output=np.zeros(2))
-    o1 = b.blend(np.zeros(2), np.ones(2))     # 0.5 requested -> clamped to 0.1
-    o2 = b.blend(np.zeros(2), np.ones(2))     # 1.0 requested -> 0.2
+    o1 = b.blend(np.zeros(2), np.ones(2))  # 0.5 requested -> clamped to 0.1
+    o2 = b.blend(np.zeros(2), np.ones(2))  # 1.0 requested -> 0.2
     assert np.allclose(o1, 0.1) and np.allclose(o2, 0.2)
     with pytest.raises(ValueError):
         b.blend(np.zeros(2), np.ones(3))
@@ -74,6 +74,7 @@ def test_unitree_real_mode_without_sdk_gives_clear_error():
     pytest.importorskip("numpy")
     try:
         import unitree_sdk2py  # noqa: F401
+
         pytest.skip("unitree_sdk2py installed; skipping missing-SDK message test")
     except ImportError:
         pass
@@ -84,6 +85,7 @@ def test_unitree_real_mode_without_sdk_gives_clear_error():
 
 def test_urlab_import_error_message():
     from robotcontrol.interfaces import urlab_interface
+
     try:
         urlab_interface._import_urlab()
     except ImportError as exc:

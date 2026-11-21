@@ -4,6 +4,8 @@
 #include "R1PolicyComponent.h"
 #include "R1Level0SweepCommand.h"
 #include "R1ArticulationBridge.h"
+#include "R1Showcase.h"
+#include "GameFramework/HUD.h"
 #include "MjUeConvert.h"
 
 #include "Camera/CameraComponent.h"
@@ -56,6 +58,41 @@ void AR1FollowCamera::BeginPlay()
 	}
 
 	TryResolvePolicyComponent();
+
+	if (UR1ShowcaseSubsystem* Showcase = UR1ShowcaseSubsystem::Get(this))
+	{
+		Showcase->OnDemoModeChanged.AddUObject(this, &AR1FollowCamera::HandleDemoMode);
+		Showcase->OnDemoCamera.AddUObject(this, &AR1FollowCamera::HandleDemoCamera);
+	}
+}
+
+void AR1FollowCamera::HandleDemoMode(bool bActive)
+{
+	TryResolvePolicyComponent();
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (bActive)
+	{
+		PreDemoYawDeg = OrbitYawDeg;
+		PreDemoPitchDeg = OrbitPitchDeg;
+		bPreDemoInference = PolicyComponent ? PolicyComponent->bInferenceEnabled : true;
+		if (PolicyComponent) PolicyComponent->SetInferenceEnabled(true);   // the trained policy drives (inference only)
+		if (PC && PC->GetHUD()) PC->GetHUD()->bShowHUD = false;
+	}
+	else
+	{
+		OrbitYawDeg = PreDemoYawDeg;
+		OrbitPitchDeg = PreDemoPitchDeg;
+		if (PolicyComponent) PolicyComponent->SetInferenceEnabled(bPreDemoInference);
+		if (PC && PC->GetHUD()) PC->GetHUD()->bShowHUD = true;
+	}
+}
+
+void AR1FollowCamera::HandleDemoCamera(FName CameraName, int32 Index)
+{
+	// showcase orbits around the stand (the default view is -150 deg)
+	if (CameraName == TEXT("Front")) { OrbitYawDeg = 180.f; OrbitPitchDeg = -8.f; }
+	else if (CameraName == TEXT("Side")) { OrbitYawDeg = -90.f; OrbitPitchDeg = -10.f; }
+	else { OrbitYawDeg = -135.f; OrbitPitchDeg = -18.f; }
 }
 
 void AR1FollowCamera::TryResolvePolicyComponent()
@@ -186,7 +223,7 @@ void AR1FollowCamera::CreateInputAssets()
 	MappingContext->MapKey(IA_Zoom, EKeys::MouseWheelAxis);
 	MappingContext->MapKey(IA_ToggleLock, EKeys::L);
 	MappingContext->MapKey(IA_ToggleInference, EKeys::P);
-	MappingContext->MapKey(IA_ToggleCmdMode, EKeys::Tab);
+	MappingContext->MapKey(IA_ToggleCmdMode, EKeys::C);   // Tab is the diagnostics overlay (R1Showcase)
 	MappingContext->MapKey(IA_ResetClock, EKeys::R);
 
 	// A/D -> head yaw axis (A negated), W/S -> shoulder axis (S negated)

@@ -5,8 +5,12 @@
 > Use the current [README](../README.md) and [runtime report](step5_runtime.md) for verified
 > setup and behavior. The UE 5.7 install steps and uncompiled-scaffold assumptions below
 > describe the earlier scaffold; do not use them as the current toolchain status.
+>
+> Since 2026-11-20 URLab is vendored in `UnrealProject/Plugins/UnrealRoboticsLab/` (pinned commit, this repo's
+> MuJoCo 4.0 / UE 5.8 fixes applied, third-party binaries included), so section 2 (clone + build) is no longer
+> needed: a fresh clone builds `R1TwinEditor` directly. Read `UE_5.7` as `UE_5.8` in the commands below.
 
-Project root: `C:\Users\punko\Downloads\CODE_MATT\PoRobotTrain`. Paths below are relative to it.
+Paths below are relative to the repository root, written `<repo>` where a command needs it.
 
 ## 0. What is in `UnrealProject/`
 
@@ -75,7 +79,7 @@ cmake --version                             # >= 3.24
 The plugin directory is git-ignored (`UnrealProject/Plugins/UnrealRoboticsLab/`), so clone it in place:
 
 ```powershell
-cd C:\Users\punko\Downloads\CODE_MATT\PoRobotTrain\UnrealProject\Plugins
+cd <repo>\UnrealProject\Plugins
 git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab.git UnrealRoboticsLab
 ```
 (If you later want it tracked as a real submodule instead, remove the `.gitignore` line and use
@@ -84,7 +88,7 @@ git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab.gi
 Build the native dependencies (MuJoCo, ZeroMQ, msgpack, ...):
 
 ```powershell
-cd C:\Users\punko\Downloads\CODE_MATT\PoRobotTrain\UnrealProject\Plugins\UnrealRoboticsLab
+cd <repo>\UnrealProject\Plugins\UnrealRoboticsLab
 pwsh -ExecutionPolicy Bypass -File .\third_party\build_all.ps1
 ```
 Expect this to take several minutes; it needs `cmake` and the VS 2022 C++ toolchain on `PATH`
@@ -107,12 +111,12 @@ module in the `.uplugin` `Modules` list is spelled differently, change it there 
    - then **Generate Visual Studio project files**.
    Command-line equivalent:
    ```powershell
-   & "C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" -projectfiles -project="C:\Users\punko\Downloads\CODE_MATT\PoRobotTrain\UnrealProject\R1Twin.uproject" -game -engine -progress
+   & "C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" -projectfiles -project="<repo>\UnrealProject\R1Twin.uproject" -game -engine -progress
    ```
 2. Open `UnrealProject\R1Twin.sln` in VS 2022. Set configuration **Development Editor**, platform
    **Win64**, startup project **R1Twin**. Build (Ctrl+Shift+B). Or:
    ```powershell
-   & "C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" R1TwinEditor Win64 Development -Project="C:\Users\punko\Downloads\CODE_MATT\PoRobotTrain\UnrealProject\R1Twin.uproject" -WaitMutex -FromMsBuild
+   & "C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" R1TwinEditor Win64 Development -Project="<repo>\UnrealProject\R1Twin.uproject" -WaitMutex -FromMsBuild
    ```
 3. **Expect compile errors on the first attempt** in `R1PolicyComponent.cpp` (NNE enum/header names) and
    possibly `R1FollowCamera.cpp` (Enhanced Input). Fix against the real 5.7 headers; the section at the
@@ -186,7 +190,7 @@ command, **R** resets the policy/command clock.
 ### 4.7 Verify the ZMQ endpoints
 With PIE running:
 ```powershell
-cd C:\Users\punko\Downloads\CODE_MATT\PoRobotTrain\external\urlab_bridge
+cd <repo>\external\urlab_bridge
 uv run urlab-ping            # RPC REQ/REP on tcp://127.0.0.1:5559 (msgpack)
 ```
 Ports: **5559** RPC, **5555** state PUB (joints + sensors), **5556** control, **5558+** camera PUB.

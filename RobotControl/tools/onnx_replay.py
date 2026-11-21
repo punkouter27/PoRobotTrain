@@ -5,6 +5,7 @@ recorded actions.  Pass if max |err| < tol (default 1e-4).
 
 The ``.npz`` needs ``obs`` (T, N) and ``actions`` (T, A) (keys configurable).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -14,8 +15,15 @@ from typing import Dict, List, Optional
 import numpy as np
 
 
-def replay(onnx_path: str | Path, npz_path: str | Path, tol: float = 1e-4, obs_key: str = "obs",
-           act_key: str = "actions", use_cuda: bool = False, max_rows: Optional[int] = None) -> Dict[str, object]:
+def replay(
+    onnx_path: str | Path,
+    npz_path: str | Path,
+    tol: float = 1e-4,
+    obs_key: str = "obs",
+    act_key: str = "actions",
+    use_cuda: bool = False,
+    max_rows: Optional[int] = None,
+) -> Dict[str, object]:
     from ..execution.policy_runner import OnnxPolicy
 
     data = np.load(npz_path)
@@ -61,8 +69,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--max-rows", type=int, default=None)
     args = ap.parse_args(argv)
     r = replay(args.onnx, args.npz, args.tol, args.obs_key, args.actions_key, args.cuda, args.max_rows)
-    print(f"rows={r['rows']} max_abs_err={r['max_abs_err']:.3e} mean_abs_err={r['mean_abs_err']:.3e} "
-          f"worst_row={r['worst_row']} tol={r['tol']:.1e}")
+    print(
+        f"rows={r['rows']} max_abs_err={r['max_abs_err']:.3e} mean_abs_err={r['mean_abs_err']:.3e} "
+        f"worst_row={r['worst_row']} tol={r['tol']:.1e}"
+    )
     print("per-action max err: " + " ".join(f"{x:.2e}" for x in r["per_action_max"]))
     print("PASS" if r["passed"] else "FAIL")
     return 0 if r["passed"] else 1

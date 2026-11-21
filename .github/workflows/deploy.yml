@@ -1,21 +1,80 @@
-name: Build & Validate
+name: Test & Deploy Showcase
 
+# The one workflow. Push to master: Python checks (ruff, pytest) -> build the showcase site (web/build.py) -> deploy it
+# to the Azure Static Web App swa-porobottrain (resource group PoShared) -> check / and /diag live.
+# Pull requests get the checks and the build, never a deploy. The Unreal project is built locally (GitHub's runners
+# have no Unreal Engine); it compiles from a fresh clone because URLab is vendored in UnrealProject/Plugins/.
+#
+# Repo secret: AZURE_STATIC_WEB_APPS_API_TOKEN (the Static Web App's deployment token).
 on:
   push:
+    branches: [master]
+  pull_request:
     branches: [master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  validate:
+  build_and_deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      # pinned to commit SHAs: the deploy token goes to these actions, so a moved tag must not change what runs
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - name: Compile Python scripts
-        run: python -m compileall -q .
+
+      # RobotControl (editable, pins mujoco==4.0.0) + the [dependency-groups] dev list in pyproject.toml
+      - name: Install Python dependencies
+        run: python -m pip install -e RobotControl "pytest>=8.0" "ruff==0.17.6"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Format
+        run: ruff format --check .
+
+      - name: Tests
+        run: python -m pytest
+
+      - name: Build the showcase site
+        id: build
+        run: |
+          python web/build.py
+          echo "version=$(python -c 'import json; print(json.load(open("web/dist/version.json"))["version"])')" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Azure Static Web Apps
+        id: deploy
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: web/dist
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Check / and /diag live
+        if: steps.deploy.outcome == 'success'
+        env:
+          URL: ${{ steps.deploy.outputs.static_web_app_url }}
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 30 "$URL/version.json" | grep -q "\"$VERSION\"" \
+              && curl -fsS --max-time 30 "$URL/" | grep -q "PoRobotTrain" \
+              && curl -fsS --max-time 30 "$URL/diag" | grep -q "<title>System status</title>" \
+              && curl -fsS --max-time 30 "$URL/diag_checks.json" | grep -q '"checks"'; then
+              echo "Live: $URL ($VERSION), / and /diag served"; exit 0
+            fi
+            sleep 15
+          done
+          echo "$URL did not serve $VERSION on / and /diag"; exit 1

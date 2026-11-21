@@ -5,6 +5,7 @@ Everything downstream (MJCF twin, URLab bridge, Unitree SDK2 interface, ONNX
 validator, safety guard) indexes joints in *policy order* (``policy_index``)
 and uses this class to translate to motor slots / actuator names.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -49,19 +50,19 @@ class JointMap:
 
     # ------------------------------------------------------------------ loading
     @classmethod
-    def load(cls, path: Optional[str | Path] = None) -> "JointMap":
+    def load(cls, path: Optional[str | Path] = None) -> JointMap:
         path = Path(path) if path is not None else DEFAULT_JOINT_MAP_PATH
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         return cls.from_dict(raw, source_path=path)
 
     @classmethod
-    def from_dict(cls, raw: dict, source_path: Optional[Path] = None) -> "JointMap":
+    def from_dict(cls, raw: dict, source_path: Optional[Path] = None) -> JointMap:
         joints = sorted(raw["joints"], key=lambda j: int(j["policy_index"]))
         n = len(joints)
         pidx = np.array([int(j["policy_index"]) for j in joints], dtype=np.int64)
         if not np.array_equal(pidx, np.arange(n)):
-            raise ValueError(f"policy_index must be 0..{n-1} without gaps, got {pidx.tolist()}")
+            raise ValueError(f"policy_index must be 0..{n - 1} without gaps, got {pidx.tolist()}")
         if "num_joints" in raw and int(raw["num_joints"]) != n:
             raise ValueError(f"num_joints={raw['num_joints']} but {n} joints listed")
         names = [str(j["name"]) for j in joints]
@@ -154,7 +155,7 @@ class JointMap:
         return c - h, c + h
 
     # --------------------------------------------------------------- sub-maps
-    def select(self, indices: Sequence[int] | np.ndarray) -> "JointMap":
+    def select(self, indices: Sequence[int] | np.ndarray) -> JointMap:
         """Build a sub-map (policy_indices renumbered 0..k-1, groups filtered/remapped)."""
         idx = np.asarray(indices, dtype=np.int64)
         remap = {int(old): new for new, old in enumerate(idx.tolist())}
@@ -185,7 +186,7 @@ class JointMap:
             source_path=self.source_path,
         )
 
-    def select_names(self, names: Iterable[str]) -> "JointMap":
+    def select_names(self, names: Iterable[str]) -> JointMap:
         return self.select(self.indices_of(names))
 
     # ---------------------------------------------------------------- helpers
@@ -200,8 +201,10 @@ class JointMap:
         return np.asarray(slots, dtype=np.float64)[self.motor_slots]
 
     def describe(self) -> str:
-        lines = [f"{self.robot}: {self.num_joints} joints, {self.lowcmd_num_slots} slots, "
-                 f"unmapped slots {self.unmapped_slots}"]
+        lines = [
+            f"{self.robot}: {self.num_joints} joints, {self.lowcmd_num_slots} slots, "
+            f"unmapped slots {self.unmapped_slots}"
+        ]
         for i, n in enumerate(self.names):
             lines.append(
                 f"  [{i:2d}] slot {int(self.motor_slots[i]):2d} {n:30s} "

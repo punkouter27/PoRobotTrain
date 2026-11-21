@@ -1006,6 +1006,14 @@ void AR1BehaviourPanel::DrawHUD()
 	{
 		return;
 	}
+	{
+		// version stamp bottom-right: UTC yyMMdd of the HEAD commit (R1Twin.Build.cs), the same stamp as the web page
+		const FString Stamp = FString::Printf(TEXT("v%s"), TEXT(R1_BUILD_VERSION));
+		float TW = 0.f, TH = 0.f;
+		Canvas->TextSize(GEngine->GetSmallFont(), Stamp, TW, TH);
+		Canvas->SetDrawColor(FColor(154, 163, 181));
+		Canvas->DrawText(GEngine->GetSmallFont(), Stamp, Canvas->ClipX - TW - 12.f, Canvas->ClipY - TH - 10.f);
+	}
 	const double Now = FPlatformTime::Seconds();
 	if (bClickQueued)
 	{

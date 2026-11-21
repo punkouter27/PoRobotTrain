@@ -1,3 +1,1 @@
-# PoRobotTrain — Agent Instructions
-
-@AGENTS.md
+Read AGENTS.md.

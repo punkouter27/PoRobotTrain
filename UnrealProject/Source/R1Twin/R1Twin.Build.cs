@@ -1,5 +1,7 @@
-// R1Twin runtime module rules. Written for UE 5.7; NOT YET COMPILED on this machine (see docs/ue5_setup.md).
+// R1Twin runtime module rules (UE 5.8).
 
+using System;
+using System.Diagnostics;
 using System.IO;
 using UnrealBuildTool;
 
@@ -23,16 +25,26 @@ public class R1Twin : ModuleRules
 		});
 
 		// Behaviour panel (AR1BehaviourPanel) talks to RobotControl's local behaviour service over HTTP/JSON.
-		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json", "UMG", "Slate", "SlateCore" });  // UMG: hide URLab's debug widget; Slate: click input
+		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json", "UMG", "Slate", "SlateCore", "DeveloperSettings" });  // UMG: hide URLab's debug widget; Slate: click input
 
-		PrivateDependencyModuleNames.AddRange(new string[]
+		// One version stamp (Po Game Standard): UTC yyMMdd of the HEAD commit (web/build.py uses the same rule), else today (UTC).
+		string Stamp = DateTime.UtcNow.ToString("yyMMdd");
+		try
 		{
-		});
+			var Git = Process.Start(new ProcessStartInfo("git", "log -1 --format=%ct")
+				{ WorkingDirectory = ModuleDirectory, RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true });
+			string Out = Git.StandardOutput.ReadToEnd().Trim();
+			Git.WaitForExit();
+			long Secs;
+			if (Git.ExitCode == 0 && long.TryParse(Out, out Secs)) Stamp = DateTimeOffset.FromUnixTimeSeconds(Secs).UtcDateTime.ToString("yyMMdd");
+		}
+		catch (Exception) {}
+		PublicDefinitions.Add("R1_BUILD_VERSION=\"" + Stamp + "\"");
 
 		// ---------------------------------------------------------------------------------------
 		// UnrealRoboticsLab (URLab) plugin
 		//
-		// The plugin lives at UnrealProject/Plugins/UnrealRoboticsLab (git submodule, git-ignored).
+		// The plugin is vendored at UnrealProject/Plugins/UnrealRoboticsLab (see its README_VENDORED.md).
 		// TODO verify: the module name below must match the "Modules" list in
 		//   Plugins/UnrealRoboticsLab/UnrealRoboticsLab.uplugin
 		// (expected "UnrealRoboticsLab"; the plugin may also split editor-only modules, e.g.

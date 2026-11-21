@@ -1,5 +1,6 @@
 """pytest bootstrap: make ``robotcontrol`` importable even without the editable install
 (the directory is named RobotControl but the package is robotcontrol)."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -12,6 +13,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 def _bootstrap() -> None:
     try:
         import robotcontrol  # noqa: F401
+
         return
     except ImportError:
         pass

@@ -7,6 +7,7 @@ Sources:
     python -m robotcontrol.behaviours.mirror --source robot
     python -m robotcontrol.behaviours.mirror --source replay --csv logs/neck_turn_real_....csv
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,9 @@ class UnrealMirror:
 
     def __init__(self, jm: JointMap, address: str = "tcp://localhost"):
         import mujoco
+
         from ..interfaces.urlab_interface import _import_urlab
+
         urlab = _import_urlab()
         self.mj = mujoco
         self.c = urlab.URLabClient(address, step_mode="puppet")
@@ -67,15 +70,28 @@ def _spawn_robot_stream(hz: float, include_telemetry: bool, duration: float) -> 
     if include_telemetry:
         cmd.append("--telemetry")
     return subprocess.Popen(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=2", ROBOT,
-         f"cd {ROBOT_DIR} && exec ./run.sh {' '.join(cmd)}"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=2",
+            ROBOT,
+            f"cd {ROBOT_DIR} && exec ./run.sh {' '.join(cmd)}",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
 
 
-def robot_stream(hz: float = 30.0, proc_out: Optional[list] = None,
-                 include_telemetry: bool = False, duration: float = 0.0) -> Iterator:
+def robot_stream(
+    hz: float = 30.0, proc_out: Optional[list] = None, include_telemetry: bool = False, duration: float = 0.0
+) -> Iterator:
     """Yields joint-angle lists (or full telemetry dicts when ``include_telemetry`` is true) over ssh."""
-    for with_tel in ((True, False) if include_telemetry else (False,)):
+    for with_tel in (True, False) if include_telemetry else (False,):
         p = _spawn_robot_stream(hz, with_tel, duration)
         if proc_out is not None:
             proc_out.append(p)
@@ -115,8 +131,9 @@ def replay_stream(csv_path: str, jm: JointMap, hz: float = 30.0) -> Iterator[Lis
         yield [float(r[c]) for c in cols]
 
 
-def run_mirror(source: Iterator, mirror: UnrealMirror, stop: threading.Event,
-               on_sample: Optional[Callable[[object], None]] = None) -> int:
+def run_mirror(
+    source: Iterator, mirror: UnrealMirror, stop: threading.Event, on_sample: Optional[Callable[[object], None]] = None
+) -> int:
     n = 0
     for item in source:
         if stop.is_set():

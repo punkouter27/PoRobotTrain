@@ -4,6 +4,7 @@
 
 optionally with a smoothstep ramp and a per-step slew clamp on the output.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -21,8 +22,7 @@ def smoothstep_ramp(k: int, n: int) -> float:
 
 
 class PolicyBlender:
-    def __init__(self, num_steps: int = 10, max_slew: Optional[float | np.ndarray] = None,
-                 ramp: str = "linear"):
+    def __init__(self, num_steps: int = 10, max_slew: Optional[float | np.ndarray] = None, ramp: str = "linear"):
         if num_steps < 1:
             raise ValueError("num_steps must be >= 1")
         self.num_steps = int(num_steps)
@@ -84,8 +84,9 @@ class PolicyBlender:
         self._last = None
 
 
-def blend_sequence(old_action: np.ndarray, new_action: np.ndarray, num_steps: int = 10,
-                   ramp: str = "linear") -> np.ndarray:
+def blend_sequence(
+    old_action: np.ndarray, new_action: np.ndarray, num_steps: int = 10, ramp: str = "linear"
+) -> np.ndarray:
     """Offline helper: the full (num_steps, A) blended trajectory."""
     b = PolicyBlender(num_steps, ramp=ramp)
     b.start()

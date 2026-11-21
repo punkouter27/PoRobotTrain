@@ -11,6 +11,8 @@
 #include "R1PolicyComponent.h"
 #include "R1Twin.h"
 #include "R1Level0SweepCommand.h"
+#include "R1RewardConfig.h"
+#include "R1Showcase.h"
 
 #include "NNE.h"
 #include "NNEModelData.h"
@@ -336,6 +338,7 @@ bool UR1PolicyComponent::LoadModel()
 
 	UE_LOG(LogR1Twin, Log, TEXT("R1Policy: loaded '%s' on %s: %s(1,%d) -> %s(1,%d)"),
 		*ModelData->GetName(), *RuntimeName, *InputDescs[0].GetName(), Config.NumObs, *OutputDescs[0].GetName(), Config.NumActions);
+	ModelName = ModelData->GetName();
 	return true;
 }
 
@@ -346,6 +349,7 @@ void UR1PolicyComponent::ResetPolicy()
 	Targets = DefaultJointPos;
 	Accumulator = 0.f;
 	StepCount = 0;
+	EpisodePenalty = 0.f;
 	if (CommandSource)
 	{
 		CommandSource->ResetClock();
@@ -433,6 +437,7 @@ void UR1PolicyComponent::PolicyStep()
 		return;
 	}
 
+	ReportShowcase();
 	ApplyActions();
 	++StepCount;
 
@@ -443,6 +448,25 @@ void UR1PolicyComponent::PolicyStep()
 		for (float V : Obs)    { ObsStr += FString::Printf(TEXT("%.3f "), V); }
 		for (float V : Action) { ActStr += FString::Printf(TEXT("%.3f "), V); }
 		UE_LOG(LogR1Twin, Log, TEXT("R1Policy step %d (%.2f ms): obs=[%s] act=[%s]"), StepCount, LastInferenceMs, *ObsStr, *ActStr);
+	}
+}
+
+void UR1PolicyComponent::ReportShowcase()
+{
+	// The reward terms the twin can measure, weighted as the trainer weights them (RobotControl/configs/reward_config.json,
+	// mirrored by UR1RewardConfig): action rate |a_t - a_(t-1)|^2 and joint angular velocity^2. Torque is the PD
+	// controller's inside URLab and Level 0 has no foot contact, so those two terms are not shown.
+	const UR1RewardConfig* Rewards = UR1ShowcaseSettings::GetRewardConfig();
+	float Rate = 0.f, Vel = 0.f;
+	for (int32 i = 0; i < Action.Num() && i < LastAction.Num(); ++i) Rate += FMath::Square(Action[i] - LastAction[i]);
+	for (const float V : JointVel) Vel += V * V;
+	EpisodePenalty += Rewards->ActionRateSqWeight * Rate + Rewards->JointAngVelSqWeight * Vel;
+	if (UR1ShowcaseSubsystem* Showcase = UR1ShowcaseSubsystem::Get(this))
+	{
+		Showcase->ReportInferenceMs(LastInferenceMs);
+		Showcase->ReportEpisodeReward(EpisodePenalty);
+		const int32 N = Rewards->CurriculumStages.Num();
+		Showcase->SetCurriculumStage(N > 0 ? FString::Printf(TEXT("%s (%s)"), *Rewards->CurriculumStages[N - 1].Stage, *ModelName) : ModelName);
 	}
 }
 

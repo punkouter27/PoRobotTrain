@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>System status</title>
+<meta name="po-version" content="%%VERSION%%">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <a class="bar__title" href="/">%%TITLE%%</a>
+  <nav class="bar__actions" aria-label="Site">
+    <a href="/">Home</a>
+    <a href="%%REPO%%" rel="noopener">Source</a>
+  </nav>
+</header>
+<main>
+  <h1>System status</h1>
+  <p class="meta" id="checked">Checking from your browser…</p>
+  <div class="banner" id="banner" data-state="checking" role="status" aria-live="polite">Checking…</div>
+  <section aria-labelledby="h-api"><h2 id="h-api">API</h2><ul class="checks" id="g-api"></ul></section>
+  <section aria-labelledby="h-data"><h2 id="h-data">Data</h2><ul class="checks" id="g-data"></ul></section>
+  <section aria-labelledby="h-service"><h2 id="h-service">Services</h2><ul class="checks" id="g-service"></ul></section>
+</main>
+<footer class="foot"><span class="po-version">%%VERSION%%</span></footer>
+<script src="diag.js"></script>
+</body>
+</html>

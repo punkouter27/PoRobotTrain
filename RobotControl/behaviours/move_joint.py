@@ -4,6 +4,7 @@ Powers ONLY the requested joint (plus zero-torque mode 0 on all other slots on r
 On physical hardware, leg joints remain stand-locked read-only; upper-body and head joints move
 with a smoothstep speed ramp, torque-band cap, tracking-error timeout, and other-joint drift abort.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,8 +42,9 @@ def validate_move_request(jm: JointMap, joint: str, target_deg: float, target: s
     hi_deg = math.degrees(float(jm.limits_hi[idx]))
     if not lo_deg - 1.0 <= float(target_deg) <= hi_deg + 1.0:
         raise ValueError(f"{joint} target {target_deg:.1f} deg outside [{lo_deg:.1f}, {hi_deg:.1f}]")
-    clamped_rad = min(max(math.radians(float(target_deg)), float(jm.limits_lo[idx]) + 0.02),
-                      float(jm.limits_hi[idx]) - 0.02)
+    clamped_rad = min(
+        max(math.radians(float(target_deg)), float(jm.limits_lo[idx]) + 0.02), float(jm.limits_hi[idx]) - 0.02
+    )
     return idx, clamped_rad
 
 
@@ -81,8 +83,15 @@ def _read_telemetry(backend, jm: JointMap) -> dict:
 class MoveJoint:
     """Smooth step trajectory + safety envelope for moving one joint to ``target_rad``."""
 
-    def __init__(self, jm: JointMap, joint: str, target_rad: float, speed_deg_s: float = 25.0,
-                 hold_s: float = 0.4, check_tracking: bool = True):
+    def __init__(
+        self,
+        jm: JointMap,
+        joint: str,
+        target_rad: float,
+        speed_deg_s: float = 25.0,
+        hold_s: float = 0.4,
+        check_tracking: bool = True,
+    ):
         self.jm = jm
         self.name = f"move_{joint.replace('_joint', '')}"
         self.joint = joint
@@ -164,7 +173,9 @@ def execute_move(backend, beh: MoveJoint, jm: JointMap, log: CsvLog, stop: dict,
             max_other = max(max_other, float(moved.max())) if len(others) else 0.0
             if beh.check_tracking and max_other > math.radians(max_other_deg):
                 j = others[int(np.argmax(moved))]
-                print(f"ABORT at t={t:.2f}s: {names[j]} moved {math.degrees(moved.max()):.1f} deg (> {max_other_deg} deg)")
+                print(
+                    f"ABORT at t={t:.2f}s: {names[j]} moved {math.degrees(moved.max()):.1f} deg (> {max_other_deg} deg)"
+                )
                 return 3
             backend.command(targets)
             log.row(t, beh.phase(t), [targets[beh.joint]], q)
@@ -203,8 +214,11 @@ def execute_move(backend, beh: MoveJoint, jm: JointMap, log: CsvLog, stop: dict,
         }
         pkt.update(_read_telemetry(backend, jm))
         print("@telemetry " + json.dumps(pkt, separators=(",", ":")), flush=True)
-        print("stopped by Ctrl-C" if stop["flag"] else
-              f"done. {beh.joint} at {math.degrees(float(q[beh.idx])):+.1f} deg (other max drift {math.degrees(max_other):.1f} deg)")
+        print(
+            "stopped by Ctrl-C"
+            if stop["flag"]
+            else f"done. {beh.joint} at {math.degrees(float(q[beh.idx])):+.1f} deg (other max drift {math.degrees(max_other):.1f} deg)"
+        )
         return 0
     finally:
         backend.release()
@@ -239,15 +253,18 @@ def main(argv=None) -> int:
 
     if args.target == "sim":
         from .backends import SimBackend
+
         backend = SimBackend(jm, beh.powered, start_q=start_q_map, settle_s=1.0)
     elif args.target == "urlab":
         from .backends import URLabBackend
+
         backend = URLabBackend(jm, beh.powered, address=args.address, start_q=start_q_map)
     else:
         if args.go and not args.yes:
             if input("type 'yes' to move physical joint: ").strip().lower() != "yes":
                 return 1
         from .backends import RealBackend
+
         backend = RealBackend(jm, beh.powered, None, publish=args.go)
 
     stamp = time.strftime("%Y%m%d_%H%M%S")

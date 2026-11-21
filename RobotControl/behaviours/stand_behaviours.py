@@ -5,6 +5,7 @@ staleness, tracking error timeout, torque cap ``kp * |target - q| <= effort``, a
 joint limit clamping) and smoothstep ramps so they start and end at the resting pose
 without jumps.
 """
+
 from __future__ import annotations
 
 import math
@@ -33,8 +34,16 @@ class BehaviourSpec:
 class JointSafetyChannel:
     """Per-joint safety envelope: stale check, tracking-error timeout, torque cap, and limit clamp."""
 
-    def __init__(self, kp: float, effort: float, q_lo: float, q_hi: float,
-                 params: SweepParams, check_tracking: bool = True, margin_rad: float = 0.02):
+    def __init__(
+        self,
+        kp: float,
+        effort: float,
+        q_lo: float,
+        q_hi: float,
+        params: SweepParams,
+        check_tracking: bool = True,
+        margin_rad: float = 0.02,
+    ):
         self.kp = float(kp)
         self.effort = float(effort)
         self.q_lo = float(q_lo) + margin_rad
@@ -170,8 +179,10 @@ class NeckNod(_StandBehaviourBase):
         return {HEAD_PITCH: gain * self.A * math.sin(2.0 * math.pi * p.freq_hz * ts)}
 
     def describe(self) -> str:
-        return (f"neck nod +-{self.eff_amp_deg:.0f} deg at {self.p.freq_hz} Hz for {self.p.duration_s:.0f} s "
-                f"(total {self.p.total_s:.0f} s)")
+        return (
+            f"neck nod +-{self.eff_amp_deg:.0f} deg at {self.p.freq_hz} Hz for {self.p.duration_s:.0f} s "
+            f"(total {self.p.total_s:.0f} s)"
+        )
 
 
 class ArmRaise(_StandBehaviourBase):
@@ -202,8 +213,10 @@ class ArmRaise(_StandBehaviourBase):
         return {R_SHOULDER_PITCH: q_rest - gain * self.A * lift, R_ELBOW: el_hold}
 
     def describe(self) -> str:
-        return (f"right arm raise {self.eff_amp_deg:.0f} deg at {self.p.freq_hz} Hz for {self.p.duration_s:.0f} s "
-                f"(total {self.p.total_s:.0f} s)")
+        return (
+            f"right arm raise {self.eff_amp_deg:.0f} deg at {self.p.freq_hz} Hz for {self.p.duration_s:.0f} s "
+            f"(total {self.p.total_s:.0f} s)"
+        )
 
 
 class HandWave(_StandBehaviourBase):
@@ -244,8 +257,10 @@ class HandWave(_StandBehaviourBase):
         return {R_SHOULDER_PITCH: sp, R_SHOULDER_ROLL: sr, R_ELBOW: el}
 
     def describe(self) -> str:
-        return (f"hand wave +-{self.eff_amp_deg:.0f} deg at {self.p.freq_hz} Hz for {self.p.duration_s:.0f} s "
-                f"(total {self.p.total_s:.0f} s)")
+        return (
+            f"hand wave +-{self.eff_amp_deg:.0f} deg at {self.p.freq_hz} Hz for {self.p.duration_s:.0f} s "
+            f"(total {self.p.total_s:.0f} s)"
+        )
 
 
 BEHAVIOUR_SPECS: Dict[str, BehaviourSpec] = {

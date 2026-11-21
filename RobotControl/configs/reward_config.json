@@ -1,0 +1,14 @@
+{
+  "_doc": "Reward penalty weights and curriculum thresholds for the R1 Level 0 trainer. Read by RobotControl/training/level0_env.py (Level0Config defaults) and mirrored by the Unreal DataAsset UR1RewardConfig (UnrealProject/Source/R1Twin/Public/R1RewardConfig.h); a pytest checks both. Weights are added to the per-step reward as weight * term (negative = penalty). torque_sq = sum(actuator force^2); joint_ang_vel_sq = sum(joint qvel^2); action_rate_sq = |a_t - a_{t-1}|^2; foot_slip = feet planar speed^2 while in contact. Level 0 hangs on a stand with no foot contact, so foot_slip is INACTIVE at Level 0 (kept for the levels that stand on the ground). The shipped r1_level0_upperbody policy was trained with these same weights before this file existed; it was not retrained.",
+  "penalties": {
+    "torque_sq": -1e-05,
+    "joint_ang_vel_sq": -0.001,
+    "action_rate_sq": -0.05,
+    "foot_slip": -0.1
+  },
+  "curriculum": [
+    {"stage": "L0_start", "threshold": 0.3, "metric": "fraction of the full command amplitude at iteration 0"},
+    {"stage": "L0_advance", "threshold": 3.0, "step": 0.05, "metric": "mean tracking error (deg) below which the amplitude fraction grows by step per iteration"},
+    {"stage": "L0_full", "threshold": 1.0, "metric": "amplitude fraction at which the Level 0 curriculum is complete"}
+  ]
+}

@@ -17,6 +17,7 @@ API used (checked against client.py / articulation.py):
 
 ``urlab_client`` is imported lazily so the rest of the package works without it.
 """
+
 from __future__ import annotations
 
 import logging
@@ -53,24 +54,35 @@ def _import_urlab():
             raise ImportError(
                 "urlab_client not installed. Clone URLab-Sim/urlab_bridge into external/urlab_bridge "
                 "and run `uv pip install -e external/urlab_bridge`, or `pip install urlab-bridge`."
-            )
+            ) from None
     return urlab_client
 
 
 class URLabInterface(RobotHardwareInterface):
     """Talks to a running UE5 URLab session that has the R1 articulation spawned."""
 
-    def __init__(self, joint_map: Optional[JointMap] = None, address: str = "tcp://localhost",
-                 step_mode: str = "direct", articulation: Optional[str] = None,
-                 control_mode: Optional[str] = None, policy_dt: float = 0.02,
-                 sim_dt: float = 0.005, transport: str = "zmq", observations: str = "full",
-                 target_hz: Optional[float] = None, mujoco_version_check: bool = True,
-                 imu_sensor_names: Optional[Dict[str, str]] = None,
-                 sync_options_xml: Optional[str] = None,
-                 reset_on_connect: bool = True, **client_kwargs):
+    def __init__(
+        self,
+        joint_map: Optional[JointMap] = None,
+        address: str = "tcp://localhost",
+        step_mode: str = "direct",
+        articulation: Optional[str] = None,
+        control_mode: Optional[str] = None,
+        policy_dt: float = 0.02,
+        sim_dt: float = 0.005,
+        transport: str = "zmq",
+        observations: str = "full",
+        target_hz: Optional[float] = None,
+        mujoco_version_check: bool = True,
+        imu_sensor_names: Optional[Dict[str, str]] = None,
+        sync_options_xml: Optional[str] = None,
+        reset_on_connect: bool = True,
+        **client_kwargs,
+    ):
         super().__init__(joint_map)
         if sync_options_xml is None:
             from .. import MJCF_DIR
+
             sync_options_xml = str(Path(MJCF_DIR) / "scene_stand.xml")
         self.sync_options_xml = sync_options_xml or None
         self.reset_on_connect = bool(reset_on_connect)
@@ -104,8 +116,11 @@ class URLabInterface(RobotHardwareInterface):
     def connect(self) -> None:
         urlab = _import_urlab()
         self.client = urlab.URLabClient(
-            self.address, step_mode=self.step_mode, transport=self.transport,
-            mujoco_version_check=self.mujoco_version_check, **self.client_kwargs,
+            self.address,
+            step_mode=self.step_mode,
+            transport=self.transport,
+            mujoco_version_check=self.mujoco_version_check,
+            **self.client_kwargs,
         )
         self.client.connect(observations=self.observations)
         if not self.client.articulations:
@@ -117,20 +132,24 @@ class URLabInterface(RobotHardwareInterface):
         # into the live UE model. URLab otherwise runs its manager default (2 ms).
         if self.sync_options_xml:
             import mujoco
+
             opt_model = mujoco.MjModel.from_xml_path(str(self.sync_options_xml))
             self.client.runtime.set_sim_options_from_model(opt_model)
             self.sim_dt = float(opt_model.opt.timestep)
             self.substeps = max(1, int(round(self.policy_dt / self.sim_dt)))
-            log.info("URLab sim options synced from %s (dt=%.4f, %d substeps/tick)",
-                     Path(self.sync_options_xml).name, self.sim_dt, self.substeps)
+            log.info(
+                "URLab sim options synced from %s (dt=%.4f, %d substeps/tick)",
+                Path(self.sync_options_xml).name,
+                self.sim_dt,
+                self.substeps,
+            )
 
         # resolve actuators and joints in policy order
         act_keys, qpos_idx, qvel_idx = [], [], []
         for jn in self.joint_map.names:
             a_key = art.resolve_actuator(jn) or art.resolve_actuator(actuator_name_for(jn))
             if a_key is None:
-                raise RuntimeError(f"URLab articulation has no actuator for {jn!r}; "
-                                   f"available: {list(art.actuators)}")
+                raise RuntimeError(f"URLab articulation has no actuator for {jn!r}; available: {list(art.actuators)}")
             j_key = art.resolve_joint(jn)
             if j_key is None:
                 raise RuntimeError(f"URLab articulation has no joint {jn!r}; available: {list(art.joints)}")
@@ -172,8 +191,13 @@ class URLabInterface(RobotHardwareInterface):
                 self.client.reset(keyframe_name=key)
             except Exception as e:  # keyframe missing on an older import
                 log.warning("URLab reset to keyframe 'home' failed: %s", e)
-        log.info("URLabInterface connected: prefix=%s mode=%s step_mode=%s substeps=%d",
-                 art.prefix, mode, self.step_mode, self.substeps)
+        log.info(
+            "URLabInterface connected: prefix=%s mode=%s step_mode=%s substeps=%d",
+            art.prefix,
+            mode,
+            self.step_mode,
+            self.substeps,
+        )
 
     def close(self) -> None:
         if self.client is not None:
@@ -214,24 +238,37 @@ class URLabInterface(RobotHardwareInterface):
         else:
             gyro = np.asarray(art.root_ang_vel_b, dtype=np.float64)
         accel = np.asarray(sensors.get(n["accel"], np.zeros(3)), dtype=np.float64)
-        return LowStateData(q=q, dq=dq, tau=tau, imu_quat=quat, gyro=gyro, accel=accel,
-                            timestamp=float(self.client.sim_time), tick=self._tick,
-                            extras={"root_pos": np.asarray(art.root_pos_w, dtype=np.float64)})
+        return LowStateData(
+            q=q,
+            dq=dq,
+            tau=tau,
+            imu_quat=quat,
+            gyro=gyro,
+            accel=accel,
+            timestamp=float(self.client.sim_time),
+            tick=self._tick,
+            extras={"root_pos": np.asarray(art.root_pos_w, dtype=np.float64)},
+        )
 
     # --------------------------------------------------------------- command
     def _send(self, cmd: MotorCommand) -> None:
         art = self.art
         if self._ue_controller:
-            if (self._last_kp is None or not np.array_equal(self._last_kp, cmd.kp)
-                    or not np.array_equal(self._last_kd, cmd.kd)):
+            if (
+                self._last_kp is None
+                or not np.array_equal(self._last_kp, cmd.kp)
+                or not np.array_equal(self._last_kd, cmd.kd)
+            ):
                 art.push_gains(self.joint_map.names, cmd.kp, cmd.kd, torque_limit=self.joint_map.effort)
                 self._last_kp = cmd.kp.copy()
                 self._last_kd = cmd.kd.copy()
         elif not self._warned_raw:
             model_kp = np.array([art.actuators[k].kp or 0.0 for k in self._act_keys])
             if not np.allclose(model_kp, cmd.kp, atol=1e-6):
-                log.warning("URLab raw control mode: MJCF actuator gains are fixed (kp=%s); requested kp ignored",
-                            np.round(model_kp, 1).tolist())
+                log.warning(
+                    "URLab raw control mode: MJCF actuator gains are fixed (kp=%s); requested kp ignored",
+                    np.round(model_kp, 1).tolist(),
+                )
             self._warned_raw = True
         art.set_ctrl({k: float(cmd.q[i]) for i, k in enumerate(self._act_keys)})
 

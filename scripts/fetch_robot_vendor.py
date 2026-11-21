@@ -9,6 +9,7 @@
 Needs internet on the laptop and `uv` (uses `uvx pip download`). Run once; robot_kit.py packs the result.
   .venv/Scripts/python.exe scripts/fetch_robot_vendor.py
 """
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,15 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 VENDOR = ROOT / "vendor/robot"
-PKGS = ["pip<25.1", "numpy<2", "pyyaml", "onnxruntime<1.20",
-        "rich-click", "setuptools<70", "wheel"]  # pip: Ubuntu 20.04 pip 20.0 cannot read manylinux_2_28 tags; last three: cyclonedds 0.10.2 build + runtime deps
+PKGS = [
+    "pip<25.1",
+    "numpy<2",
+    "pyyaml",
+    "onnxruntime<1.20",
+    "rich-click",
+    "setuptools<70",
+    "wheel",
+]  # pip: Ubuntu 20.04 pip 20.0 cannot read manylinux_2_28 tags; last three: cyclonedds 0.10.2 build + runtime deps
 PLATFORMS = ["manylinux2014_aarch64", "manylinux_2_17_aarch64", "manylinux_2_28_aarch64"]
 
 
@@ -36,8 +44,20 @@ def main():
         dest.mkdir(parents=True, exist_ok=True)
         # Run pip under the TARGET Python version so environment markers (e.g. typing-extensions for
         # python_version < "3.11") resolve as they will on the Jetson, not as on this laptop.
-        cmd = ["uvx", "--python", f"{py[0]}.{py[1:]}", "pip", "download", "--only-binary=:all:",
-               "--python-version", py, "--implementation", "cp", "-d", str(dest)]
+        cmd = [
+            "uvx",
+            "--python",
+            f"{py[0]}.{py[1:]}",
+            "pip",
+            "download",
+            "--only-binary=:all:",
+            "--python-version",
+            py,
+            "--implementation",
+            "cp",
+            "-d",
+            str(dest),
+        ]
         for p in PLATFORMS:
             cmd += ["--platform", p]
         run(cmd + PKGS)
@@ -51,8 +71,19 @@ def main():
 
     cdds = VENDOR / "src" / "cyclonedds"
     if not cdds.exists():
-        run(["git", "clone", "-q", "--depth", "1", "-b", "releases/0.10.x",
-             "https://github.com/eclipse-cyclonedds/cyclonedds.git", str(cdds)])
+        run(
+            [
+                "git",
+                "clone",
+                "-q",
+                "--depth",
+                "1",
+                "-b",
+                "releases/0.10.x",
+                "https://github.com/eclipse-cyclonedds/cyclonedds.git",
+                str(cdds),
+            ]
+        )
         shutil.rmtree(cdds / ".git", ignore_errors=True)
 
     sdk_src = ROOT / "external/unitree_sdk2_python"

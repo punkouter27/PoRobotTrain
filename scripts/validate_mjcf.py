@@ -1,4 +1,5 @@
 """Phase A validation: load each MJCF, check joint/actuator counts, mass, joint-map agreement, settle stability."""
+
 from __future__ import annotations
 
 import pathlib
@@ -47,14 +48,17 @@ for name in ("r1_twin.xml", "r1_twin_stand.xml", "scene_ground.xml", "scene_stan
         for _ in range(int(5.0 / m.opt.timestep)):
             mujoco.mj_step(m, d)
         pelvis_drift = float(np.linalg.norm(d.qpos[:3] - q0[:3]))
-        check(pelvis_drift < 0.005, f"stand weld holds pelvis (drift {pelvis_drift*1000:.2f} mm over 5 s)")
+        check(pelvis_drift < 0.005, f"stand weld holds pelvis (drift {pelvis_drift * 1000:.2f} mm over 5 s)")
         check(d.ncon == 0, f"no contacts while hanging (ncon={d.ncon})")
         qv = float(np.abs(d.qvel[6:]).max())
         check(qv < 0.05, f"joints at rest after 5 s (max |qvel| {qv:.4f} rad/s)")
         legs = np.array(jm["groups"]["left_leg"] + jm["groups"]["right_leg"])
         held = np.array([i for i in range(26) if i not in legs])
         dev = np.rad2deg(np.abs(d.qpos[7:] - q0[7:]))
-        check(dev[held].max() < 3.0, f"held joints (waist/arms/head) stay within 3 deg of home ({dev[held].max():.2f} deg)")
+        check(
+            dev[held].max() < 3.0,
+            f"held joints (waist/arms/head) stay within 3 deg of home ({dev[held].max():.2f} deg)",
+        )
         print(f"  info: passive legs (kp 0, kd 3) creep {dev[legs].max():.2f} deg under gravity in 5 s (expected)")
     else:
         # Open-loop PD cannot balance a 30 kg humanoid (ankle stiffness << m*g*h); standing is a
@@ -66,10 +70,12 @@ for name in ("r1_twin.xml", "r1_twin_stand.xml", "scene_ground.xml", "scene_stan
             mujoco.mj_step(m, d)
             if d.ncon:
                 maxpen = max(maxpen, float(-d.contact.dist[: d.ncon].min()))
-        check(d.ncon > 0, f"feet in contact with floor (ncon={d.ncon}, foot site z at t0 {foot_z*1000:.1f} mm)")
-        check(maxpen < 0.005, f"max ground penetration in first 0.5 s {maxpen*1000:.2f} mm")
-        print(f"  info: pelvis z after 0.5 s open-loop PD = {d.qpos[2]:.3f} m "
-              "(falls later; expected without a balance policy)")
+        check(d.ncon > 0, f"feet in contact with floor (ncon={d.ncon}, foot site z at t0 {foot_z * 1000:.1f} mm)")
+        check(maxpen < 0.005, f"max ground penetration in first 0.5 s {maxpen * 1000:.2f} mm")
+        print(
+            f"  info: pelvis z after 0.5 s open-loop PD = {d.qpos[2]:.3f} m "
+            "(falls later; expected without a balance policy)"
+        )
     print(f"  info: dt {m.opt.timestep}, nbody {m.nbody}, ngeom {m.ngeom}")
 
 print("\nALL PASS" if ok else "\nFAILURES PRESENT")

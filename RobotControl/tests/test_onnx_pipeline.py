@@ -123,9 +123,18 @@ def test_policy_runner_in_sim_logs_trajectory(bundle, tmp_path, jm):
     deploy = DeployConfig.load(yaml_path)
     statuses = []
     with MujocoInterface(jm, scene="stand") as itf:
-        runner = PolicyRunner(itf, pol, deploy, jm, command_fn=lambda t, s: np.array([0.2, 0.35]),
-                              log_dir=tmp_path / "logs", log_stem="sim_run", realtime=False,
-                              status_hz=1000.0, status_fn=statuses.append)
+        runner = PolicyRunner(
+            itf,
+            pol,
+            deploy,
+            jm,
+            command_fn=lambda t, s: np.array([0.2, 0.35]),
+            log_dir=tmp_path / "logs",
+            log_stem="sim_run",
+            realtime=False,
+            status_hz=1000.0,
+            status_fn=statuses.append,
+        )
         # all 19 non-policy joints are passive: kp 0, kd from the map
         assert np.count_nonzero(runner.kp_full == 0.0) == 19
         assert np.allclose(runner.kd_full[runner.passive_idx], jm.kd[runner.passive_idx])

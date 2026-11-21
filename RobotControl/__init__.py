@@ -8,6 +8,7 @@ Layout (the ``RobotControl/`` directory is the package root):
 * ``tools``         ONNX inspect / validate / replay, deploy packaging, sim-real diff
 * ``perception``, ``state_machine``, ``training``  stubs owned by other work-streams
 """
+
 from __future__ import annotations
 
 from pathlib import Path
