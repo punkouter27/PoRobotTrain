@@ -1,0 +1,436 @@
+@page "/"
+@implements IDisposable
+@inject RobotApiClient Api
+
+<PageTitle>R1 Stand Explore — PoRobotTrain</PageTitle>
+
+<div class="dash-grid">
+    <section class="po-card dash-controls">
+        <div class="ctrl-top">
+            <div>
+                <h1 class="dash-h1">R1 STAND EXPLORE</h1>
+                <span class="po-muted">@(_online ? "Connected to Python RobotControl" : "Waiting for RobotControl service (127.0.0.1:8765)")</span>
+            </div>
+            <span class="po-pill @(_online ? "po-pill--ok" : "po-pill--bad")">
+                @(_online ? (_status?.Job?.ToUpperInvariant() ?? "IDLE") : "OFFLINE")
+            </span>
+        </div>
+
+        <div class="ctrl-row">
+            <span class="ctrl-label">Behaviour</span>
+            <div class="chip-grid">
+                @foreach (var b in Behaviours)
+                {
+                    var sel = b.Id == _selectedBehaviour;
+                    var locked = !_armUnlocked && IsArmBehaviour(b.Id);
+                    <button type="button"
+                            class="po-chip @(sel ? "active" : string.Empty)"
+                            disabled="@(locked || (!IsIdle && !sel))"
+                            @onclick="() => SelectBehaviour(b.Id)">
+                        @b.Label
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="ctrl-row">
+            <span class="ctrl-label">Sweep Size</span>
+            <div class="size-row">
+                @foreach (var amp in new[] { 10.0, 20.0, 30.0 })
+                {
+                    var sel = Math.Abs(_selectedAmp - amp) < 0.01;
+                    <button type="button"
+                            class="po-chip @(sel ? "active" : string.Empty)"
+                            disabled="@(!IsIdle && !sel)"
+                            @onclick="() => SelectAmplitude(amp)">
+                        @($"{amp:0}°")
+                    </button>
+                }
+            </div>
+        </div>
+        <div class="ctrl-top" style="align-items:center">
+            <div class="po-muted">@ActiveDesc</div>
+            <label class="po-muted" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
+                <input type="checkbox" @bind="_armUnlocked" @bind:after="OnArmLockChanged" />
+                Unlock arm motions
+            </label>
+        </div>
+
+        <!-- 1. VIRTUAL ROBOT (PC ONLY) -->
+        <div class="sub-section sub-section--virtual">
+            <div class="sec-hdr">
+                <span class="sub-title sub-title--virtual">1. VIRTUAL ROBOT (PC SIMULATION)</span>
+                <span class="po-pill po-pill--blue">SAFE · NO HARDWARE MOVES</span>
+            </div>
+            <div class="po-muted">Runs only on your PC (Unreal 3D twin or headless MuJoCo). Nothing physical moves.</div>
+            @if (_status?.Calibration is { } cal)
+            {
+                <div class="po-muted" style="color:#8ab8ff">
+                    Twin physics: @($"{cal.ControlDelayMs:0}ms") delay · @($"{cal.BusVoltageV:0.0}V") BEMF · @(cal.CompliantStand ? "compliant stand" : "rigid stand") · ±@($"{cal.PosNoiseDeg:0.00}°") noise
+                </div>
+            }
+            <div class="btn-row">
+                <button type="button" class="po-btn po-btn--blue" style="flex:1" disabled="@(!IsIdle)" @onclick='() => PreviewAsync("urlab")'>
+                    @(IsJob("preview") ? "Running Virtual..." : "Run on Unreal Twin")
+                </button>
+                <button type="button" class="po-btn po-btn--blue-soft" disabled="@(!IsIdle)" @onclick='() => PreviewAsync("sim")'>
+                    Run in MuJoCo Sim
+                </button>
+            </div>
+            <div class="status-msg @VirtualStatusClass">@VirtualStatusText</div>
+            @RenderPrimaryGauge(VirtualPrimary, "#3dc7f2", "No virtual run yet.")
+        </div>
+
+        <!-- 2. PHYSICAL ROBOT (ONLY SHOWN WHEN CONNECTED) OR OFFLINE PRACTICE TWIN -->
+        <div class="sub-section @(RealConnected ? "sub-section--real" : "sub-section--virtual")">
+            <div class="sec-hdr">
+                <span class="sub-title @(RealConnected ? "sub-title--real" : "sub-title--virtual")">
+                    @(RealConnected ? "2. PHYSICAL ROBOT (UNITREE R1 HARDWARE)" : "2. PRACTICE ROBOT (VIRTUAL STAND TWIN)")
+                </span>
+                @if (RealConnected)
+                {
+                    <span class="po-pill po-pill--orange">192.168.123.164</span>
+                }
+                else
+                {
+                    <div class="size-row">
+                        <span class="po-pill po-pill--blue">R1 NOT CONNECTED</span>
+                        <button type="button" class="po-chip" disabled="@(!IsIdle)" @onclick="ProbeRealAsync">
+                            @(IsJob("snapshot") ? "Checking..." : "Connect Physical R1")
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="action-group">
+                <div class="action-group__lbl">
+                    @(RealConnected ? "Read-Only on Physical R1 (0% motor power · safe)" : "Practice Read-Only Workflow (Virtual Stand Twin)")
+                </div>
+                <div class="btn-row">
+                    <button type="button" class="po-btn @(RealConnected ? "po-btn--orange-soft" : "po-btn--blue-soft")" style="flex:1" disabled="@(!IsIdle)" @onclick="SnapshotAsync">
+                        @(IsJob("snapshot") ? "Reading Pose..." : "Read Pose Now")
+                    </button>
+                    <button type="button" class="po-btn po-btn--teal" style="flex:1" disabled="@(!IsIdle)" @onclick="MonitorAsync">
+                        @(IsJob("monitor") ? "Mirroring Live..." : "Live Mirror")
+                    </button>
+                    <button type="button" class="po-btn @(RealConnected ? "po-btn--orange-soft" : "po-btn--blue-soft")" style="flex:1" disabled="@(!IsIdle)" @onclick="CheckAsync">
+                        @(IsJob("check") ? "Checking..." : "Pre-Run Check")
+                    </button>
+                </div>
+            </div>
+
+            <div class="action-group @(RealConnected ? "action-group--warn" : string.Empty)">
+                <div class="action-group__lbl @(RealConnected ? "action-group__lbl--warn" : string.Empty)">
+                    @(RealConnected ? "Powered Motion on Physical R1 (powers selected joint only)" : "Practice Step 3 on Virtual Stand Twin (same gates as hardware)")
+                </div>
+                <button type="button" class="po-btn @(RealConnected ? "po-btn--orange" : "po-btn--blue")" style="width:100%" disabled="@(!CanRunRobot)" @onclick="() => _confirmOpen = true">
+                    @(IsJob("run")
+                        ? (RealConnected ? "PHYSICAL R1 MOVING..." : "PRACTICE TWIN MOVING...")
+                        : (RealConnected ? "MOVE PHYSICAL R1 (Requires Steps 1 + 2)" : "PRACTICE MOVE ROBOT (Requires Steps 1 + 2)"))
+                </button>
+            </div>
+
+            <div class="step-row @(PreviewMatched ? "done" : string.Empty)">
+                <span class="step-box"></span>
+                <span>Step 1: test @_selectedBehaviour (@($"{_selectedAmp:0}°")) in Virtual above first</span>
+            </div>
+            <div class="step-row @(CheckMatched ? "done" : string.Empty)">
+                <span class="step-box"></span>
+                <span>Step 2: Pre-Run Check passed within 5 min (no motors powered)</span>
+            </div>
+            <div class="status-msg @RealStatusClass">@RealStatusText</div>
+            @RenderPrimaryGauge(RealPrimary, RealConnected ? "#ff9c47" : "#3dc7f2", RealConnected ? "No physical robot reading yet." : "No practice reading yet.")
+        </div>
+
+        <div class="estop-row">
+            <button type="button" class="po-btn po-btn--danger" disabled="@(!_online)" @onclick="StopAsync">STOP</button>
+            @if (RealConnected)
+            {
+                <span class="estop-note">Physical robot e-stop: <b>remote L2 + B, hold 5 s</b></span>
+            }
+            else
+            {
+                <span class="po-muted">Stops any running virtual or practice session.</span>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_toast))
+        {
+            <div class="po-toast">@_toast</div>
+        }
+
+        <pre class="po-log">@LogText</pre>
+    </section>
+
+    <section>
+        <JointTelemetryPanel Status="_status" IsIdle="IsIdle" PracticeActive="PracticeActive" OnReadPhysical="SnapshotAsync" OnMoveJoint="MoveJointAsync" />
+    </section>
+</div>
+
+@if (_confirmOpen)
+{
+    <div class="po-modal-bg">
+        <div class="po-modal">
+            <h2>@(PracticeActive ? "RUN STEP 3 ON PRACTICE TWIN?" : "MOVE PHYSICAL R1 ROBOT?")</h2>
+            @if (PracticeActive)
+            {
+                <p>Physical R1 is disconnected — this practices Step 3 cleanly on the <b>virtual MuJoCo stand twin</b> (no real hardware moves).</p>
+            }
+            else
+            {
+                <p>This sends motor commands to the <b>real hardware</b> at 192.168.123.164.</p>
+            }
+            <p>Behaviour: <b>@_selectedBehaviour</b> (@($"{_selectedAmp:0}°")). Unpowered joints stay disabled.</p>
+            <p>Robot hanging on its stand, clear workspace, remote in your hand?</p>
+            <div class="btn-row">
+                <button type="button" class="po-btn po-btn--orange" style="flex:1" @onclick="ConfirmRunAsync">
+                    @(PracticeActive ? "Yes, run practice step 3" : "Yes, move the PHYSICAL robot")
+                </button>
+                <button type="button" class="po-btn" @onclick="() => _confirmOpen = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly IReadOnlyList<BehaviourInfoDto> FallbackBehaviours =
+    [
+        new("neck_turn", "Neck Turn", "Turns head left/right. Only neck yaw motor moves.", "HEAD YAW", 30.0),
+        new("neck_nod", "Neck Nod", "Nods head up/down (max 20 deg). Only neck pitch moves.", "HEAD PITCH", 20.0),
+        new("arm_raise", "Arm Raise", "Gently raises/lowers right arm forward (elbow held).", "R.SHOULDER", 30.0),
+        new("hand_wave", "Hand Wave", "Gentle stand-safe right-arm wave (max 20 deg).", "R.ARM WAVE", 20.0),
+    ];
+
+    private RobotStatusDto? _status;
+    private bool _online;
+    private string _selectedBehaviour = "neck_turn";
+    private double _selectedAmp = 10.0;
+    private bool _armUnlocked;
+    private string? _toast;
+    private bool _confirmOpen;
+    private CancellationTokenSource? _cts;
+    private bool _pollBusy;
+
+    private bool RealConnected => _status?.RealConnected ?? false;
+    private bool PracticeActive => !RealConnected;
+
+    private static bool IsArmBehaviour(string id) => id is "arm_raise" or "hand_wave";
+
+    private void OnArmLockChanged()
+    {
+        if (!_armUnlocked && IsArmBehaviour(_selectedBehaviour))
+        {
+            _selectedBehaviour = "neck_turn";
+        }
+    }
+
+    private IReadOnlyList<BehaviourInfoDto> Behaviours =>
+        _status?.Behaviours is { Count: > 0 } b ? b : FallbackBehaviours;
+
+    private bool IsIdle => _online && string.IsNullOrEmpty(_status?.Job);
+    private bool IsJob(string name) => string.Equals(_status?.Job, name, StringComparison.OrdinalIgnoreCase);
+
+    private bool PreviewMatched => _status?.Previewed is { } p
+        && p.Behaviour == _selectedBehaviour
+        && Math.Abs(p.Amplitude - _selectedAmp) < 0.01;
+
+    private bool CheckMatched => _status?.Checked is { } c
+        && c.Behaviour == _selectedBehaviour
+        && Math.Abs(c.Amplitude - _selectedAmp) < 0.01
+        && _status.CheckAgeS is >= 0 and < 300.0;
+
+    private bool CanRunRobot => IsIdle && (_status?.CanRunRobot ?? false) && PreviewMatched && CheckMatched;
+
+    private string ActiveDesc
+    {
+        get
+        {
+            var info = Behaviours.FirstOrDefault(b => b.Id == _selectedBehaviour) ?? Behaviours[0];
+            return $"{info.Desc} ({Math.Min(_selectedAmp, info.MaxDeg):0}°)";
+        }
+    }
+
+    private string LogText => _status?.Lines is { Count: > 0 } lines
+        ? string.Join('\n', lines)
+        : "Waiting for service output...";
+
+    private TelemetryReadoutDto? VirtualPrimary =>
+        _status?.Telemetry.GetValueOrDefault("virtual") ?? FromHead(_status?.Head.GetValueOrDefault("virtual"));
+
+    private TelemetryReadoutDto? RealPrimary =>
+        _status?.Telemetry.GetValueOrDefault("real")
+        ?? (PracticeActive ? _status?.Telemetry.GetValueOrDefault("practice") : null)
+        ?? FromHead(_status?.Head.GetValueOrDefault("real")
+            ?? (PracticeActive ? _status?.Head.GetValueOrDefault("practice") : null));
+
+    private static TelemetryReadoutDto? FromHead(HeadReadoutDto? h) => h is null ? null : new(
+        h.T, h.Phase, null, null, "HEAD YAW", h.Yaw, h.Target, h.Other,
+        null, null, null, null, null, null, null, null, h.Source, h.AgeS);
+
+    private string VirtualStatusClass => IsJob("preview") ? "warn"
+        : _status?.Results.GetValueOrDefault("preview") is { Ok: false } ? "bad"
+        : PreviewMatched ? "ok" : string.Empty;
+
+    private string VirtualStatusText => IsJob("preview") ? "Moving virtual robot (PC only)..."
+        : _status?.Results.GetValueOrDefault("preview") is { Ok: false } f ? $"Stopped: {f.Reason}"
+        : PreviewMatched ? $"Done — virtual {_selectedBehaviour} ({_selectedAmp:0}°) passed on PC."
+        : "Safe: runs only on your PC.";
+
+    private string RealStatusClass => IsJob("check") || IsJob("run") || IsJob("snapshot") ? "warn"
+        : IsJob("monitor") ? "ok"
+        : _status?.Results.GetValueOrDefault("check") is { Ok: false } && !CheckMatched ? "bad"
+        : _status?.Results.GetValueOrDefault("run") is { Ok: false } ? "bad"
+        : CanRunRobot ? "ok" : string.Empty;
+
+    private string RealStatusText => IsJob("snapshot") ? (PracticeActive ? "Checking / reading twin pose..." : "Reading current physical R1 joint degrees (0% motor power)...")
+        : IsJob("check") ? (PracticeActive ? "Running practice Pre-Run Check on virtual twin..." : "Running pre-run physical check (read-only, 0% motor power)...")
+        : IsJob("monitor") ? $"LIVE MIRROR (read-only, 0% motor power) — {_status?.MirrorSamples ?? 0} samples"
+        : IsJob("run") ? (PracticeActive ? $"PRACTICE TWIN MOVING — {_status?.MirrorSamples ?? 0} samples" : $"PHYSICAL R1 MOVING — {_status?.MirrorSamples ?? 0} samples mirrored")
+        : _status?.Results.GetValueOrDefault("check") is { Ok: false } cf && !CheckMatched ? $"Check failed: {cf.Reason}"
+        : _status?.Results.GetValueOrDefault("monitor") is { Ok: false } mf && (_status?.LastResult.StartsWith("monitor", StringComparison.Ordinal) ?? false) ? $"Monitor failed: {mf.Reason}"
+        : _status?.Results.GetValueOrDefault("run") is { Ok: false } rf ? $"Last run stopped: {rf.Reason}"
+        : CanRunRobot ? (PracticeActive ? "Ready to practice Step 3 on virtual twin." : "Ready to move physical R1 (confirmation dialog required).")
+        : (PracticeActive ? "Practice locked until Steps 1 and 2 pass above." : "Powered physical motion locked until Steps 1 and 2 pass.");
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cts = new CancellationTokenSource();
+        await PollOnceAsync();
+        _ = PollLoopAsync(_cts.Token);
+    }
+
+    private async Task PollLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(350));
+        while (await timer.WaitForNextTickAsync(ct))
+        {
+            await PollOnceAsync();
+        }
+    }
+
+    private async Task PollOnceAsync()
+    {
+        if (_pollBusy)
+        {
+            return;
+        }
+        _pollBusy = true;
+        try
+        {
+            _status = await Api.GetStatusAsync(_cts?.Token ?? CancellationToken.None);
+            _online = _status is not null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _online = false;
+        }
+        finally
+        {
+            _pollBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void SelectBehaviour(string id) => _selectedBehaviour = id;
+    private void SelectAmplitude(double amp) => _selectedAmp = amp;
+
+    private async Task PreviewAsync(string target)
+    {
+        var res = await Api.PreviewAsync(new PreviewRequest(_selectedBehaviour, _selectedAmp, 0.2, 20.0, target));
+        _toast = res.Ok ? $"Started VIRTUAL run ({target}) — no physical hardware moves." : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task ProbeRealAsync()
+    {
+        var res = await Api.SnapshotAsync(practice: false);
+        _toast = res.Ok ? "Scanning for physical Unitree R1..." : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task CheckAsync()
+    {
+        var res = await Api.CheckAsync(new BehaviourParamsDto(_selectedBehaviour, _selectedAmp, 0.2, 20.0, Practice: PracticeActive));
+        _toast = res.Ok
+            ? (PracticeActive ? "Running practice Pre-Run Check on virtual twin..." : "Reading physical R1 sensors (read-only, 0% motor power)...")
+            : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task SnapshotAsync()
+    {
+        var res = await Api.SnapshotAsync(practice: PracticeActive);
+        _toast = res.Ok
+            ? (PracticeActive ? "Read practice stand twin pose (0% motor power)." : "Reading physical R1 current joint degrees (0% motor power)...")
+            : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task MoveJointAsync(MoveJointRequest req)
+    {
+        var res = await Api.MoveJointAsync(req);
+        _toast = res.Ok
+            ? $"Moving {req.Joint} -> {req.TargetDeg:+0.0;-0.0;+0.0}° ({req.Target})..."
+            : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task MonitorAsync()
+    {
+        var res = await Api.MonitorAsync(practice: PracticeActive);
+        _toast = res.Ok
+            ? (PracticeActive ? "Started practice Live Mirror on virtual twin." : "Started physical R1 live mirror (read-only, 0% motor power).")
+            : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task ConfirmRunAsync()
+    {
+        _confirmOpen = false;
+        var res = await Api.RunAsync(new RunRequest(_selectedBehaviour, _selectedAmp, 0.2, 20.0, true, Practice: PracticeActive));
+        _toast = res.Ok
+            ? (PracticeActive ? "Running Step 3 practice behaviour on virtual twin..." : "Starting powered run on PHYSICAL R1...")
+            : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task StopAsync()
+    {
+        _confirmOpen = false;
+        var res = await Api.StopAsync();
+        _toast = res.Ok ? (res.Note is not null ? $"STOP: {res.Note}" : "STOP sent.") : res.Error;
+        await PollOnceAsync();
+    }
+
+    private static RenderFragment RenderPrimaryGauge(TelemetryReadoutDto? tel, string accent, string emptyMsg) => __builder =>
+    {
+        if (tel?.ActualDeg is not double actual)
+        {
+            <div class="po-muted">@emptyMsg</div>
+            return;
+        }
+        var toPct = (double d) => Math.Clamp((d + 30.0) / 60.0 * 100.0, 0.0, 100.0);
+        <div class="gauge-row">
+            <div>
+                <b>@(tel.PrimaryLabel ?? "JOINT")</b> @($"{actual:+0.0;-0.0;+0.0}°")
+                <div class="po-muted">
+                    drift @($"{tel.OtherMaxDeg ?? 0:0.0}°") · @(tel.AgeS < 2 ? "live" : $"{tel.AgeS:0}s ago")
+                </div>
+            </div>
+            <div class="gauge">
+                <div class="gauge-zero"></div>
+                @if (tel.TargetDeg is double tgt && tel.Source is not ("check" or "monitor"))
+                {
+                    <div class="gauge-target" style="left:@($"{toPct(tgt):0.#}%");background:@accent"></div>
+                }
+                <div class="gauge-actual" style="left:@($"{toPct(actual):0.#}%")"></div>
+            </div>
+        </div>
+    };
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

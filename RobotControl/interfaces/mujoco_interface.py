@@ -11,6 +11,7 @@ so ``force = kp*(ctrl - q) - kd*dq`` exactly like the real motor controller.
 """
 from __future__ import annotations
 
+import collections
 import logging
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,7 @@ import numpy as np
 
 from .. import MJCF_DIR
 from ..configs.joint_map import JointMap, actuator_name_for
+from ..configs.sim_calibration import SimCalibration
 from .base_interface import LowStateData, MotorCommand, RobotHardwareInterface
 
 log = logging.getLogger(__name__)
@@ -45,13 +47,20 @@ def resolve_scene(scene: str | Path) -> Path:
 class MujocoInterface(RobotHardwareInterface):
     def __init__(self, joint_map: Optional[JointMap] = None, scene: str | Path = "stand",
                  policy_dt: float = 0.02, render: bool = False, keyframe: Optional[str] = "home",
-                 realtime: bool = False):
+                 realtime: bool = False, calibration: Optional[SimCalibration] = None,
+                 realistic: bool = False, seed: int = 0):
         super().__init__(joint_map)
         self.scene_path = resolve_scene(scene)
         self.policy_dt = float(policy_dt)
         self.render = bool(render)
         self.keyframe = keyframe
         self.realtime = realtime
+        self.realistic = bool(realistic or calibration is not None)
+        self.cal = calibration if calibration is not None else (SimCalibration.load(jm=self.joint_map) if self.realistic else None)
+        self.rng = np.random.default_rng(seed)
+        self._cmd_delay = collections.deque()
+        self._delay_steps = 0
+        self._dq_filt = np.zeros(self.joint_map.num_joints, dtype=np.float64)
         self.model = None
         self.data = None
         self._viewer = None
@@ -111,6 +120,9 @@ class MujocoInterface(RobotHardwareInterface):
 
         self.sim_dt = float(m.opt.timestep)
         self.substeps = max(1, int(round(self.policy_dt / self.sim_dt)))
+        if self.cal is not None:
+            self.cal.apply_to_model(mujoco, m, self._dof_adr)
+            self._delay_steps = max(0, int(round((self.cal.control_delay_ms / 1000.0) / self.policy_dt)))
         self.reset()
 
         if self.render:
@@ -152,12 +164,26 @@ class MujocoInterface(RobotHardwareInterface):
     def get_low_state(self) -> LowStateData:
         d = self.data
         s = d.sensordata
+        q = d.qpos[self._qpos_adr].copy()
+        dq = d.qvel[self._dof_adr].copy()
+        gyro = s[self._sens["imu_ang_vel"]].copy()
+        if self.cal is not None:
+            a = self.cal.vel_filter_alpha
+            self._dq_filt = (1.0 - a) * self._dq_filt + a * dq
+            q = q + self.cal.zero_offset_rad
+            if self.cal.pos_noise_rad > 0:
+                q = q + self.rng.normal(0.0, self.cal.pos_noise_rad, size=q.shape)
+            dq = self._dq_filt.copy()
+            if self.cal.vel_noise_rad_s > 0:
+                dq = dq + self.rng.normal(0.0, self.cal.vel_noise_rad_s, size=dq.shape)
+            if self.cal.imu_noise_rad > 0:
+                gyro = gyro + self.rng.normal(0.0, self.cal.imu_noise_rad, size=gyro.shape)
         return LowStateData(
-            q=d.qpos[self._qpos_adr].copy(),
-            dq=d.qvel[self._dof_adr].copy(),
+            q=q,
+            dq=dq,
             tau=d.actuator_force[self._act_ids].copy(),
             imu_quat=s[self._sens["imu_quat"]].copy(),
-            gyro=s[self._sens["imu_ang_vel"]].copy(),
+            gyro=gyro,
             accel=s[self._sens["imu_lin_acc"]].copy(),
             timestamp=float(d.time),
             extras={"root_pos": d.qpos[:3].copy()},
@@ -167,16 +193,26 @@ class MujocoInterface(RobotHardwareInterface):
     # --------------------------------------------------------------- command
     def _send(self, cmd: MotorCommand) -> None:
         m, d = self.model, self.data
-        m.actuator_gainprm[self._act_ids, 0] = cmd.kp
+        if self.cal is not None:
+            q_eff = cmd.q - self.cal.zero_offset_rad
+            self._cmd_delay.append((q_eff.copy(), cmd.kp.copy(), cmd.kd.copy(), cmd.tau.copy(), cmd.dq.copy()))
+            q_send, kp_send, kd_send, tau_send, dq_send = (
+                self._cmd_delay.popleft() if len(self._cmd_delay) > self._delay_steps else self._cmd_delay[0]
+            )
+            v_scale = self.cal.bus_voltage_v / max(self.cal.nominal_bus_v, 1.0)
+            kp_send = kp_send * v_scale
+        else:
+            q_send, kp_send, kd_send, tau_send, dq_send = cmd.q, cmd.kp, cmd.kd, cmd.tau, cmd.dq
+        m.actuator_gainprm[self._act_ids, 0] = kp_send
         m.actuator_biasprm[self._act_ids, 0] = 0.0
-        m.actuator_biasprm[self._act_ids, 1] = -cmd.kp
-        m.actuator_biasprm[self._act_ids, 2] = -cmd.kd
-        q_cmd = cmd.q
+        m.actuator_biasprm[self._act_ids, 1] = -kp_send
+        m.actuator_biasprm[self._act_ids, 2] = -kd_send
+        q_cmd = q_send
         if np.any(self._ctrl_limited):
-            q_cmd = np.where(self._ctrl_limited, np.clip(cmd.q, self._ctrl_lo, self._ctrl_hi), cmd.q)
+            q_cmd = np.where(self._ctrl_limited, np.clip(q_send, self._ctrl_lo, self._ctrl_hi), q_send)
         d.ctrl[self._act_ids] = q_cmd
         # feed-forward torque + velocity target (kd * dq_des) as an applied generalized force
-        d.qfrc_applied[self._dof_adr] = cmd.tau + cmd.kd * cmd.dq
+        d.qfrc_applied[self._dof_adr] = tau_send + kd_send * dq_send
 
     # ---------------------------------------------------------------- timing
     def step(self, n: Optional[int] = None) -> None:

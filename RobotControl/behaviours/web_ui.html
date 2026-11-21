@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>R1 Stand Explore — Web Control &amp; 26-DOF Telemetry</title>
+<style>
+  :root {
+    --bg: #0b0d12; --panel: #131720; --card: #191f2c; --border: rgba(255,255,255,.09);
+    --text: #eef1f7; --dim: #8b94a8; --blue: #2770e0; --teal: #2c7a86;
+    --orange: #e07214; --soft-orange: #7d4a1b; --red: #c72824;
+    --ok: #52d984; --warn: #ffbd42; --bad: #ff5c57; --cyan: #3dc7f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px; background: #10141c; border-bottom: 1px solid var(--border);
+  }
+  .topbar h1 { margin: 0; font-size: 17px; letter-spacing: .04em; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+    border-radius: 999px; font-size: 12px; font-weight: 600; background: #222938; color: var(--dim);
+  }
+  .pill.ok { background: rgba(82,217,132,.15); color: var(--ok); }
+  .pill.bad { background: rgba(255,92,87,.16); color: var(--bad); }
+  .pill.blue { background: rgba(39,112,224,.24); color: #8ab8ff; }
+  .pill.orange { background: rgba(224,114,20,.24); color: #ffb36b; }
+  .layout {
+    display: grid; grid-template-columns: 440px 1fr; gap: 16px;
+    padding: 16px 20px; max-width: 1600px; margin: 0 auto;
+  }
+  @media (max-width: 1080px) { .layout { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .sizes { display: flex; gap: 6px; margin-left: auto; }
+  button {
+    border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+    color: var(--text); font: inherit; font-weight: 600; padding: 9px 12px;
+    background: #272e3e; transition: filter .12s, transform .06s;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.16); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .45; cursor: not-allowed; background: #2a2e38 !important; color: var(--dim); }
+  button.chip { padding: 6px 8px; font-size: 12px; background: #232938; }
+  button.chip.active { background: #e3e7f0; color: #0e1118; }
+  .section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; border-left: 4px solid var(--dim); display: flex; flex-direction: column; gap: 8px;
+  }
+  .section.virtual { border-left-color: var(--blue); }
+  .section.real { border-left-color: var(--orange); }
+  .sec-title { font-size: 12px; font-weight: 700; letter-spacing: .05em; }
+  .virtual .sec-title { color: #67a3ff; }
+  .real .sec-title { color: #ff9c47; }
+  .btn-blue { background: var(--blue); }
+  .btn-blue-soft { background: #1e4278; font-size: 12px; }
+  .btn-orange { background: var(--orange); }
+  .btn-orange-soft { background: var(--soft-orange); }
+  .btn-teal { background: var(--teal); }
+  .btn-red { background: var(--red); min-width: 96px; }
+  .sub { font-size: 12px; color: var(--dim); }
+  .status-line { font-size: 13px; min-height: 18px; }
+  .status-line.ok { color: var(--ok); }
+  .status-line.warn { color: var(--warn); }
+  .status-line.bad { color: var(--bad); }
+  .check-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+  .check-item.done { color: var(--text); }
+  .box { width: 11px; height: 11px; border: 1.5px solid var(--dim); border-radius: 2px; flex: 0 0 auto; }
+  .check-item.done .box { background: var(--ok); border-color: var(--ok); }
+  .gauge-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; }
+  .gauge {
+    position: relative; width: 150px; height: 8px; background: rgba(255,255,255,.1); border-radius: 4px; flex: 0 0 auto;
+  }
+  .gauge .zero { position: absolute; left: 50%; top: -3px; width: 2px; height: 14px; background: rgba(255,255,255,.35); }
+  .gauge .target { position: absolute; top: -4px; width: 4px; height: 16px; border-radius: 2px; transform: translateX(-50%); }
+  .gauge .actual { position: absolute; top: -2px; width: 8px; height: 12px; background: #fff; border-radius: 2px; transform: translateX(-50%); }
+  .estop {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding-top: 6px; border-top: 1px solid var(--border);
+  }
+  .estop-note { font-size: 12px; color: var(--warn); }
+  .logbox {
+    background: #0a0c10; border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; font: 11.5px/1.45 ui-monospace, Consolas, monospace;
+    color: #9ba5ba; max-height: 150px; overflow-y: auto; white-space: pre-wrap;
+  }
+  /* Right 26-joint telemetry */
+  .tel-header {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .tel-metrics { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--dim); }
+  .tel-metrics b { color: var(--text); font-weight: 600; }
+  .groups-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 720px) { .groups-grid { grid-template-columns: 1fr; } }
+  .group-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; border-left: 3px solid var(--cyan);
+  }
+  .group-hdr {
+    display: flex; justify-content: space-between; font-size: 11px; font-weight: 700;
+    letter-spacing: .05em; color: var(--dim); padding-bottom: 6px; margin-bottom: 4px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .jrow {
+    display: grid; grid-template-columns: 108px 1fr 64px 34px; align-items: center; gap: 8px;
+    padding: 3px 0; font-size: 12px;
+  }
+  .jname { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jbar { position: relative; height: 16px; display: flex; align-items: center; }
+  .jbar-track { position: absolute; inset: 0; top: 5px; height: 6px; background: rgba(255,255,255,.09); border-radius: 3px; }
+  .jbar .def { position: absolute; top: -3px; width: 2px; height: 12px; background: rgba(255,255,255,.45); pointer-events: none; z-index: 1; }
+  .jbar .fill { position: absolute; top: 0; height: 6px; border-radius: 3px; opacity: .55; pointer-events: none; }
+  .jslider { position: relative; z-index: 2; width: 100%; margin: 0; height: 16px; background: transparent; cursor: pointer; accent-color: #ff9c47; }
+  .jslider.virt { accent-color: #3dc7f2; }
+  .jslider:disabled { cursor: default; opacity: .65; }
+  .jang { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .jtemp { text-align: right; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .toast {
+    padding: 8px 10px; border-radius: 6px; font-size: 12px; background: rgba(255,255,255,.07);
+    display: none;
+  }
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none;
+    align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal {
+    background: #17120e; border: 1px solid var(--orange); border-top: 5px solid var(--orange);
+    border-radius: 10px; padding: 20px; width: min(460px, 92vw);
+  }
+  .modal h2 { margin: 0 0 8px; color: #ff9c47; font-size: 18px; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>UNITREE R1 — STAND EXPLORE</h1>
+  <div class="row">
+    <span id="connPill" class="pill">Connecting...</span>
+    <span id="jobPill" class="pill">Idle</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel">
+    <div class="row">
+      <strong style="font-size:13px">Behaviour &amp; Size</strong>
+      <div class="sizes" id="sizeChips">
+        <button class="chip active" data-amp="10">10°</button>
+        <button class="chip" data-amp="20">20°</button>
+        <button class="chip" data-amp="30">30°</button>
+      </div>
+    </div>
+    <div class="chips" id="behChips"></div>
+    <div class="row" style="justify-content:space-between">
+      <div id="behDesc" class="sub">Turns head left/right. Only neck yaw motor moves.</div>
+      <label class="sub" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+        <input id="chkArm" type="checkbox"> Unlock arm motions
+      </label>
+    </div>
+
+    <!-- 1. VIRTUAL ROBOT -->
+    <div class="section virtual">
+      <div class="row" style="justify-content:space-between">
+        <div class="sec-title">1. VIRTUAL ROBOT (PC SIMULATION)</div>
+        <span class="pill blue">SAFE · NO HARDWARE MOVES</span>
+      </div>
+      <div class="sub">Runs only on your PC (Unreal 3D twin or headless MuJoCo). Nothing physical moves.</div>
+      <div id="calSummary" class="sub" style="color:#8ab8ff">Twin physics: calibrated delay, friction, BEMF, compliant stand</div>
+      <div class="row">
+        <button id="btnUrlab" class="btn-blue" style="flex:1">Run on Unreal Twin</button>
+        <button id="btnSim" class="btn-blue-soft">Run in MuJoCo Sim</button>
+      </div>
+      <div id="virtStatus" class="status-line sub">Safe: runs only on your PC.</div>
+      <div id="virtGauge" class="gauge-row"></div>
+    </div>
+
+    <!-- 2. PHYSICAL ROBOT / OFFLINE PRACTICE -->
+    <div id="sec2Card" class="section real">
+      <div class="row" style="justify-content:space-between">
+        <div id="sec2Title" class="sec-title">2. PRACTICE ROBOT (VIRTUAL STAND TWIN)</div>
+        <div class="row">
+          <span id="sec2Pill" class="pill blue">R1 NOT CONNECTED</span>
+          <button id="btnProbeReal" class="chip">Connect Physical R1</button>
+        </div>
+      </div>
+      <div id="roLbl" class="sub"><b>Practice Read-Only Workflow (Virtual Stand Twin):</b></div>
+      <div class="row">
+        <button id="btnSnapshot" class="btn-blue-soft" style="flex:1">Read Pose Now</button>
+        <button id="btnMonitor" class="btn-teal" style="flex:1">Live Mirror</button>
+        <button id="btnCheck" class="btn-blue-soft" style="flex:1">Pre-Run Check</button>
+      </div>
+      <div id="runLbl" class="sub"><b>Practice Step 3 on Virtual Stand Twin:</b></div>
+      <button id="btnRun" class="btn-blue" style="width:100%" disabled>PRACTICE MOVE ROBOT (Requires Steps 1 + 2)</button>
+      <div id="step1" class="check-item"><span class="box"></span><span>Step 1: test selected behaviour &amp; size in Virtual above first</span></div>
+      <div id="step2" class="check-item"><span class="box"></span><span>Step 2: Pre-Run Check passed (0% motor power)</span></div>
+      <div id="realStatus" class="status-line sub">Practice locked until Steps 1 and 2 pass above.</div>
+      <div id="realGauge" class="gauge-row"></div>
+    </div>
+
+    <div class="estop">
+      <button id="btnStop" class="btn-red">STOP</button>
+      <div id="estopNote" class="sub">Stops any running virtual or practice session.</div>
+    </div>
+    <div id="toast" class="toast"></div>
+    <div id="logbox" class="logbox">Waiting for service output...</div>
+  </section>
+
+  <!-- RIGHT: 26-DOF JOINT TELEMETRY -->
+  <section class="panel">
+    <div class="tel-header">
+      <div>
+        <strong id="telTitle" style="font-size:15px">PHYSICAL R1 — CURRENT JOINT ANGLES (26 DOF)</strong>
+        <div id="telMetrics" class="tel-metrics"><span>IMU: --</span></div>
+      </div>
+      <div class="row">
+        <button id="btnTelPhys" class="chip active">Physical R1</button>
+        <button id="btnTelVirt" class="chip">Virtual Sim</button>
+        <button id="btnSliderWrite" class="btn-orange-soft" style="padding:6px 10px;font-size:12px">Sliders: Read-Only (Enable Write)</button>
+        <button id="btnTelRead" class="btn-orange-soft" style="padding:6px 10px;font-size:12px">Read Physical Now</button>
+        <span id="telSourcePill" class="pill">NO PHYSICAL READING</span>
+      </div>
+    </div>
+    <div id="telBanner" class="status-line sub" style="display:none"></div>
+    <div id="groupsGrid" class="groups-grid"></div>
+    <div class="section" style="margin-top:4px;border-left-color:var(--cyan)">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <strong style="font-size:13px">3D R1 ON STAND (LIVE POSE)</strong>
+          <span id="standPoseLbl" class="sub" style="margin-left:8px">Physical R1 pose</span>
+        </div>
+        <div class="row" id="camChips">
+          <button class="chip active" data-cam="iso">3/4 Iso</button>
+          <button class="chip" data-cam="front">Front</button>
+          <button class="chip" data-cam="side">Side</button>
+          <button class="chip" data-cam="back">Back</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;background:#0a0c10;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <img id="standImg" src="/robot_view.png?mode=real&cam=iso" alt="3D Unitree R1 on test stand" style="max-width:100%;height:auto;display:block">
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="confirmModal" class="modal-bg">
+  <div class="modal">
+    <h2>Move the REAL robot?</h2>
+    <p id="confirmDesc" class="sub" style="color:var(--text)"></p>
+    <p class="sub" style="color:var(--text)">Robot on its stand, clear workspace, remote in your hand?</p>
+    <div class="row" style="margin-top:14px">
+      <button id="btnConfirmYes" class="btn-orange" style="flex:1">Yes, move the real robot</button>
+      <button id="btnConfirmNo">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const JOINT_GROUPS = [
+  { name: "HEAD", color: "#3dc7f2", indices: [24, 25] },
+  { name: "WAIST", color: "#a68cf2", indices: [12, 13] },
+  { name: "LEFT ARM", color: "#4e92ff", indices: [14, 15, 16, 17, 18] },
+  { name: "RIGHT ARM", color: "#52d984", indices: [19, 20, 21, 22, 23] },
+  { name: "LEFT LEG", color: "#ffbd42", indices: [0, 1, 2, 3, 4, 5] },
+  { name: "RIGHT LEG", color: "#ff8c3a", indices: [6, 7, 8, 9, 10, 11] },
+];
+const LABELS = [
+  "L Hip Pitch","L Hip Roll","L Hip Yaw","L Knee","L Ankle Pitch","L Ankle Roll",
+  "R Hip Pitch","R Hip Roll","R Hip Yaw","R Knee","R Ankle Pitch","R Ankle Roll",
+  "Waist Roll","Waist Yaw",
+  "L Shld Pitch","L Shld Roll","L Shld Yaw","L Elbow","L Wrist Roll",
+  "R Shld Pitch","R Shld Roll","R Shld Yaw","R Elbow","R Wrist Roll",
+  "Head Pitch","Head Yaw"
+];
+
+let selectedBeh = "neck_turn";
+let selectedAmp = 10;
+let armUnlocked = false;
+let telMode = "real";
+let practiceWhenOffline = true;
+let camPreset = "iso";
+let lastViewKey = "";
+let sliderWriteArmed = false;
+let draggingIdx = null;
+let draggingDeg = 0;
+let lastStatus = null;
+let pollBusy = false;
+
+const isArmBeh = (id) => id === "arm_raise" || id === "hand_wave";
+
+const $ = (id) => document.getElementById(id);
+
+function showToast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.style.display = "block";
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = "none"; }, 4000);
+}
+
+async function postJson(path, body = {}) {
+  try {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!j.ok && j.error) showToast("Refused: " + j.error);
+    poll();
+    return j;
+  } catch (e) {
+    showToast("Service error: " + e.message);
+  }
+}
+
+function renderGauge(el, tel, accent, emptyText) {
+  if (!tel || tel.actual_deg === undefined) {
+    el.innerHTML = `<span class="sub">${emptyText}</span>`;
+    return;
+  }
+  const actual = Number(tel.actual_deg);
+  const toPct = (d) => Math.max(0, Math.min(100, ((d + 30) / 60) * 100));
+  const tgt = (tel.target_deg !== undefined && tel.target_deg !== null && tel.source !== "check" && tel.source !== "monitor")
+    ? `<div class="target" style="left:${toPct(tel.target_deg)}%;background:${accent}"></div>` : "";
+  const imu = tel.imu_rpy_deg ? `IMU ${tel.imu_rpy_deg.map(v => (v>=0?"+":"")+v.toFixed(0)).join("/")}` : "";
+  const temp = tel.max_temp_c !== undefined ? ` · Temp ${tel.max_temp_c}°C` : "";
+  const bus = tel.bus_v ? ` · ${tel.bus_v.toFixed(1)}V` : "";
+  el.innerHTML = `
+    <div>
+      <b>${tel.primary_label || "JOINT"}</b> ${(actual>=0?"+":"")+actual.toFixed(1)}°
+      <div class="sub">drift ${(tel.other_max_deg ?? 0).toFixed(1)}° · ${tel.age_s < 2 ? "live" : tel.age_s.toFixed(0)+"s ago"} ${imu}${temp}${bus}</div>
+    </div>
+    <div class="gauge"><div class="zero"></div>${tgt}<div class="actual" style="left:${toPct(actual)}%"></div></div>`;
+}
+
+function renderTelemetryGrid(st) {
+  const realConnected = !!st.real_connected;
+  const pracActive = !realConnected;
+  const real = st.telemetry?.real;
+  const prac = st.telemetry?.practice;
+  const virt = st.telemetry?.virtual;
+  const realHead = st.head?.real;
+  const wantReal = telMode === "real";
+  const hasReal26 = realConnected && !!(real && real.q_deg && real.q_deg.length >= 26);
+  const usingPrac = pracActive && !!(prac && prac.q_deg && prac.q_deg.length >= 26);
+  const realOrPrac = hasReal26 ? real : (usingPrac ? prac : null);
+  const hasVirt26 = !!(virt && virt.q_deg && virt.q_deg.length >= 26);
+  const hasHeadOnly = wantReal && !realOrPrac && realHead && (realHead.yaw !== undefined || realHead.pitch !== undefined);
+  const tel = wantReal ? realOrPrac : (hasVirt26 ? virt : null);
+
+  $("telTitle").textContent = wantReal
+    ? (realConnected ? "PHYSICAL R1 — CURRENT JOINT ANGLES (26 DOF)" : "PRACTICE STAND TWIN — CURRENT JOINT ANGLES (26 DOF)")
+    : "VIRTUAL SIM — JOINT ANGLES (26 DOF)";
+  $("btnTelPhys").textContent = realConnected ? "Physical R1" : "Practice Twin";
+  $("btnTelRead").textContent = realConnected ? "Read Physical Now" : "Read Practice Pose";
+  $("btnTelPhys").classList.toggle("active", wantReal);
+  $("btnTelVirt").classList.toggle("active", !wantReal);
+
+  const pill = $("telSourcePill");
+  const banner = $("telBanner");
+  if (wantReal) {
+    if (hasReal26) {
+      const live = (st.job === "monitor" || st.job === "run" || st.job === "snapshot") && real.age_s < 2;
+      pill.textContent = live ? "PHYSICAL R1 LIVE" : `PHYSICAL R1 · ${real.age_s.toFixed(0)}s AGO`;
+      pill.className = "pill orange";
+      banner.style.display = "none";
+    } else if (usingPrac) {
+      pill.textContent = "PRACTICE TWIN (OFFLINE)";
+      pill.className = "pill blue";
+      banner.textContent = "Physical R1 offline — displaying PRACTICE stand twin pose (zero real hardware active).";
+      banner.className = "status-line sub";
+      banner.style.display = "block";
+    } else if (hasHeadOnly) {
+      pill.textContent = "PHYSICAL HEAD ONLY";
+      pill.className = "pill orange";
+      banner.textContent = "Only Head Pitch/Yaw arrived from Check. Click 'Read Physical Now' for all 26 physical joints.";
+      banner.className = "status-line warn";
+      banner.style.display = "block";
+    } else {
+      const fail = st.results?.snapshot?.ok === false ? st.results.snapshot.reason
+        : (st.results?.monitor?.ok === false ? st.results.monitor.reason : "");
+      pill.textContent = st.job === "snapshot" ? "READING PHYSICAL R1..." : "NO PHYSICAL READING";
+      pill.className = "pill";
+      banner.textContent = pracActive
+        ? "Physical R1 offline — click 'Read Physical Now' to initialize Practice Stand Twin for full offline workflow practice."
+        : (fail
+          ? `Physical R1 not read (${fail}). Showing '--' instead of defaults. Click 'Read Physical Now' once connected.`
+          : "No physical robot sensor reading yet (showing '--', never fake defaults). Click 'Read Physical Now' when 192.168.123.164 is online.");
+      banner.className = fail && !pracActive ? "status-line bad" : "status-line sub";
+      banner.style.display = "block";
+    }
+  } else if (tel) {
+    pill.textContent = st.job === "preview" && tel.age_s < 2 ? "VIRTUAL PC LIVE" : `VIRTUAL PC · ${tel.age_s.toFixed(0)}s AGO`;
+    pill.className = "pill blue";
+    banner.style.display = "none";
+  } else {
+    pill.textContent = "NO VIRTUAL RUN YET";
+    pill.className = "pill";
+    banner.textContent = "No virtual simulation run yet. Run on Unreal Twin or MuJoCo Sim to populate virtual angles.";
+    banner.className = "status-line sub";
+    banner.style.display = "block";
+  }
+
+  const q = tel?.q_deg || null;
+  const limits = st.joint_limits_deg || new Array(26).fill([-180, 180]);
+  const defs = st.joint_defaults_deg || new Array(26).fill(0);
+  const temps = (wantReal && realOrPrac) ? (realOrPrac.temps_c || []) : [];
+
+  const imu = tel?.imu_rpy_deg
+    ? `<span>IMU R/P/Y: <b>${tel.imu_rpy_deg.map(v=>(v>=0?"+":"")+v.toFixed(1)).join(" / ")}°</b></span>`
+    : `<span>IMU: <b>--</b></span>`;
+  const extra = wantReal
+    ? `<span>Mode: <b>${realOrPrac?.mode_machine ?? "--"}</b></span>
+       <span>Motors: <b>${realOrPrac ? (realOrPrac.active_motors ?? 0) + "/26" : "--"}</b></span>
+       <span>Max Temp: <b>${realOrPrac?.max_temp_c !== undefined && realOrPrac?.max_temp_c !== null ? realOrPrac.max_temp_c + "°C" : "--"}</b></span>
+       <span>Bus: <b>${realOrPrac?.bus_v ? realOrPrac.bus_v.toFixed(1)+" V" : "--"}</b></span>`
+    : `<span>Limits: <b>r1_joint_map.yaml</b></span>`;
+  $("telMetrics").innerHTML = imu + extra;
+
+  $("groupsGrid").innerHTML = JOINT_GROUPS.map((g) => {
+    const isLeg = g.name.includes("LEG");
+    const rows = g.indices.map((idx) => {
+      const [lo, hi] = limits[idx];
+      const span = Math.max(1, hi - lo);
+      const def = Number(defs[idx] ?? 0);
+      const nd = Math.max(0, Math.min(1, (def - lo) / span));
+      let rawVal = q ? Number(q[idx]) : null;
+      if (rawVal === null && hasHeadOnly) {
+        if (idx === 24 && realHead.pitch !== undefined && realHead.pitch !== null) rawVal = Number(realHead.pitch);
+        if (idx === 25 && realHead.yaw !== undefined && realHead.yaw !== null) rawVal = Number(realHead.yaw);
+      }
+      const writable = !st.job && !isLeg && (!wantReal || (sliderWriteArmed && (idx >= 24 || armUnlocked)));
+      const sVal = (rawVal !== null && !Number.isNaN(rawVal)) ? rawVal : def;
+      const nv = (rawVal !== null && !Number.isNaN(rawVal)) ? Math.max(0, Math.min(1, (rawVal - lo) / span)) : null;
+      const margin = nv !== null ? Math.min(nv, 1 - nv) : 1;
+      const degMargin = rawVal !== null ? Math.min(rawVal - lo, hi - rawVal) : 99;
+      let col = wantReal ? "#ff9c47" : "#3dc7f2";
+      if (margin < 0.03 && degMargin < 4) col = "#ff5c57";
+      else if (margin < 0.07 && degMargin < 8) col = "#ffbd42";
+      const fillHtml = nv !== null
+        ? `<div class="fill" style="left:${Math.min(nd,nv)*100}%;width:${Math.max(1.5,Math.abs(nv-nd)*100)}%;background:${col}"></div>`
+        : "";
+      const tStr = (rawVal !== null && temps[idx] !== undefined) ? `${temps[idx]}°` : "--";
+      const aStr = (rawVal !== null && !Number.isNaN(rawVal)) ? `${(rawVal>=0?"+":"")+rawVal.toFixed(1)}°` : "--";
+      return `<div class="jrow">
+        <span class="jname">${LABELS[idx]}</span>
+        <div class="jbar">
+          <div class="jbar-track"><div class="def" style="left:${nd*100}%"></div>${fillHtml}</div>
+          <input type="range" class="jslider ${wantReal?'':'virt'}" data-idx="${idx}" min="${lo}" max="${hi}" step="0.5" value="${sVal.toFixed(1)}" ${writable?'':'disabled'}>
+        </div>
+        <span class="jang" id="jang_${idx}" style="color:${rawVal===null?'var(--dim)':(margin<0.07&&degMargin<8?col:'var(--text)')}">${aStr}</span>
+        <span class="jtemp">${tStr}</span>
+      </div>`;
+    }).join("");
+    return `<div class="group-card" style="border-left-color:${g.color}">
+      <div class="group-hdr"><span style="color:${g.color}">${g.name}${isLeg?' · STAND READ-ONLY':''}</span><span>RANGE / ANGLE / T</span></div>
+      ${rows}
+    </div>`;
+  }).join("");
+}
+
+function render(st) {
+  lastStatus = st;
+  const idle = !st.job;
+  $("connPill").textContent = "Service Online";
+  $("connPill").className = "pill ok";
+  $("jobPill").textContent = st.job ? st.job.toUpperCase() : "Idle";
+  $("jobPill").className = "pill " + (st.job ? "orange" : "");
+
+  const behs = st.behaviours || [];
+  if (behs.length) {
+    if (!armUnlocked && isArmBeh(selectedBeh)) selectedBeh = "neck_turn";
+    $("behChips").innerHTML = behs.map((b) => {
+      const locked = !armUnlocked && isArmBeh(b.id);
+      const dis = locked || (!idle && b.id !== selectedBeh);
+      return `<button class="chip ${b.id===selectedBeh?'active':''}" data-beh="${b.id}" ${dis?'disabled':''}>${b.label}</button>`;
+    }).join("");
+    const info = behs.find(b => b.id === selectedBeh) || behs[0];
+    $("behDesc").textContent = `${info.desc} (${Math.min(selectedAmp, info.max_deg)}°)`;
+  }
+  document.querySelectorAll("#sizeChips button").forEach((b) => {
+    const a = Number(b.dataset.amp);
+    b.classList.toggle("active", a === selectedAmp);
+    b.disabled = !idle && a !== selectedAmp;
+  });
+
+  const prevMatch = st.previewed && st.previewed.behaviour === selectedBeh && Number(st.previewed.amplitude) === selectedAmp;
+  const chkMatch = st.checked && st.checked.behaviour === selectedBeh && Number(st.checked.amplitude) === selectedAmp
+    && st.check_age_s !== null && st.check_age_s < 300;
+  const canRun = idle && st.can_run_robot && prevMatch && chkMatch;
+
+  $("btnUrlab").disabled = !idle;
+  $("btnSim").disabled = !idle;
+  $("btnSnapshot").disabled = !idle;
+  $("btnTelRead").disabled = !idle;
+  $("btnCheck").disabled = !idle;
+  $("btnMonitor").disabled = !idle;
+  $("btnRun").disabled = !canRun;
+  $("btnStop").disabled = false;
+
+  $("step1").classList.toggle("done", !!prevMatch);
+  $("step2").classList.toggle("done", !!chkMatch);
+
+  const pr = st.results?.preview;
+  const vs = $("virtStatus");
+  if (st.job === "preview") { vs.textContent = "Moving virtual robot..."; vs.className = "status-line warn"; }
+  else if (pr && !pr.ok) { vs.textContent = "Stopped: " + pr.reason; vs.className = "status-line bad"; }
+  else if (prevMatch) { vs.textContent = `Done — virtual ${selectedBeh} (${selectedAmp}°) passed.`; vs.className = "status-line ok"; }
+  else { vs.textContent = "Safe: nothing real moves."; vs.className = "status-line sub"; }
+  if (st.calibration) {
+    const c = st.calibration;
+    $("calSummary").textContent = `Twin physics: ${c.control_delay_ms}ms delay · ${Number(c.bus_voltage_v).toFixed(1)}V BEMF · ${c.compliant_stand ? "compliant stand" : "rigid stand"} · ±${c.pos_noise_deg}° noise`;
+  }
+
+  const rs = $("realStatus");
+  const cr = st.results?.check, rr = st.results?.run, mr = st.results?.monitor;
+  if (st.job === "check") { rs.textContent = "Checking robot (read-only)..."; rs.className = "status-line warn"; }
+  else if (st.job === "monitor") { rs.textContent = `MONITOR (read-only) — ${st.mirror_samples} samples`; rs.className = "status-line ok"; }
+  else if (st.job === "run") { rs.textContent = `REAL ROBOT MOVING — ${st.mirror_samples} samples`; rs.className = "status-line warn"; }
+  else if (cr && !cr.ok && !chkMatch) { rs.textContent = "Check failed: " + cr.reason; rs.className = "status-line bad"; }
+  else if (mr && !mr.ok && (st.last_result || "").startsWith("monitor")) { rs.textContent = "Monitor failed: " + mr.reason; rs.className = "status-line bad"; }
+  else if (rr && !rr.ok) { rs.textContent = "Last run stopped: " + rr.reason; rs.className = "status-line bad"; }
+  else if (canRun) { rs.textContent = "Ready. Confirmation required before moving."; rs.className = "status-line ok"; }
+  else { rs.textContent = "Locked until steps 1 and 2 pass (Monitor is always read-only)."; rs.className = "status-line sub"; }
+
+  renderGauge($("virtGauge"), st.telemetry?.virtual || st.head?.virtual, "#3dc7f2", "No virtual reading yet.");
+  const realOn = !!st.real_connected;
+  const pracActive = !realOn;
+  $("sec2Card").className = realOn ? "section real" : "section virtual";
+  $("sec2Title").textContent = realOn ? "2. PHYSICAL ROBOT (UNITREE R1)" : "2. PRACTICE ROBOT (VIRTUAL STAND TWIN)";
+  $("sec2Pill").textContent = realOn ? "192.168.123.164" : "R1 NOT CONNECTED";
+  $("sec2Pill").className = realOn ? "pill orange" : "pill blue";
+  $("btnProbeReal").style.display = realOn ? "none" : "inline-block";
+  $("btnProbeReal").disabled = !idle;
+  $("roLbl").innerHTML = realOn ? "<b>Read-Only (0% motor power):</b>" : "<b>Practice Read-Only Workflow (Virtual Stand Twin):</b>";
+  $("runLbl").innerHTML = realOn ? "<b>Powered Motion on Physical R1:</b>" : "<b>Practice Step 3 on Virtual Stand Twin:</b>";
+  $("runLbl").style.color = realOn ? "#ffb36b" : "var(--dim)";
+  $("btnSnapshot").className = realOn ? "btn-orange-soft" : "btn-blue-soft";
+  $("btnCheck").className = realOn ? "btn-orange-soft" : "btn-blue-soft";
+  $("btnRun").className = realOn ? "btn-orange" : "btn-blue";
+  $("btnRun").textContent = st.job === "run"
+    ? (pracActive ? "PRACTICE TWIN MOVING..." : "PHYSICAL R1 MOVING...")
+    : (pracActive ? "PRACTICE MOVE ROBOT (Requires Steps 1 + 2)" : "MOVE PHYSICAL R1 (Requires Steps 1 + 2)");
+  $("estopNote").innerHTML = realOn ? "Emergency stop on robot: <b>remote L2 + B, hold 5 s</b>" : "Stops any running virtual or practice session.";
+  $("estopNote").className = realOn ? "estop-note" : "sub";
+  const realOrPracGauge = (realOn ? st.telemetry?.real : st.telemetry?.practice) || (realOn ? st.head?.real : st.head?.practice);
+  renderGauge($("realGauge"), realOrPracGauge, realOn ? "#ff9c47" : "#3dc7f2", realOn ? "No robot reading yet." : "No practice reading yet.");
+  if (draggingIdx === null) renderTelemetryGrid(st);
+  const srcTel = telMode === "real" ? (st.telemetry?.real || (pracActive ? st.telemetry?.practice : null)) : st.telemetry?.virtual;
+  const poseSig = srcTel?.q_deg ? srcTel.q_deg.map(v => Number(v).toFixed(1)).join(",") : `${st.head?.real?.yaw ?? ""},${st.head?.real?.pitch ?? ""}`;
+  const viewKey = `${telMode}|${camPreset}|${draggingIdx ?? ""}|${draggingIdx !== null ? draggingDeg.toFixed(1) : ""}|${poseSig}`;
+  if (viewKey !== lastViewKey) {
+    lastViewKey = viewKey;
+    $("standPoseLbl").textContent = telMode === "real" ? (pracActive && !st.telemetry?.real?.q_deg ? "Practice twin pose" : "Physical R1 pose") : "Virtual PC pose";
+    let u = `/robot_view.png?mode=${telMode}&cam=${camPreset}&h=${encodeURIComponent(poseSig)}`;
+    if (draggingIdx !== null) u += `&j=${draggingIdx}&deg=${draggingDeg.toFixed(1)}`;
+    $("standImg").src = u;
+  }
+  $("btnSliderWrite").textContent = telMode === "real"
+    ? (sliderWriteArmed ? (pracActive ? "Sliders: WRITE PRACTICE TWIN" : "Sliders: WRITE PHYSICAL R1") : "Sliders: Read-Only (Enable Write)")
+    : "Sliders: Write Virtual (Unreal)";
+  $("btnSliderWrite").className = (telMode === "real" && sliderWriteArmed) ? "btn-orange" : "btn-orange-soft";
+
+  if (st.lines?.length) {
+    const lb = $("logbox");
+    lb.textContent = st.lines.join("\n");
+    lb.scrollTop = lb.scrollHeight;
+  }
+}
+
+async function poll() {
+  if (pollBusy) return;
+  pollBusy = true;
+  try {
+    const r = await fetch("/status");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    render(await r.json());
+  } catch {
+    $("connPill").textContent = "Offline";
+    $("connPill").className = "pill bad";
+  } finally {
+    pollBusy = false;
+  }
+}
+
+$("behChips").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-beh]");
+  if (b && !b.disabled) { selectedBeh = b.dataset.beh; if (lastStatus) render(lastStatus); }
+});
+$("chkArm").addEventListener("change", (e) => {
+  armUnlocked = e.target.checked;
+  if (!armUnlocked && isArmBeh(selectedBeh)) selectedBeh = "neck_turn";
+  if (lastStatus) render(lastStatus);
+});
+$("sizeChips").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-amp]");
+  if (b && !b.disabled) { selectedAmp = Number(b.dataset.amp); if (lastStatus) render(lastStatus); }
+});
+const params = () => ({ behaviour: selectedBeh, amplitude: selectedAmp, freq: 0.2, duration: 20.0 });
+const isPracticeActive = () => !(lastStatus?.real_connected);
+$("btnProbeReal").onclick = () => postJson("/snapshot", { practice: false });
+$("btnUrlab").onclick = () => postJson("/preview", { ...params(), target: "urlab" });
+$("btnSim").onclick = () => postJson("/preview", { ...params(), target: "sim" });
+$("btnSnapshot").onclick = () => postJson("/snapshot", { practice: isPracticeActive() });
+$("btnTelRead").onclick = () => { telMode = "real"; postJson("/snapshot", { practice: isPracticeActive() }); };
+$("btnTelPhys").onclick = () => { telMode = "real"; if (lastStatus) render(lastStatus); };
+$("btnTelVirt").onclick = () => { telMode = "virtual"; if (lastStatus) render(lastStatus); };
+$("camChips").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-cam]");
+  if (!b) return;
+  camPreset = b.dataset.cam;
+  document.querySelectorAll("#camChips button").forEach(btn => btn.classList.toggle("active", btn === b));
+  if (lastStatus) render(lastStatus);
+});
+$("btnSliderWrite").onclick = () => {
+  if (telMode !== "real") return;
+  if (sliderWriteArmed) { sliderWriteArmed = false; if (lastStatus) render(lastStatus); return; }
+  const msg = isPracticeActive()
+    ? "Arm upper-body sliders for the PRACTICE stand twin? (No real hardware connected; legs stay stand-locked.)"
+    : "Arm slider writes to PHYSICAL Unitree R1 (192.168.123.164)? Only the single dragged joint powers smoothly (legs stay locked read-only; e-stop: L2+B 5s).";
+  if (confirm(msg)) {
+    sliderWriteArmed = true;
+    if (lastStatus) render(lastStatus);
+  }
+};
+$("groupsGrid").addEventListener("input", (e) => {
+  const s = e.target.closest("input.jslider");
+  if (!s) return;
+  draggingIdx = Number(s.dataset.idx);
+  draggingDeg = Number(s.value);
+  const lbl = $("jang_" + draggingIdx);
+  if (lbl) { lbl.textContent = "→" + (draggingDeg>=0?"+":"") + draggingDeg.toFixed(1) + "°"; lbl.style.color = "#fff"; }
+});
+$("groupsGrid").addEventListener("change", (e) => {
+  const s = e.target.closest("input.jslider");
+  if (!s) return;
+  const idx = Number(s.dataset.idx);
+  const val = Number(s.value);
+  draggingIdx = null;
+  const jname = lastStatus?.joint_names?.[idx] ? lastStatus.joint_names[idx] + "_joint" : null;
+  if (!jname) return;
+  const tgt = telMode === "real" ? (isPracticeActive() ? "practice" : "real") : "urlab";
+  postJson("/move_joint", { joint: jname, target_deg: val, target: tgt, confirm: telMode === "real" && sliderWriteArmed });
+});
+$("btnCheck").onclick = () => postJson("/check", { ...params(), practice: isPracticeActive() });
+$("btnMonitor").onclick = () => postJson("/monitor", { practice: isPracticeActive() });
+$("btnStop").onclick = async () => {
+  $("confirmModal").style.display = "none";
+  const j = await postJson("/stop", {});
+  if (j && j.ok) showToast(j.note ? `STOP: ${j.note}` : "STOP sent.");
+};
+$("btnRun").onclick = () => {
+  const modeNote = isPracticeActive() ? " [PRACTICE TWIN — no real hardware]" : " [PHYSICAL HARDWARE]";
+  $("confirmDesc").textContent = `Behaviour: ${selectedBeh} (${selectedAmp}°)${modeNote}. Unpowered joints stay disabled.`;
+  $("confirmModal").style.display = "flex";
+};
+$("btnConfirmNo").onclick = () => { $("confirmModal").style.display = "none"; };
+$("btnConfirmYes").onclick = () => {
+  $("confirmModal").style.display = "none";
+  postJson("/run", { ...params(), confirm: true, practice: isPracticeActive() });
+};
+
+poll();
+setInterval(poll, 300);
+</script>
+</body>
+</html>

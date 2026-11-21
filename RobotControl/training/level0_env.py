@@ -20,6 +20,9 @@ import numpy as np
 import yaml
 from mujoco import rollout
 
+from ..configs.joint_map import JointMap
+from ..configs.sim_calibration import SimCalibration
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 # mesh-free variant (identical physics; visual geoms carry no mass/collision) so 512 per-env model copies fit in RAM
 MODEL_XML = ROOT / "UnrealProject/MJCF/r1_twin_stand_train.xml"
@@ -46,6 +49,9 @@ class Level0Config:
     # domain randomisation (per env, resampled on reset)
     dr_gain_scale: tuple[float, float] = (0.8, 1.2)
     dr_mass_scale: tuple[float, float] = (0.9, 1.1)
+    dr_friction_scale: tuple[float, float] = (0.7, 1.3)
+    dr_damping_scale: tuple[float, float] = (0.7, 1.3)
+    dr_armature_scale: tuple[float, float] = (0.8, 1.2)
     dr_action_delay_steps: int = 1
     obs_noise_pos: float = 0.01
     obs_noise_vel: float = 0.5
@@ -71,6 +77,12 @@ class Level0StandEnv:
         self.jm = yaml.safe_load(JOINT_MAP.read_text())
         self.base_model = mujoco.MjModel.from_xml_path(str(MODEL_XML))
         m = self.base_model
+        cal = SimCalibration.load(jm=JointMap.load(JOINT_MAP))
+        hinge_dofs = np.array([m.jnt_dofadr[i] for i in range(m.njnt) if m.jnt_type[i] == mujoco.mjtJoint.mjJNT_HINGE],
+                              dtype=np.int64)
+        cal.apply_to_model(mujoco, m, hinge_dofs)
+        self.hinge_dofs = hinge_dofs
+        self.cal = cal
         self.n = cfg.num_envs
         self.nu = m.nu
         names = [j["name"] for j in self.jm["joints"]]
@@ -143,6 +155,12 @@ class Level0StandEnv:
             ms = self.rng.uniform(*self.cfg.dr_mass_scale) if not self._eval else 1.0
             mi.body_mass[:] = self.base_model.body_mass * ms
             mi.body_inertia[:] = self.base_model.body_inertia * ms
+            fs = self.rng.uniform(*self.cfg.dr_friction_scale, size=self.nu) if not self._eval else 1.0
+            ds = self.rng.uniform(*self.cfg.dr_damping_scale, size=self.nu) if not self._eval else 1.0
+            arms = self.rng.uniform(*self.cfg.dr_armature_scale, size=self.nu) if not self._eval else 1.0
+            mi.dof_frictionloss[self.hinge_dofs] = self.base_model.dof_frictionloss[self.hinge_dofs] * fs
+            mi.dof_damping[self.hinge_dofs] = self.base_model.dof_damping[self.hinge_dofs] * ds
+            mi.dof_armature[self.hinge_dofs] = self.base_model.dof_armature[self.hinge_dofs] * arms
             self.delay[i] = self.rng.integers(0, self.cfg.dr_action_delay_steps + 1) if not self._eval else 0
 
     def set_eval(self, flag: bool = True):

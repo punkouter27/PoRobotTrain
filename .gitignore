@@ -11,3 +11,8 @@ UnrealProject/Plugins/UnrealRoboticsLab/
 *.onnx.data
 vendor/
 dist/
+
+bin/
+obj/
+TestResults/
+MUJOCO_LOG.TXT

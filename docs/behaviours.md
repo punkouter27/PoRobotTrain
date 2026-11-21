@@ -12,15 +12,17 @@ three targets; only the transport changes:
 Every target aborts when any non-powered joint moves more than `--max-other` (5 deg), plus the behaviour's
 own checks. The run log (all 26 joint angles) is flushed every 0.2 s.
 
-First behaviour: `neck_turn` (powers `head_yaw_joint` only; +-10 deg at 0.2 Hz by default, max 30 deg,
-torque capped at the motor's 0.86 Nm; refuses to start unless the head is within 10 deg of straight ahead;
-aborts if the head does not follow).
+Stand-safe behaviours (`RobotControl/behaviours/stand_behaviours.py`):
+- `neck_turn`: `head_yaw_joint` (+-10 / 20 / 30 deg at 0.2 Hz; torque capped at 0.86 Nm; starts within 10 deg of centre).
+- `neck_nod`: `head_pitch_joint` (+-10 / 20 deg, capped at 20 deg inside +-36 deg limits).
+- `arm_raise`: `right_shoulder_pitch_joint` gentle forward/up lift (10 / 20 / 30 deg from resting pose, with `right_elbow_joint` held gently so gravity does not swing the forearm).
+- `hand_wave`: `right_shoulder_pitch_joint`, `right_shoulder_roll_joint`, `right_elbow_joint` gentle stand-safe wave (capped at 20 deg).
 
 ## Command line
 
 ```powershell
 .venv\Scripts\python.exe -m robotcontrol.behaviours.runner neck_turn --target sim
-.venv\Scripts\python.exe -m robotcontrol.behaviours.runner neck_turn --target urlab      # Unreal in Play
+.venv\Scripts\python.exe -m robotcontrol.behaviours.runner hand_wave --target urlab      # Unreal in Play
 ssh -t unitree@192.168.123.164 "cd ~/porobot && ./run.sh robotcontrol.behaviours.runner neck_turn --target real"        # read-only
 ssh -t unitree@192.168.123.164 "cd ~/porobot && ./run.sh robotcontrol.behaviours.runner neck_turn --target real --go"   # powered
 ```
@@ -32,18 +34,18 @@ ssh -t unitree@192.168.123.164 "cd ~/porobot && ./run.sh robotcontrol.behaviours
    run it as a standalone window from PowerShell (Git Bash rewrites `/Game/...` into a file path):
    `& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
    With `bRunLevel0PolicyOnPlay=False` (Config/DefaultGame.ini) the twin holds its pose. The panel is top left;
-   URLab's debug panels are hidden (**Details** or Tab shows them, plus the raw service output).
-3. The panel has two colour-coded sections. Pick the turn size (10 / 20 / 30 deg) first.
+   URLab's debug panels are hidden (**Details** or Tab shows them, plus the raw service output and 26-joint telemetry matrix).
+3. Pick a behaviour (**Neck Turn**, **Neck Nod**, **Arm Raise**, **Hand Wave**) and turn/sweep size (10 / 20 / 30 deg).
    * **VIRTUAL ROBOT** (blue): **Move VIRTUAL robot** runs the behaviour on the Unreal twin. Nothing real moves.
    * **REAL ROBOT** (orange): **Check connection** runs it read-only on the robot (nothing published: robot
-     reachable, head centred). **Move REAL robot** unlocks only when both checklist steps are green for the
-     selected turn size (a clean virtual move, and a check less than 5 minutes old). It then asks for confirmation
-     (robot on stand, head forward, remote in hand). During the run the twin switches to **live mirror**: it shows
-     the robot's measured joint angles (read-only `stream_state` on the Jetson, URLab puppet mode).
-   Each section shows a **HEAD** readout (yaw, pitch, target, other-joint drift, and how old the reading is) with a
-   -30..+30 deg yaw gauge. Sources: the runner's 5 Hz `@head` line, the 1 Hz progress line older deployed runners
-   print (no pitch), and during a robot run the live mirror stream. The robot kit picks up the `@head` line on the
-   next `scripts\push_to_robot.ps1`.
+     reachable, joint state ready). **Monitor (Mirror)** streams live read-only telemetry (IMU, motor temps, bus voltage,
+     26 joints) and mirrors measured angles onto the twin without powering any motors. **Move REAL robot** unlocks only
+     when both checklist steps are green for the selected behaviour and size (a clean virtual move, and a check less than
+     5 minutes old). It then asks for confirmation (robot on stand, clear workspace, remote in hand). During the run the
+     twin switches to **live mirror**: it shows the robot's measured joint angles (read-only `stream_state` on the Jetson,
+     URLab puppet mode).
+   Each section shows the active joint readout and gauge (-30..+30 deg), other-joint drift, IMU R/P/Y, motor temp,
+   and bus voltage. Sources: the runner's 5 Hz `@telemetry`/`@head` lines, the 1 Hz progress line, and live mirror streams.
 4. **STOP** sends Ctrl-C to whatever is running (robot: the head is released to damping, then disabled). It goes
    over the network; the **remote (L2+B for 5 s) is the emergency stop**.
 

@@ -128,3 +128,145 @@ def test_head_readout_in_status_and_not_in_log(svc):
     h = svc.status()["head"]["real"]
     assert h["yaw"] == 2.1 and h["pitch"] == -1.0 and h["source"] == "check" and "target" in h
     assert not any("@head" in l for l in svc.lines)
+
+
+def test_different_behaviour_requires_own_preview_and_check(svc):
+    hw = dict(P, behaviour="hand_wave")
+    svc.previewed = dict(P)
+    svc.checked, svc.checked_at = dict(P), time.time()
+    assert "preview" in svc.run(hw, confirm=True)["error"]
+
+
+def test_telemetry_parsed_and_monitor_lifecycle(svc, monkeypatch):
+    pkt = {"t": 1.0, "phase": "sweep", "primary_label": "R.SHOULDER", "actual_deg": 5.2, "imu_rpy_deg": [0.1, -0.2, 0.0]}
+    svc.job = "preview"
+    svc._pump("preview", _FakeProc(["@telemetry " + json.dumps(pkt) + "\n", "done.\n"], 0), P)
+    st = svc.status()
+    assert st["telemetry"]["virtual"]["actual_deg"] == 5.2
+    assert not any("@telemetry" in l for l in svc.lines)
+    assert len(st["behaviours"]) == 4 and len(st["joint_names"]) == 26
+
+    monkeypatch.setattr(S, "robot_stream", lambda *a, **k: iter([{"q": [0.0] * 26, "max_temp_c": 38, "bus_v": 48.0}]))
+    assert svc.monitor() == {"ok": True}
+    deadline = time.time() + 2.0
+    while svc.status()["job"] == "monitor" and time.time() < deadline:
+        time.sleep(0.02)
+    st = svc.status()
+    assert st["job"] is None
+    assert st["telemetry"]["real"]["max_temp_c"] == 38
+    assert st["results"]["monitor"]["ok"] is True
+
+
+def test_web_ui_served_and_sim_preview_option(svc):
+    srv = S.ThreadingHTTPServer(("127.0.0.1", 0), S.make_handler(svc))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        html = urllib.request.urlopen(base + "/").read().decode("utf-8")
+        assert "PHYSICAL R1" in html and "26 DOF" in html
+        req = urllib.request.Request(base + "/preview", data=json.dumps(dict(P, target="sim")).encode(), method="POST")
+        assert json.load(urllib.request.urlopen(req)) == {"ok": True}
+        assert svc.started[-1][1][-2:] == ["--target", "sim"]
+    finally:
+        srv.shutdown()
+
+
+def test_preview_uses_last_real_pose_for_virtual_matching(svc):
+    q_real = [round(i * 0.5, 2) for i in range(26)]
+    pkt = {"t": 0.5, "phase": "centre", "primary_label": "HEAD YAW", "actual_deg": 1.0, "q_deg": q_real}
+    svc.job = "check"
+    svc._pump("check", _FakeProc(["@telemetry " + json.dumps(pkt) + "\n", "done.\n"], 0), P)
+    assert svc.last_real_q_deg == q_real
+
+    assert svc.preview(P) == {"ok": True}
+    cmd = svc.started[-1][1]
+    assert "--start-q-deg" in cmd
+    arg = cmd[cmd.index("--start-q-deg") + 1]
+    assert len(arg.split(",")) == 26
+    assert arg.startswith("0.00,0.50,1.00")
+
+
+def test_snapshot_reads_one_real_sample_over_http(svc, monkeypatch):
+    samples = [{"t": 0.1, "q": [0.1] * 26, "max_temp_c": 34}, {"t": 0.2, "q": [0.2] * 26, "max_temp_c": 35}]
+    monkeypatch.setattr(S, "robot_stream", lambda *a, **k: iter(samples))
+    srv = S.ThreadingHTTPServer(("127.0.0.1", 0), S.make_handler(svc))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        req = urllib.request.Request(base + "/snapshot", data=b"{}", method="POST")
+        assert json.load(urllib.request.urlopen(req)) == {"ok": True}
+        deadline = time.time() + 2.0
+        while svc.status()["job"] == "snapshot" and time.time() < deadline:
+            time.sleep(0.02)
+        st = svc.status()
+        assert st["job"] is None
+        assert st["mirror_samples"] == 1
+        assert st["telemetry"]["real"]["source"] == "snapshot"
+        assert st["telemetry"]["real"]["q_deg"][0] == 5.7
+    finally:
+        srv.shutdown()
+
+
+def test_move_joint_safety_and_targets(svc):
+    # Legs are stand-locked read-only on physical robot
+    with pytest.raises(ValueError):
+        svc.move_joint("left_knee_joint", 10.0, target="real", confirm=True)
+    # Physical move requires confirmation
+    refused = svc.move_joint("head_yaw_joint", 12.0, target="real", confirm=False)
+    assert refused["ok"] is False and "confirmation" in refused["error"]
+    # Virtual move runs without hardware confirmation
+    assert svc.move_joint("head_yaw_joint", 12.0, target="sim", confirm=False) == {"ok": True}
+    assert svc.started[-1][0] == "move_virtual"
+    assert "robotcontrol.behaviours.move_joint" in svc.started[-1][1]
+    svc.job = None
+    # Confirmed physical move uses pty and sets job to move_real
+    assert svc.move_joint("head_yaw_joint", 12.0, target="real", confirm=True) == {"ok": True}
+    job, cmd, pty = svc.started[-1]
+    assert job == "move_real" and pty is True and "move_joint" in cmd[-1]
+
+
+def test_robot_view_png_endpoint(svc):
+    srv = S.ThreadingHTTPServer(("127.0.0.1", 0), S.make_handler(svc))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        data = urllib.request.urlopen(base + "/robot_view.png?mode=real&cam=iso").read()
+        assert data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) > 5000
+    finally:
+        srv.shutdown()
+
+
+def test_offline_practice_mode_runs_all_workflow_steps(svc):
+    assert svc.status()["real_connected"] is False
+    # Snapshot in practice mode immediately populates telemetry.practice without SSH
+    assert svc.snapshot(practice=True) == {"ok": True}
+    st = svc.status()
+    assert st["telemetry"]["practice"]["source"] == "snapshot"
+    assert len(st["telemetry"]["practice"]["q_deg"]) == 26
+
+    # Check & Run in practice mode still enforce the Step 1 -> Step 2 -> confirm safety sequence
+    assert svc.check(P, practice=True) == {"ok": True}
+    assert svc.started[-1][0] == "check" and "--target" in svc.started[-1][1] and "sim" in svc.started[-1][1]
+    svc.job = None
+    svc.previewed = dict(P)
+    svc.checked, svc.checked_at = dict(P), time.time()
+    assert "confirmation" in svc.run(P, confirm=False, practice=True)["error"]
+    assert svc.run(P, confirm=True, practice=True) == {"ok": True}
+    assert svc.started[-1][0] == "run" and "sim" in svc.started[-1][1] and svc.started[-1][2] is False
+    svc.job = None
+
+    # Practice slider move works for upper body and still locks legs
+    with pytest.raises(ValueError):
+        svc.move_joint("left_knee_joint", 10.0, target="practice", confirm=True)
+    assert svc.move_joint("head_yaw_joint", 8.0, target="practice", confirm=True) == {"ok": True}
+    assert svc.started[-1][0] == "move_practice"
+    svc.job = None
+
+    # Practice monitor streams live simulated state and stops cleanly
+    assert svc.monitor(practice=True) == {"ok": True}
+    time.sleep(0.25)
+    assert svc.stop() == {"ok": True}
+    deadline = time.time() + 3.0
+    while svc.status()["job"] is not None and time.time() < deadline:
+        time.sleep(0.05)
+    assert svc.status()["job"] is None and svc.status()["mirror_samples"] >= 1

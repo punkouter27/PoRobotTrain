@@ -21,6 +21,7 @@ STOP is a convenience: it goes over the network. The remote (L2+B for 5 s) is th
 from __future__ import annotations
 
 import argparse
+import base64
 import collections
 import math
 import re
@@ -32,15 +33,21 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 from .. import PROJECT_ROOT
 from ..configs.joint_map import JointMap
+from ..configs.sim_calibration import SimCalibration
 from .mirror import ROBOT, ROBOT_DIR, UnrealMirror, robot_stream, run_mirror
+from .move_joint import validate_move_request
+from .robot_view import StandRenderer
+from .stand_behaviours import BEHAVIOUR_SPECS
 
 CHECK_VALID_S = 300.0
 LIMITS = {"amplitude": (1.0, 30.0), "freq": (0.05, 0.5), "duration": (2.0, 60.0)}
-BEHAVIOURS = ("neck_turn",)
+BEHAVIOURS = tuple(BEHAVIOUR_SPECS.keys())
 
 
 def parse_params(body: dict) -> dict:
@@ -97,6 +104,18 @@ def parse_head(line: str) -> Optional[dict]:
     return None
 
 
+def parse_telemetry(line: str) -> Optional[dict]:
+    """Full telemetry snapshot from a runner '@telemetry {...}' JSON line."""
+    s = line.strip()
+    if not s.startswith("@telemetry "):
+        return None
+    try:
+        obj = json.loads(s[11:])
+        return obj if isinstance(obj, dict) else None
+    except ValueError:
+        return None
+
+
 def runner_args(p: dict) -> list:
     return [p["behaviour"], "--amplitude", f"{p['amplitude']:g}", "--freq", f"{p['freq']:g}",
             "--duration", f"{p['duration']:g}"]
@@ -106,7 +125,7 @@ class Service:
     def __init__(self, address: str = "tcp://localhost", mirror_enabled: bool = True):
         self.lock = threading.Lock()
         self.lines = collections.deque(maxlen=200)
-        self.job: Optional[str] = None            # "preview" | "check" | "run"
+        self.job: Optional[str] = None            # "preview" | "check" | "run" | "monitor" | "snapshot"
         self.proc: Optional[subprocess.Popen] = None
         self.previewed: Optional[dict] = None
         self.checked: Optional[dict] = None
@@ -116,11 +135,19 @@ class Service:
         self.results: dict = {}
         # latest head readout per robot: {"virtual"|"real": {yaw, pitch, target, other, phase, t, source, at}}
         self.head: dict = {}
+        # latest full telemetry per robot: {"virtual"|"real"|"practice": {imu_rpy_deg, q_deg, ...}}
+        self.telemetry: dict = {}
+        self.last_real_q_deg: Optional[list] = None
+        self.real_connected: bool = False
         self.address = address
         self.mirror_enabled = mirror_enabled
         self.mirror_stop = threading.Event()
+        self.mirror_procs: list = []
         self.mirror_samples = 0
         self.jm = JointMap.load()
+        self.practice_q_deg: list[float] = [round(math.degrees(float(d)), 1) for d in self.jm.defaults]
+        self.calibration = SimCalibration.load(jm=self.jm)
+        self.stand_renderer = StandRenderer(self.jm)
 
     # ------------------------------------------------------------------ helpers
     def log(self, s: str) -> None:
@@ -133,6 +160,34 @@ class Service:
         cur.update({k: v for k, v in h.items() if v is not None})
         cur["source"], cur["at"] = source, time.time()
         self.head[who] = cur
+
+    def update_telemetry(self, who: str, pkt: dict, source: str) -> None:
+        cur = dict(self.telemetry.get(who, {}))
+        if cur.get("source") != source:
+            cur = {}
+        cur.update({k: v for k, v in pkt.items() if v is not None})
+        cur["source"], cur["at"] = source, time.time()
+        self.telemetry[who] = cur
+        if who == "real" and isinstance(cur.get("q_deg"), list) and len(cur["q_deg"]) == self.jm.num_joints:
+            self.last_real_q_deg = [float(v) for v in cur["q_deg"]]
+            self.real_connected = True
+            if cur.get("bus_v") is not None:
+                self.calibration.bus_voltage_v = float(cur["bus_v"])
+        elif who == "practice" and isinstance(cur.get("q_deg"), list) and len(cur["q_deg"]) == self.jm.num_joints:
+            self.practice_q_deg = [float(v) for v in cur["q_deg"]]
+
+    def _sync_unreal_to_real(self) -> None:
+        if not self.mirror_enabled or not self.last_real_q_deg:
+            return
+        try:
+            m = UnrealMirror(self.jm, self.address)
+            try:
+                m.push([math.radians(v) for v in self.last_real_q_deg])
+            finally:
+                m.close()
+            self.log("twin synced to physical robot pose")
+        except Exception as e:
+            self.log(f"twin pose sync skipped: {e}")
 
     def why_not_run(self, p: Optional[dict]) -> Optional[str]:
         if self.job:
@@ -147,17 +202,29 @@ class Service:
 
     def status(self) -> dict:
         with self.lock:
+            now = time.time()
             return {"job": self.job, "last_result": self.last_result,
                     "previewed": self.previewed, "checked": self.checked,
-                    "check_age_s": round(time.time() - self.checked_at, 1) if self.checked else None,
+                    "check_age_s": round(now - self.checked_at, 1) if self.checked else None,
                     "can_run_robot": self.why_not_run(self.previewed) is None,
                     "why_not_run": self.why_not_run(self.previewed),
+                    "real_connected": self.real_connected,
                     "mirror_samples": self.mirror_samples, "results": dict(self.results),
-                    "head": {k: dict(v, age_s=round(time.time() - v["at"], 1)) for k, v in list(self.head.items())},
+                    "head": {k: dict(v, age_s=round(now - v["at"], 1)) for k, v in list(self.head.items())},
+                    "telemetry": {k: dict(v, age_s=round(now - v["at"], 1)) for k, v in list(self.telemetry.items())},
+                    "behaviours": [{"id": s.id, "label": s.label, "desc": s.desc,
+                                    "primary_label": s.primary_label, "max_deg": s.max_deg}
+                                   for s in BEHAVIOUR_SPECS.values()],
+                    "joint_names": [n.replace("_joint", "") for n in self.jm.names],
+                    "joint_limits_deg": [[round(math.degrees(float(lo)), 1), round(math.degrees(float(hi)), 1)]
+                                         for lo, hi in zip(self.jm.limits_lo, self.jm.limits_hi)],
+                    "joint_defaults_deg": [round(math.degrees(float(d)), 1) for d in self.jm.defaults],
+                    "calibration": self.calibration.summary(),
                     "lines": list(self.lines)[-12:]}
 
     def _start(self, job: str, cmd: list, p: dict, pty: bool = False) -> None:
         self.job = job
+        self._job_is_practice = bool(p.get("_practice"))
         self.last_result = ""
         self.log(f"{job}: {' '.join(cmd[-12:])}")
         kw = {}
@@ -169,13 +236,21 @@ class Service:
 
     def _pump(self, job: str, proc: subprocess.Popen, p: dict) -> None:
         reason = ""
-        who = "virtual" if job == "preview" else "real"
+        who = "practice" if p.get("_practice") else ("virtual" if job in ("preview", "move_virtual") else "real")
         for line in proc.stdout:
             if "post-quantum" in line or "store now" in line or "pq.html" in line or not line.strip():
                 continue
+            tm = parse_telemetry(line)
+            if tm is not None:
+                self.update_telemetry(who, tm, source=job)
+                if who == "practice":
+                    self.mirror_samples += 1
+                continue                          # 5 Hz telemetry: panel only, keep the log readable
             h = parse_head(line)
             if h is not None:
                 self.update_head(who, h, source=job)
+                if who == "real":
+                    self.real_connected = True
                 if line.lstrip().startswith("@head"):
                     continue                      # 5 Hz readout: panel only, keep the log readable
             self.log(line)
@@ -184,45 +259,71 @@ class Service:
         code = proc.wait()
         with self.lock:
             ok = code == 0
+            if not ok and who == "real":
+                self.real_connected = False
             self.results[job] = {"ok": ok, "amplitude": p["amplitude"], "at": time.time(),
                                  "reason": "" if ok else (reason or f"exit code {code}")}
             if job == "preview":
                 self.previewed = p if ok else None   # a failed virtual run clears step 1
             if job == "check" and ok:
-                self.checked, self.checked_at = p, time.time()
+                clean_p = {k: v for k, v in p.items() if not k.startswith("_")}
+                self.checked, self.checked_at = clean_p, time.time()
             self.last_result = f"{job} {'OK' if ok else f'FAILED (exit {code})'}"
             self.log(self.last_result)
             self.job, self.proc = None, None
+        if job in ("check", "move_real") and ok and not p.get("_practice"):
+            self._sync_unreal_to_real()
         if job == "run":
             self.checked = None                   # a fresh check is required before the next robot run
             time.sleep(1.0)
             self.mirror_stop.set()
 
     # ------------------------------------------------------------------ actions
-    def preview(self, p: dict) -> dict:
+    def preview(self, p: dict, target: str = "urlab") -> dict:
+        if target not in ("urlab", "sim"):
+            raise ValueError(f"preview target must be 'urlab' or 'sim', got {target!r}")
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running"}
-            self._start("preview", [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"]
-                        + runner_args(p) + ["--target", "urlab"], p)
+            cmd = [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"] + runner_args(p) + ["--target", target]
+            if self.last_real_q_deg and len(self.last_real_q_deg) == self.jm.num_joints:
+                cmd += ["--start-q-deg", ",".join(f"{v:.2f}" for v in self.last_real_q_deg)]
+            self._start("preview", cmd, p)
         return {"ok": True}
 
-    def check(self, p: dict) -> dict:
+    def check(self, p: dict, practice: bool = False) -> dict:
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running"}
+            if practice:
+                meta = dict(p, _practice=True)
+                cmd = [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"] + runner_args(p) + [
+                    "--target", "sim", "--duration", "2", "--start-q-deg", ",".join(f"{v:.2f}" for v in self.practice_q_deg)
+                ]
+                self.log("practice check: simulating pre-run check on virtual stand twin")
+                self._start("check", cmd, meta)
+                return {"ok": True}
             remote = (f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 timeout 60 ./run.sh robotcontrol.behaviours.runner "
                       + " ".join(runner_args(p)) + " --target real")
             self._start("check", ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote], p)
         return {"ok": True}
 
-    def run(self, p: dict, confirm: bool) -> dict:
+    def run(self, p: dict, confirm: bool, practice: bool = False) -> dict:
         with self.lock:
             if not confirm:
                 return {"ok": False, "error": "confirmation required"}
             why = self.why_not_run(p)
             if why:
                 return {"ok": False, "error": why}
+            if practice:
+                self.mirror_samples = 0
+                meta = dict(p, _practice=True)
+                cmd = [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"] + runner_args(p) + [
+                    "--target", "sim", "--start-q-deg", ",".join(f"{v:.2f}" for v in self.practice_q_deg)
+                ]
+                self.log(f"practice run: executing {p['behaviour']} on virtual stand twin")
+                self._start("run", cmd, meta)
+                return {"ok": True}
             remote = (f"cd {ROBOT_DIR} && PYTHONUNBUFFERED=1 ./run.sh robotcontrol.behaviours.runner "
                       + " ".join(runner_args(p)) + " --target real --go --yes")
             self._start("run", ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote],
@@ -231,48 +332,244 @@ class Service:
             threading.Thread(target=self._mirror, daemon=True).start()
         return {"ok": True}
 
-    def _mirror(self) -> None:
+    def move_joint(self, joint: str, target_deg: float, target: str = "real", confirm: bool = False) -> dict:
+        if target not in ("real", "urlab", "sim", "practice"):
+            raise ValueError(f"target must be 'real', 'practice', 'urlab', or 'sim', got {target!r}")
+        _, clamped_rad = validate_move_request(
+            self.jm, joint, float(target_deg), "real" if target in ("real", "practice") else target
+        )
+        clamped_deg = round(math.degrees(clamped_rad), 2)
+        meta = {"behaviour": joint, "amplitude": clamped_deg, "target": target, "_practice": target == "practice"}
+        with self.lock:
+            if target == "real" and not confirm:
+                return {"ok": False, "error": "confirmation required to move physical joint"}
+            if self.job:
+                return {"ok": False, "error": f"{self.job} is running"}
+            if target == "real":
+                b64 = base64.b64encode(Path(__file__).with_name("move_joint.py").read_bytes()).decode("ascii")
+                py_cmd = (
+                    f'import base64,sys,robotcontrol.behaviours;'
+                    f'sys.argv=["robotcontrol.behaviours.move_joint","{joint}","{clamped_deg:.2f}","--target","real","--go","--yes"];'
+                    f'ns={{"__name__":"__main__","__package__":"robotcontrol.behaviours"}};'
+                    f'exec(compile(base64.b64decode("{b64}").decode("utf-8"),"move_joint.py","exec"),ns)'
+                )
+                remote = (f"cd {ROBOT_DIR} && ([ -f env.sh ] && source env.sh; "
+                          f"LD_LIBRARY_PATH=\"${{CYCLONEDDS_HOME:-}}/lib:${{LD_LIBRARY_PATH:-}}\" "
+                          f"PYTHONUNBUFFERED=1 ./.venv/bin/python -u -c '{py_cmd}')")
+                self._start("move_real", ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote],
+                            meta, pty=True)
+            else:
+                sim_tgt = "sim" if target == "practice" else target
+                cmd = [sys.executable, "-u", "-m", "robotcontrol.behaviours.move_joint", joint, f"{clamped_deg:.2f}",
+                       "--target", sim_tgt]
+                if target == "practice":
+                    cmd += ["--start-q-deg", ",".join(f"{v:.2f}" for v in self.practice_q_deg)]
+                    job_name = "move_practice"
+                else:
+                    virt_q = (self.telemetry.get("virtual") or {}).get("q_deg") or self.last_real_q_deg
+                    if isinstance(virt_q, list) and len(virt_q) == self.jm.num_joints:
+                        cmd += ["--start-q-deg", ",".join(f"{float(v):.2f}" for v in virt_q)]
+                    job_name = "move_virtual"
+                self._start(job_name, cmd, meta)
+        return {"ok": True}
+
+    def render_stand_png(self, mode: str = "real", cam: str = "iso",
+                         joint_idx: Optional[int] = None, deg: Optional[float] = None) -> bytes:
+        with self.lock:
+            tel = self.telemetry.get("virtual" if mode == "virtual" else "real") or {}
+            if mode == "real" and not tel.get("q_deg"):
+                tel = self.telemetry.get("practice") or tel
+            q_deg = list(tel.get("q_deg") or [])
+            if len(q_deg) != self.jm.num_joints:
+                if mode == "real" and self.last_real_q_deg and len(self.last_real_q_deg) == self.jm.num_joints:
+                    q_deg = list(self.last_real_q_deg)
+                else:
+                    q_deg = [round(math.degrees(float(d)), 1) for d in self.jm.defaults]
+                    if mode == "real":
+                        rh = self.head.get("real") or {}
+                        if rh.get("pitch") is not None:
+                            q_deg[self.jm.index_of("head_pitch_joint")] = float(rh["pitch"])
+                        if rh.get("yaw") is not None:
+                            q_deg[self.jm.index_of("head_yaw_joint")] = float(rh["yaw"])
+            if joint_idx is not None and 0 <= joint_idx < self.jm.num_joints and deg is not None:
+                q_deg[joint_idx] = float(deg)
+        return self.stand_renderer.render_png(q_deg, cam_name=cam)
+
+    def _consume_stream(self, source_name: str, stop_job_on_exit: bool = False,
+                        max_samples: Optional[int] = None) -> None:
         self.mirror_stop.clear()
         self.mirror_samples = 0
         procs: list = []
-        try:
-            m = UnrealMirror(self.jm, self.address)
-        except Exception as e:
-            self.log(f"mirror unavailable: {e}")
-            return
-        self.log("mirror: showing the robot's measured angles in Unreal")
+        self.mirror_procs = procs
+        mirror: Optional[UnrealMirror] = None
+        if self.mirror_enabled and not max_samples:
+            try:
+                mirror = UnrealMirror(self.jm, self.address)
+            except Exception as e:
+                self.log(f"mirror unavailable: {e}")
+                if not stop_job_on_exit:
+                    return
+        if mirror is not None:
+            self.log("mirror: showing the robot's measured angles in Unreal")
 
         i_yaw, i_pitch = self.jm.index_of("head_yaw_joint"), self.jm.index_of("head_pitch_joint")
-
-        def count(q):
-            self.mirror_samples += 1
-            self.update_head("real", {"yaw": math.degrees(q[i_yaw]), "pitch": math.degrees(q[i_pitch])},
-                             source="run")
+        reason = ""
         try:
-            run_mirror(robot_stream(30.0, procs), m, self.mirror_stop, count)
+            dur = 2.0 if max_samples else 0.0
+            for pkt in robot_stream(10.0 if max_samples else (20.0 if stop_job_on_exit else 30.0),
+                                    procs, include_telemetry=True, duration=dur):
+                if self.mirror_stop.is_set():
+                    break
+                q = pkt["q"]
+                if mirror is not None:
+                    mirror.push(q)
+                self.mirror_samples += 1
+                self.update_head("real", {"yaw": math.degrees(q[i_yaw]), "pitch": math.degrees(q[i_pitch])},
+                                 source=source_name)
+                tpkt = dict(pkt)
+                tpkt["q_deg"] = [round(math.degrees(float(v)), 1) for v in q]
+                tpkt.pop("q", None)
+                self.update_telemetry("real", tpkt, source=source_name)
+                if max_samples and self.mirror_samples >= max_samples:
+                    break
+            if max_samples and self.mirror_samples > 0:
+                threading.Thread(target=self._sync_unreal_to_real, daemon=True).start()
+            if stop_job_on_exit and self.mirror_samples == 0 and not self.mirror_stop.is_set():
+                reason = "physical robot 192.168.123.164 unreachable or no lowstate yet"
+                with self.lock:
+                    self.real_connected = False
         except Exception as e:
-            self.log(f"mirror stopped: {e}")
+            reason = str(e)[:90]
+            self.log(f"{source_name} stopped: {e}")
         finally:
             for pr in procs:
-                pr.terminate()
-            m.close()
-            self.log(f"mirror: ended after {self.mirror_samples} samples")
+                try:
+                    pr.terminate()
+                except Exception:
+                    pass
+            self.mirror_procs = []
+            if mirror is not None:
+                mirror.close()
+            self.log(f"{source_name}: ended after {self.mirror_samples} samples")
+            if stop_job_on_exit:
+                with self.lock:
+                    ok = self.mirror_samples > 0 or self.mirror_stop.is_set()
+                    self.results[source_name] = {"ok": ok, "amplitude": 0.0, "at": time.time(),
+                                                 "reason": "" if ok else reason}
+                    self.last_result = f"{source_name} OK" if ok else f"{source_name} FAILED ({reason})"
+                    if self.job == source_name:
+                        self.job = None
+
+    def _mirror(self) -> None:
+        self._consume_stream("run", stop_job_on_exit=False)
+
+    def _practice_stream(self) -> None:
+        self.mirror_stop.clear()
+        self.mirror_samples = 0
+        from .backends import SimBackend
+        i_yaw, i_pitch = self.jm.index_of("head_yaw_joint"), self.jm.index_of("head_pitch_joint")
+        start_q = {n: math.radians(v) for n, v in zip(self.jm.names, self.practice_q_deg)}
+        backend = SimBackend(self.jm, (), start_q=start_q, calibration=self.calibration, realistic=True, settle_s=0.3)
+        t0 = time.monotonic()
+        try:
+            while not self.mirror_stop.is_set() and (time.monotonic() - t0) < 20.0:
+                backend.advance(time.monotonic() - t0)
+                q, _, _ = backend.read()
+                self.mirror_samples += 1
+                self.update_head("practice", {"yaw": math.degrees(q[i_yaw]), "pitch": math.degrees(q[i_pitch])},
+                                 source="monitor")
+                tpkt = {
+                    "t": round(time.monotonic() - t0, 2),
+                    "q_deg": [round(math.degrees(float(v)), 1) for v in q],
+                    "temps_c": [34] * self.jm.num_joints,
+                    "max_temp_c": 34,
+                    "bus_v": self.calibration.bus_voltage_v,
+                    "mode_machine": 1,
+                    "active_motors": 0,
+                }
+                tpkt.update(backend.telemetry())
+                self.update_telemetry("practice", tpkt, source="monitor")
+                time.sleep(0.1)
+        finally:
+            backend.close()
+            self.log(f"practice monitor: ended after {self.mirror_samples} samples")
+            with self.lock:
+                self.results["monitor"] = {"ok": True, "amplitude": 0.0, "at": time.time(), "reason": ""}
+                self.last_result = "monitor OK"
+                if self.job == "monitor":
+                    self.job = None
+
+    def monitor(self, practice: bool = False) -> dict:
+        with self.lock:
+            if self.job:
+                return {"ok": False, "error": f"{self.job} is running"}
+            self.job = "monitor"
+            self.last_result = ""
+            if practice:
+                self.log("practice monitor: read-only live stream on virtual stand twin")
+                threading.Thread(target=self._practice_stream, daemon=True).start()
+                return {"ok": True}
+            self.log("monitor: read-only live telemetry + Unreal twin mirror")
+        threading.Thread(target=self._consume_stream, args=("monitor", True), daemon=True).start()
+        return {"ok": True}
+
+    def snapshot(self, practice: bool = False) -> dict:
+        if practice:
+            with self.lock:
+                if self.job:
+                    return {"ok": False, "error": f"{self.job} is running"}
+                i_yaw, i_pitch = self.jm.index_of("head_yaw_joint"), self.jm.index_of("head_pitch_joint")
+                q_deg = list(self.practice_q_deg)
+                self.update_head("practice", {"yaw": q_deg[i_yaw], "pitch": q_deg[i_pitch]}, source="snapshot")
+                self.update_telemetry("practice", {
+                    "t": 0.0,
+                    "q_deg": q_deg,
+                    "imu_rpy_deg": [0.0, 0.0, 0.0],
+                    "temps_c": [34] * self.jm.num_joints,
+                    "max_temp_c": 34,
+                    "bus_v": self.calibration.bus_voltage_v,
+                    "mode_machine": 1,
+                    "active_motors": 0,
+                }, source="snapshot")
+                self.results["snapshot"] = {"ok": True, "amplitude": 0.0, "at": time.time(), "reason": ""}
+                self.last_result = "snapshot OK (practice)"
+                self.log("practice snapshot: read virtual stand twin pose (0% motor power)")
+            return {"ok": True}
+        with self.lock:
+            if self.job:
+                return {"ok": False, "error": f"{self.job} is running"}
+            self.job = "snapshot"
+            self.last_result = ""
+            self.log("snapshot: reading current physical robot joint angles (0% motor power)")
+        threading.Thread(target=self._consume_stream, args=("snapshot", True, 1), daemon=True).start()
+        return {"ok": True}
 
     def stop(self) -> dict:
         with self.lock:
             job, proc = self.job, self.proc
+        if job in ("monitor", "snapshot"):
+            self.log(f"STOP requested ({job})")
+            self.mirror_stop.set()
+            for pr in list(self.mirror_procs):
+                try:
+                    pr.terminate()
+                except Exception:
+                    pass
+            return {"ok": True}
         if not proc:
             return {"ok": True, "note": "nothing running"}
         self.log(f"STOP requested ({job})")
-        if job == "run":
+        if job in ("run", "move_real") and not getattr(self, "_job_is_practice", False):
             try:                                   # Ctrl-C through the remote pty -> runner releases the head
                 proc.stdin.write("\x03")
                 proc.stdin.flush()
             except Exception:
                 pass
             subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT,
-                            "pkill -INT -f robotcontrol.behaviours.runner"], timeout=15,
+                            "pkill -INT -f robotcontrol.behaviours."], timeout=15,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif job == "check" and not getattr(self, "_job_is_practice", False):
+            proc.terminate()
         elif os.name == "nt":
             proc.send_signal(signal.CTRL_BREAK_EVENT)
         else:
@@ -294,8 +591,32 @@ def make_handler(svc: Service):
             pass
 
         def do_GET(self):
-            if self.path.startswith("/status"):
+            if self.path in ("/", "/index.html"):
+                html_path = os.path.join(os.path.dirname(__file__), "web_ui.html")
+                with open(html_path, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            elif self.path.startswith("/status"):
                 self._send(200, svc.status())
+            elif self.path.startswith("/robot_view.png"):
+                qs = parse_qs(urlparse(self.path).query)
+                mode = (qs.get("mode") or ["real"])[0]
+                cam = (qs.get("cam") or ["iso"])[0]
+                j_raw = (qs.get("j") or [None])[0]
+                d_raw = (qs.get("deg") or [None])[0]
+                j_idx = int(j_raw) if j_raw is not None and j_raw.isdigit() else None
+                d_val = float(d_raw) if d_raw is not None else None
+                png = svc.render_stand_png(mode=mode, cam=cam, joint_idx=j_idx, deg=d_val)
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(png)))
+                self.end_headers()
+                self.wfile.write(png)
             else:
                 self._send(404, {"ok": False, "error": "not found"})
 
@@ -305,13 +626,24 @@ def make_handler(svc: Service):
                 body = json.loads(self.rfile.read(n) or b"{}")
                 if self.path == "/stop":
                     return self._send(200, svc.stop())
+                if self.path == "/monitor":
+                    return self._send(200, svc.monitor(practice=bool(body.get("practice", False))))
+                if self.path == "/snapshot":
+                    return self._send(200, svc.snapshot(practice=bool(body.get("practice", False))))
+                if self.path == "/move_joint":
+                    return self._send(200, svc.move_joint(
+                        joint=str(body.get("joint", "")),
+                        target_deg=float(body["target_deg"]),
+                        target=str(body.get("target", "real")),
+                        confirm=bool(body.get("confirm", False)),
+                    ))
                 p = parse_params(body)
                 if self.path == "/preview":
-                    return self._send(200, svc.preview(p))
+                    return self._send(200, svc.preview(p, target=str(body.get("target", "urlab"))))
                 if self.path == "/check":
-                    return self._send(200, svc.check(p))
+                    return self._send(200, svc.check(p, practice=bool(body.get("practice", False))))
                 if self.path == "/run":
-                    return self._send(200, svc.run(p, bool(body.get("confirm"))))
+                    return self._send(200, svc.run(p, bool(body.get("confirm")), practice=bool(body.get("practice", False))))
                 self._send(404, {"ok": False, "error": "not found"})
             except (ValueError, json.JSONDecodeError) as e:
                 self._send(400, {"ok": False, "error": str(e)})
@@ -327,6 +659,7 @@ def main(argv=None) -> int:
     svc = Service(args.address, mirror_enabled=not args.no_mirror)
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(svc))
     print(f"behaviour service on http://127.0.0.1:{args.port}  (Ctrl-C to quit)", flush=True)
+    svc.snapshot()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

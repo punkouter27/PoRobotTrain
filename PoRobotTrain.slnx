@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PoRobotTrain.Api/PoRobotTrain.Api.csproj" />
+    <Project Path="src/PoRobotTrain.Client/PoRobotTrain.Client.csproj" />
+    <Project Path="src/PoRobotTrain.Shared/PoRobotTrain.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PoRobotTrain.Unit/PoRobotTrain.Unit.csproj" />
+    <Project Path="tests/PoRobotTrain.Integration/PoRobotTrain.Integration.csproj" />
+  </Folder>
+</Solution>

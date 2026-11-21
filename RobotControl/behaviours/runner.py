@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import signal
 import sys
@@ -24,9 +25,10 @@ import numpy as np
 
 from .. import LOGS_DIR
 from ..configs.joint_map import JointMap
-from .neck_turn import NeckTurn, SweepParams
+from .neck_turn import SweepParams
+from .stand_behaviours import BEHAVIOUR_SPECS
 
-BEHAVIOURS = {"neck_turn": NeckTurn}
+BEHAVIOURS = {k: spec.cls for k, spec in BEHAVIOUR_SPECS.items()}
 
 
 class CsvLog:
@@ -58,6 +60,10 @@ def run(backend, beh, jm: JointMap, log: CsvLog, stop: dict, max_other_deg: floa
     skip = set(getattr(backend, "unchecked", ()))
     others = [i for i, n in enumerate(names) if n not in beh.powered and n not in skip]
     i_yaw, i_pitch = names.index("head_yaw_joint"), names.index("head_pitch_joint")
+    spec = BEHAVIOUR_SPECS.get(beh.name)
+    primary = spec.primary_joint if spec else beh.powered[0]
+    i_primary = names.index(primary)
+    primary_label = spec.primary_label if spec else primary.replace("_joint", "").upper()
     print(f"start: {beh.describe()}; powered joints: {', '.join(beh.powered)}")
     t0 = time.monotonic()
     t, k, next_print, max_other = 0.0, 0, 0.0, 0.0
@@ -77,11 +83,25 @@ def run(backend, beh, jm: JointMap, log: CsvLog, stop: dict, max_other_deg: floa
                 return 3
             backend.command(targets)
             log.row(t, beh.phase(t), [targets[n] for n in beh.powered], q)
-            if k % 10 == 0:   # 5 Hz head readout for the Unreal panel (behaviours/service.py parses '@head')
-                tg = targets.get("head_yaw_joint", float("nan"))
+            if k % 10 == 0:   # 5 Hz telemetry + head readout for the Unreal panel (behaviours/service.py)
+                tg_yaw = targets.get("head_yaw_joint", float("nan"))
                 print(f"@head t={t:.2f} phase={beh.phase(t)} yaw={math.degrees(q[i_yaw]):.2f} "
-                      f"pitch={math.degrees(q[i_pitch]):.2f} target={math.degrees(tg):.2f} "
+                      f"pitch={math.degrees(q[i_pitch]):.2f} target={math.degrees(tg_yaw):.2f} "
                       f"other={math.degrees(max_other):.2f}", flush=True)
+                tg_prim = targets.get(primary, float("nan"))
+                pkt = {
+                    "t": round(t, 2),
+                    "phase": beh.phase(t),
+                    "behaviour": beh.name,
+                    "primary_joint": primary,
+                    "primary_label": primary_label,
+                    "actual_deg": round(math.degrees(float(q[i_primary])), 2),
+                    "target_deg": None if math.isnan(tg_prim) else round(math.degrees(float(tg_prim)), 2),
+                    "other_max_deg": round(math.degrees(max_other), 2),
+                    "q_deg": [round(math.degrees(float(v)), 1) for v in q],
+                }
+                pkt.update(backend.telemetry())
+                print("@telemetry " + json.dumps(pkt, separators=(",", ":")), flush=True)
             if t >= next_print:
                 tg = " ".join(f"{n.replace('_joint', '')} target {math.degrees(targets[n]):+6.1f} actual "
                               f"{math.degrees(q[jm.index_of(n)]):+6.1f} deg" for n in beh.powered)
@@ -116,24 +136,35 @@ def main(argv=None) -> int:
     ap.add_argument("--duration", type=float, default=20.0, help="sweeping seconds (default 20)")
     ap.add_argument("--max-other", type=float, default=5.0,
                     help="deg: abort if any non-powered joint moves more than this (default 5)")
-    ap.add_argument("--sim-friction", type=float, default=0.5, help="sim: Nm friction on limp joints")
+    ap.add_argument("--sim-friction", type=float, default=None, help="sim: override Nm friction floor on limp joints")
     ap.add_argument("--sim-start-deg", type=float, default=0.0, help="sim: initial head yaw")
+    ap.add_argument("--no-realism", action="store_true", help="sim: disable calibrated delay/BEMF/noise/compliant stand")
+    ap.add_argument("--start-q-deg", default=None, help="comma-separated 26 joint angles (deg) to match physical robot")
     ap.add_argument("--log-dir", default=str(LOGS_DIR))
     args = ap.parse_args(argv)
     if not 0 < args.freq <= 0.5:
         ap.error("--freq must be in (0, 0.5] Hz")
 
     jm = JointMap.load()
+    start_q_map = None
+    if args.start_q_deg:
+        vals = [float(x) for x in args.start_q_deg.split(",") if x.strip()]
+        if len(vals) != jm.num_joints:
+            ap.error(f"--start-q-deg requires {jm.num_joints} values, got {len(vals)}")
+        start_q_map = {n: math.radians(v) for n, v in zip(jm.names, vals)}
     read_only = args.target == "real" and not args.go
     beh = BEHAVIOURS[args.behaviour](jm, SweepParams(amplitude_deg=args.amplitude, freq_hz=args.freq,
                                                      duration_s=args.duration), check_tracking=not read_only)
     if args.target == "sim":
         from .backends import SimBackend
-        backend = SimBackend(jm, beh.powered, friction_nm=args.sim_friction,
-                             start_q={"head_yaw_joint": math.radians(args.sim_start_deg)})
+        sim_start = dict(start_q_map or {})
+        if not args.start_q_deg and abs(args.sim_start_deg) > 1e-9:
+            sim_start["head_yaw_joint"] = math.radians(args.sim_start_deg)
+        backend = SimBackend(jm, beh.powered, friction_nm=args.sim_friction, start_q=sim_start,
+                             realistic=not args.no_realism)
     elif args.target == "urlab":
         from .backends import URLabBackend
-        backend = URLabBackend(jm, beh.powered, address=args.address)
+        backend = URLabBackend(jm, beh.powered, address=args.address, start_q=start_q_map)
     else:
         if args.go and not args.yes:
             print(f"REAL ROBOT. Only {', '.join(beh.powered)} will be powered; every other motor stays off.\n"

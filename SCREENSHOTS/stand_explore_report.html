@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>R1 Stand Explore (Unitree Explore Port)</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--blue:#2a6bd9;--orange:#d9730d;--teal:#2a7f8a}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.b{color:var(--blue);font-weight:600}.o{color:var(--orange);font-weight:600}.t{color:var(--teal);font-weight:600}
+</style></head><body><main>
+<h1>R1 Stand Explore: Stand-Safe Unitree Explore Port (Unreal Twin)</h1>
+<p>2026-11-20 · UE 5.8.4 standalone game, level R1_Stand, 1600×900 windowed.</p>
+
+<h2>Before</h2>
+<figure><img src="behaviour_panel_head_readout_idle.png" alt="Previous behaviour panel limited to Neck Turn and head readout">
+<figcaption>Before: HUD supported only Neck Turn (head_yaw_joint) and displayed head yaw/pitch readouts.</figcaption></figure>
+
+<h2>After</h2>
+<ul>
+<li>Retained all five HUD anchors: <span class="b">VIRTUAL ROBOT (Move VIRTUAL robot)</span>, <span class="o">REAL ROBOT (Check connection)</span>, <span class="o">REAL ROBOT (Move REAL robot)</span>, <b>STOP</b> (+ remote L2+B 5 s emergency-stop reminder), and <b>Details</b>.</li>
+<li>Added stand-safe behaviour selector chips: <b>Neck Turn</b> (<code>head_yaw</code>), <b>Neck Nod</b> (<code>head_pitch</code>, capped at 20 deg), <b>Arm Raise</b> (<code>right_shoulder_pitch</code> with <code>right_elbow</code> gently held), and <b>Hand Wave</b> (right arm wave, capped at 20 deg). Legs and waist remain unpowered.</li>
+<li>Added <span class="t">Monitor (Mirror)</span> (<code>POST /monitor</code>): read-only live telemetry stream (IMU R/P/Y, motor temperatures, bus voltage, active motor count, 26 joint angles) plus 3D twin mirroring with zero motor commands published.</li>
+<li>Added right-docked <b>R1 JOINT TELEMETRY (26 DOF)</b> panel (open by default, toggled via <b>Hide joints / Joints (26)</b>): 2-column grouped sub-cards (Head, Waist, Left/Right Arm, Left/Right Leg) with normalized limit range bars from <code>r1_joint_map.yaml</code>, default home ticks, limit-proximity colors, IMU R/P/Y header strip, and per-motor temperatures on the real robot.</li>
+<li>Per-behaviour + per-size gating: changing behaviour or size locks <b>Move REAL robot</b> until both virtual preview and a fresh read-only robot check pass for those exact settings.</li>
+</ul>
+
+<figure><img src="stand_explore_after_idle.png" alt="Updated R1 Stand Explore HUD in idle state">
+<figcaption>Idle: all five HUD anchors preserved, stand-safe behaviour chips and Monitor (Mirror) available, Move REAL robot locked until steps 1 and 2 pass.</figcaption></figure>
+<figure><img src="stand_explore_after_hand_wave_live.png" alt="Live Hand Wave preview on the Unreal twin">
+<figcaption>During live virtual Hand Wave preview (20 deg): right arm waves gently while the telemetry strip shows R.ARM WAVE actual vs. target on the -30..+30 deg gauge, drift, and IMU R/P/Y.</figcaption></figure>
+<figure><img src="stand_explore_after_joints.png" alt="26-joint telemetry matrix open after virtual Hand Wave">
+<figcaption>After Hand Wave completes cleanly: Step 1 green, and <b>Joints (26)</b> shows all 26 joint angles grouped by body part plus IMU attitude.</figcaption></figure>
+
+<h2>Not verified</h2>
+<ul>
+<li>Real-robot execution, <code>Check connection</code>, and live hardware <code>Monitor (Mirror)</code> were not run against physical R1 hardware in this session (verified via offline unit tests with mocked <code>LowState_</code> / <code>LowCmd_</code> messages).</li>
+</ul>
+</main></body></html>

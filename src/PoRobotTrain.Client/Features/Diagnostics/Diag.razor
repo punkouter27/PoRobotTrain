@@ -1,0 +1,33 @@
+@page "/diag"
+@inject RobotApiClient Api
+
+<PageTitle>Diagnostics — PoRobotTrain</PageTitle>
+
+<div class="po-card" style="max-width:720px">
+    <h1 class="dash-h1">Diagnostics</h1>
+    @if (_diag is null)
+    {
+        <p class="po-muted">Loading diagnostics...</p>
+    }
+    else
+    {
+        <dl class="diag-list">
+            <dt>App</dt><dd>@_diag.AppName</dd>
+            <dt>Build Version</dt><dd>v@_diag.BuildVersion</dd>
+            <dt>Environment</dt><dd>@_diag.Environment</dd>
+            <dt>Upstream RobotControl</dt><dd>@_diag.UpstreamUrl</dd>
+            <dt>Upstream Reachable</dt><dd>@(_diag.UpstreamReachable ? "Yes" : "No")</dd>
+            <dt>Active Job</dt><dd>@(_diag.ActiveJob ?? "None")</dd>
+            <dt>Joint Map Count</dt><dd>@_diag.JointCount DOF</dd>
+        </dl>
+    }
+</div>
+
+@code {
+    private DiagSnapshotDto? _diag;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _diag = await Api.GetDiagAsync();
+    }
+}

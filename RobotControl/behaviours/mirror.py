@@ -60,24 +60,41 @@ class UnrealMirror:
             pass
 
 
-def robot_stream(hz: float = 30.0, proc_out: Optional[list] = None) -> Iterator[List[float]]:
-    """Yields joint-angle lists from the robot's read-only state stream over ssh."""
-    p = subprocess.Popen(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT,
-         f"cd {ROBOT_DIR} && exec ./run.sh robotcontrol.behaviours.stream_state --hz {hz}"],
+def _spawn_robot_stream(hz: float, include_telemetry: bool, duration: float) -> subprocess.Popen:
+    cmd = ["robotcontrol.behaviours.stream_state", "--hz", str(hz)]
+    if duration > 0:
+        cmd += ["--duration", str(duration)]
+    if include_telemetry:
+        cmd.append("--telemetry")
+    return subprocess.Popen(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=2", ROBOT,
+         f"cd {ROBOT_DIR} && exec ./run.sh {' '.join(cmd)}"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
-    if proc_out is not None:
-        proc_out.append(p)
-    try:
-        for line in p.stdout:
-            try:
-                msg = json.loads(line)
-            except ValueError:
-                continue
-            if "q" in msg:
-                yield msg["q"]
-    finally:
-        p.terminate()
+
+
+def robot_stream(hz: float = 30.0, proc_out: Optional[list] = None,
+                 include_telemetry: bool = False, duration: float = 0.0) -> Iterator:
+    """Yields joint-angle lists (or full telemetry dicts when ``include_telemetry`` is true) over ssh."""
+    for with_tel in ((True, False) if include_telemetry else (False,)):
+        p = _spawn_robot_stream(hz, with_tel, duration)
+        if proc_out is not None:
+            proc_out.append(p)
+        yielded = 0
+        try:
+            for line in p.stdout:
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if "q" in msg:
+                    yielded += 1
+                    yield msg if include_telemetry else msg["q"]
+            code = p.wait()
+        finally:
+            if p.poll() is None:
+                p.terminate()
+        if yielded > 0 or code == 0:
+            return
 
 
 def replay_stream(csv_path: str, jm: JointMap, hz: float = 30.0) -> Iterator[List[float]]:
@@ -98,16 +115,17 @@ def replay_stream(csv_path: str, jm: JointMap, hz: float = 30.0) -> Iterator[Lis
         yield [float(r[c]) for c in cols]
 
 
-def run_mirror(source: Iterator[List[float]], mirror: UnrealMirror, stop: threading.Event,
-               on_sample: Optional[Callable[[List[float]], None]] = None) -> int:
+def run_mirror(source: Iterator, mirror: UnrealMirror, stop: threading.Event,
+               on_sample: Optional[Callable[[object], None]] = None) -> int:
     n = 0
-    for q in source:
+    for item in source:
         if stop.is_set():
             break
+        q = item["q"] if isinstance(item, dict) else item
         mirror.push(q)
         n += 1
         if on_sample:
-            on_sample(q)
+            on_sample(item)
     return n
 
 

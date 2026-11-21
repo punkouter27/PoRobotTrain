@@ -1,0 +1,366 @@
+@using System.Globalization
+
+<div class="po-card">
+    <div class="tel-header" style="flex-wrap:wrap">
+        <div>
+            <h2 class="tel-title">
+                @(PracticeActive
+                    ? (_wantReal ? "PRACTICE STAND TWIN — CURRENT JOINT ANGLES (26 DOF)" : "VIRTUAL SIM — JOINT ANGLES (26 DOF)")
+                    : (_wantReal ? "PHYSICAL R1 — CURRENT JOINT ANGLES (26 DOF)" : "VIRTUAL SIM — JOINT ANGLES (26 DOF)"))
+            </h2>
+            <div class="tel-metrics">
+                @if (ActiveTelemetry?.ImuRpyDeg is { Length: >= 3 } imu)
+                {
+                    <span>IMU R/P/Y: <b>@($"{imu[0]:+0.0;-0.0;+0.0} / {imu[1]:+0.0;-0.0;+0.0} / {imu[2]:+0.0;-0.0;+0.0}°")</b></span>
+                }
+                else
+                {
+                    <span>IMU: <b>--</b></span>
+                }
+                @if (_wantReal)
+                {
+                    <span>Mode: <b>@(ActiveRealOrPractice?.ModeMachine?.ToString(CultureInfo.InvariantCulture) ?? "--")</b></span>
+                    <span>Motors: <b>@(HasRealOrPractice26 ? $"{ActiveRealOrPractice?.ActiveMotors ?? 0}/26" : "--")</b></span>
+                    <span>Max Temp: <b>@(ActiveRealOrPractice?.MaxTempC?.ToString(CultureInfo.InvariantCulture) ?? "--")°C</b></span>
+                    <span>Bus: <b>@(ActiveRealOrPractice?.BusV is double v ? $"{v:0.0} V" : "--")</b></span>
+                }
+                else
+                {
+                    <span>Limits: <b>r1_joint_map.yaml</b></span>
+                }
+            </div>
+        </div>
+        <div class="size-row">
+            @if (!PracticeActive)
+            {
+                <button type="button" class="po-chip @(_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = true">Physical R1</button>
+                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Virtual Sim</button>
+            }
+            else
+            {
+                <button type="button" class="po-chip @(_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = true">Practice Twin</button>
+                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Virtual Sim</button>
+            }
+            @if (_wantReal)
+            {
+                <button type="button"
+                        class="po-btn @(_realWriteArmed ? (PracticeActive ? "po-btn--blue" : "po-btn--orange") : (PracticeActive ? "po-btn--blue-soft" : "po-btn--orange-soft"))"
+                        style="padding:6px 10px;font-size:12px"
+                        @onclick="ToggleRealWrite">
+                    @(_realWriteArmed
+                        ? (PracticeActive ? "Sliders: WRITE PRACTICE TWIN" : "Sliders: WRITE PHYSICAL R1")
+                        : "Sliders: Read-Only (Enable Write)")
+                </button>
+                @if (_realWriteArmed)
+                {
+                    <label class="po-muted" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+                        <input type="checkbox" @bind="_upperUnlocked" />
+                        Arms/Waist
+                    </label>
+                }
+            }
+            else
+            {
+                <button type="button" class="po-chip @(_virtTarget == "urlab" ? "active" : string.Empty)" @onclick='() => _virtTarget = "urlab"'>Unreal</button>
+                <button type="button" class="po-chip @(_virtTarget == "sim" ? "active" : string.Empty)" @onclick='() => _virtTarget = "sim"'>MuJoCo</button>
+            }
+            <button type="button" class="po-btn @(PracticeActive ? "po-btn--blue-soft" : "po-btn--orange-soft")" style="padding:6px 10px;font-size:12px"
+                    disabled="@(!IsIdle)" @onclick="ReadPhysicalAsync">
+                @(IsReading ? "Reading..." : (PracticeActive ? "Read Practice Pose" : "Read Physical Now"))
+            </button>
+            <span class="po-pill @BadgeClass">@BadgeText</span>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(BannerText))
+    {
+        <div class="status-msg @BannerClass">@BannerText</div>
+    }
+    @if (_wantReal && _realWriteArmed)
+    {
+        <div class="status-msg warn">
+            <b>@(PracticeActive ? "PRACTICE SLIDERS ARMED -> VIRTUAL STAND TWIN (PC):" : "SLIDER WRITE ARMED -> PHYSICAL R1 (192.168.123.164):")</b> dragging a slider smoothly powers only that joint (torque/limit capped; legs stay stand-locked; e-stop: L2+B 5s).
+        </div>
+    }
+
+    <div class="groups-grid">
+        @foreach (var grp in RobotJointCatalog.GroupOrder)
+        {
+            var joints = RobotJointCatalog.All.Where(j => j.Group == grp.Group).ToList();
+            var isLeg = grp.Group is JointGroup.LeftLeg or JointGroup.RightLeg;
+            <div class="group-card" style="border-left-color:@grp.ColorHex">
+                <div class="group-hdr">
+                    <span style="color:@grp.ColorHex">
+                        @grp.Title
+                        @if (isLeg) { <span style="opacity:.65"> · STAND READ-ONLY</span> }
+                    </span>
+                    <span>RANGE / ANGLE / T</span>
+                </div>
+                @foreach (var j in joints)
+                {
+                    var span = Math.Max(1.0, j.MaxDeg - j.MinDeg);
+                    var defDeg = (Status?.JointDefaultsDeg is { Count: >= 26 } defs) ? defs[j.PolicyIndex] : j.DefaultDeg;
+                    var nd = Math.Clamp((defDeg - j.MinDeg) / span, 0.0, 1.0);
+                    var rawVal = ResolveAngleOrNull(j);
+                    var isDragging = _draggingJoint == j.Name;
+                    var displayDeg = isDragging ? _draggingDeg : rawVal;
+                    var sliderVal = displayDeg ?? defDeg;
+                    var writable = IsWritable(j, grp.Group) && IsIdle;
+                    var sliderDisabled = !writable;
+                    var nv = rawVal is double rv ? Math.Clamp((rv - j.MinDeg) / span, 0.0, 1.0) : (double?)null;
+                    var margin = nv is double nvv ? Math.Min(nvv, 1.0 - nvv) : 1.0;
+                    var degMargin = rawVal is double drv ? Math.Min(drv - j.MinDeg, j.MaxDeg - drv) : 99.0;
+                    var barCol = (margin < 0.03 && degMargin < 4.0) ? "#ff5c57"
+                        : (margin < 0.07 && degMargin < 8.0) ? "#ffbd42"
+                        : _wantReal ? "#ff9c47" : "#3dc7f2";
+                    var tempText = (_wantReal && Real?.TempsC is { } temps && j.PolicyIndex < temps.Length)
+                        ? $"{temps[j.PolicyIndex]}°"
+                        : "--";
+
+                    <div class="jrow">
+                        <span class="jname" title="@j.Name">@j.DisplayLabel</span>
+                        <div class="jbar">
+                            <div class="jbar-track" style="position:absolute;inset:0;top:5px">
+                                <div class="def" style="left:@($"{nd * 100:0.##}%")"></div>
+                                @if (nv is double nvv2)
+                                {
+                                    var fillLeft = Math.Min(nd, nvv2) * 100.0;
+                                    var fillWidth = Math.Max(1.5, Math.Abs(nvv2 - nd) * 100.0);
+                                    <div class="fill" style="left:@($"{fillLeft:0.##}%");width:@($"{fillWidth:0.##}%");background:@barCol"></div>
+                                }
+                            </div>
+                            <input type="range"
+                                   class="jslider @(_wantReal ? string.Empty : "jslider--virt")"
+                                   min="@j.MinDeg.ToString("0.0", CultureInfo.InvariantCulture)"
+                                   max="@j.MaxDeg.ToString("0.0", CultureInfo.InvariantCulture)"
+                                   step="0.5"
+                                   value="@sliderVal.ToString("0.0", CultureInfo.InvariantCulture)"
+                                   disabled="@sliderDisabled"
+                                   title="@(writable ? $"Drag to move {j.Name} ({j.MinDeg:0}° .. {j.MaxDeg:0}°)" : isLeg ? "Leg joint is stand-locked read-only" : _wantReal ? "Enable 'Write Physical R1' above to move physical joint" : "Virtual sim busy")"
+                                   @oninput="e => OnSliderInput(j.Name, e.Value?.ToString())"
+                                   @onchange="e => OnSliderCommitAsync(j.Name, e.Value?.ToString())" />
+                        </div>
+                        <span class="jang" style="color:@(isDragging ? "#fff" : rawVal is null ? "var(--po-muted)" : (margin < 0.07 && degMargin < 8.0 ? barCol : "inherit"))">
+                            @(isDragging ? $"→{_draggingDeg:+0.0;-0.0;+0.0}°" : rawVal is double v ? $"{v:+0.0;-0.0;+0.0}°" : "--")
+                        </span>
+                        <span class="jtemp">@tempText</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="stand-card">
+        <div class="sec-hdr">
+            <div>
+                <strong style="font-size:14px">3D R1 ON STAND (LIVE POSE)</strong>
+                <span class="po-muted" style="margin-left:8px">@(_wantReal ? (PracticeActive ? "Practice stand pose" : "Physical R1 pose") : "Virtual PC pose")</span>
+            </div>
+            <div class="size-row">
+                <button type="button" class="po-chip @(_cam == "iso" ? "active" : string.Empty)" @onclick='() => _cam = "iso"'>3/4 Iso</button>
+                <button type="button" class="po-chip @(_cam == "front" ? "active" : string.Empty)" @onclick='() => _cam = "front"'>Front</button>
+                <button type="button" class="po-chip @(_cam == "side" ? "active" : string.Empty)" @onclick='() => _cam = "side"'>Side</button>
+                <button type="button" class="po-chip @(_cam == "back" ? "active" : string.Empty)" @onclick='() => _cam = "back"'>Back</button>
+            </div>
+        </div>
+        <div class="stand-stage">
+            <img class="stand-img" src="@StandViewUrl" alt="3D Unitree R1 on test stand" />
+        </div>
+    </div>
+</div>
+
+@if (_armConfirmOpen)
+{
+    <div class="po-modal-bg">
+        <div class="po-modal">
+            <h2>@(PracticeActive ? "ARM SLIDERS FOR PRACTICE TWIN?" : "ARM SLIDER WRITE -> PHYSICAL R1?")</h2>
+            @if (PracticeActive)
+            {
+                <p>Physical R1 is not connected — moving upper-body sliders will smoothly move the <b>virtual MuJoCo stand twin</b> for practice.</p>
+            }
+            else
+            {
+                <p>Moving upper-body sliders will send powered smooth-ramp commands to the <b>real hardware</b> at 192.168.123.164.</p>
+            }
+            <p>Only the single joint you drag is powered (limit &amp; torque capped; legs stay stand-locked).</p>
+            <div class="btn-row">
+                <button type="button" class="po-btn @(PracticeActive ? "po-btn--blue" : "po-btn--orange")" style="flex:1" @onclick="ConfirmArmWrite">
+                    @(PracticeActive ? "Yes, enable practice sliders" : "Yes, enable physical sliders")
+                </button>
+                <button type="button" class="po-btn" @onclick="() => _armConfirmOpen = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public RobotStatusDto? Status { get; set; }
+    [Parameter] public bool IsIdle { get; set; }
+    [Parameter] public bool PracticeActive { get; set; }
+    [Parameter] public EventCallback OnReadPhysical { get; set; }
+    [Parameter] public EventCallback<MoveJointRequest> OnMoveJoint { get; set; }
+
+    private bool _wantReal = true;
+    private bool _realWriteArmed;
+    private bool _upperUnlocked;
+    private bool _armConfirmOpen;
+    private string _virtTarget = "urlab";
+    private string _cam = "iso";
+    private string? _draggingJoint;
+    private double _draggingDeg;
+
+    private string StandViewUrl
+    {
+        get
+        {
+            var mode = _wantReal ? "real" : "virtual";
+            var qHash = ActiveTelemetry?.QDeg is { } q
+                ? string.Join(',', q.Select(v => v.ToString("0.0", CultureInfo.InvariantCulture)))
+                : $"{RealHead?.Yaw:0.0},{RealHead?.Pitch:0.0}";
+            var url = $"/api/robot/view.png?mode={mode}&cam={_cam}";
+            if (_draggingJoint is not null)
+            {
+                var ji = RobotJointCatalog.All.FirstOrDefault(j => j.Name == _draggingJoint)?.PolicyIndex;
+                if (ji is int idx)
+                {
+                    url += $"&j={idx}&deg={_draggingDeg.ToString("0.0", CultureInfo.InvariantCulture)}";
+                }
+            }
+            return $"{url}&h={Uri.EscapeDataString(qHash)}";
+        }
+    }
+
+    private TelemetryReadoutDto? Real => Status?.Telemetry.GetValueOrDefault("real");
+    private TelemetryReadoutDto? Practice => Status?.Telemetry.GetValueOrDefault("practice");
+    private TelemetryReadoutDto? Virt => Status?.Telemetry.GetValueOrDefault("virtual");
+    private HeadReadoutDto? RealHead => Status?.Head.GetValueOrDefault("real");
+
+    private bool HasReal26 => Real?.QDeg is { Length: >= 26 };
+    private bool HasPractice26 => Practice?.QDeg is { Length: >= 26 };
+    private bool UsingPractice => !HasReal26 && PracticeActive && HasPractice26;
+    private TelemetryReadoutDto? ActiveRealOrPractice => HasReal26 ? Real : (UsingPractice ? Practice : null);
+    private bool HasRealOrPractice26 => HasReal26 || UsingPractice;
+    private bool HasVirt26 => Virt?.QDeg is { Length: >= 26 };
+    private bool HasHeadOnly => _wantReal && !HasRealOrPractice26 && (RealHead?.Yaw is not null || RealHead?.Pitch is not null);
+    private bool IsReading => string.Equals(Status?.Job, "snapshot", StringComparison.OrdinalIgnoreCase);
+
+    private TelemetryReadoutDto? ActiveTelemetry =>
+        _wantReal ? ActiveRealOrPractice : (HasVirt26 ? Virt : null);
+
+    private bool IsWritable(JointSpec j, JointGroup grp)
+    {
+        if (grp is JointGroup.LeftLeg or JointGroup.RightLeg) return false;
+        if (!_wantReal) return true;
+        if (!_realWriteArmed) return false;
+        return grp == JointGroup.Head || _upperUnlocked;
+    }
+
+    private void ToggleRealWrite()
+    {
+        if (_realWriteArmed)
+        {
+            _realWriteArmed = false;
+            return;
+        }
+        _armConfirmOpen = true;
+    }
+
+    private void ConfirmArmWrite()
+    {
+        _armConfirmOpen = false;
+        _realWriteArmed = true;
+    }
+
+    private void OnSliderInput(string jointName, string? raw)
+    {
+        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var deg))
+        {
+            _draggingJoint = jointName;
+            _draggingDeg = deg;
+        }
+    }
+
+    private async Task OnSliderCommitAsync(string jointName, string? raw)
+    {
+        _draggingJoint = null;
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var deg))
+        {
+            return;
+        }
+        if (OnMoveJoint.HasDelegate)
+        {
+            var tgt = _wantReal ? (PracticeActive ? "practice" : "real") : _virtTarget;
+            await OnMoveJoint.InvokeAsync(new MoveJointRequest(jointName, deg, tgt, Confirm: _wantReal && _realWriteArmed));
+        }
+    }
+
+    private string BadgeText => _wantReal
+        ? (HasReal26
+            ? ((Status?.Job is "monitor" or "run" or "snapshot") && Real?.AgeS < 2.0
+                ? "PHYSICAL R1 LIVE"
+                : $"PHYSICAL R1 · {Real?.AgeS:0}s AGO")
+            : UsingPractice ? "PRACTICE TWIN (OFFLINE)"
+            : HasHeadOnly ? "PHYSICAL HEAD ONLY"
+            : IsReading ? "READING PHYSICAL R1..."
+            : "NO PHYSICAL READING")
+        : (HasVirt26
+            ? (Status?.Job == "preview" && Virt?.AgeS < 2.0 ? "VIRTUAL PC LIVE" : $"VIRTUAL PC · {Virt?.AgeS:0}s AGO")
+            : "NO VIRTUAL RUN YET");
+
+    private string BadgeClass => _wantReal
+        ? (HasReal26 || HasHeadOnly ? "po-pill--orange" : UsingPractice ? "po-pill--blue" : string.Empty)
+        : (HasVirt26 ? "po-pill--blue" : string.Empty);
+
+    private string? SnapshotOrMonitorFail =>
+        Status?.Results.GetValueOrDefault("snapshot") is { Ok: false } sf ? sf.Reason
+        : Status?.Results.GetValueOrDefault("monitor") is { Ok: false } mf ? mf.Reason
+        : null;
+
+    private string BannerText
+    {
+        get
+        {
+            if (_wantReal)
+            {
+                if (HasReal26) return string.Empty;
+                if (UsingPractice)
+                    return "Physical R1 offline — displaying PRACTICE stand twin pose (zero real hardware active).";
+                if (HasHeadOnly)
+                    return "Only Head Pitch/Yaw arrived from Check. Click 'Read Physical Now' for all 26 physical joints.";
+                if (PracticeActive)
+                    return "Physical R1 offline — click 'Read Physical Now' to initialize Practice Stand Twin for full offline workflow practice.";
+                if (!string.IsNullOrEmpty(SnapshotOrMonitorFail))
+                    return $"Physical R1 not read ({SnapshotOrMonitorFail}). Showing '--' instead of defaults. Click 'Read Physical Now' once connected.";
+                return "No physical robot sensor reading yet (showing '--', never fake defaults). Click 'Read Physical Now' when 192.168.123.164 is online.";
+            }
+            return HasVirt26 ? string.Empty : "No virtual simulation run yet. Run on Unreal Twin or MuJoCo Sim to populate virtual angles.";
+        }
+    }
+
+    private string BannerClass => _wantReal && !string.IsNullOrEmpty(SnapshotOrMonitorFail) ? "bad"
+        : HasHeadOnly ? "warn"
+        : "po-muted";
+
+    private async Task ReadPhysicalAsync()
+    {
+        _wantReal = true;
+        if (OnReadPhysical.HasDelegate)
+        {
+            await OnReadPhysical.InvokeAsync();
+        }
+    }
+
+    private double? ResolveAngleOrNull(JointSpec j)
+    {
+        if (ActiveTelemetry?.QDeg is { } q && j.PolicyIndex < q.Length)
+        {
+            return q[j.PolicyIndex];
+        }
+        if (HasHeadOnly && RealHead is not null)
+        {
+            if (j.Name == "head_pitch_joint" && RealHead.Pitch is double hp) return hp;
+            if (j.Name == "head_yaw_joint" && RealHead.Yaw is double hy) return hy;
+        }
+        return null;
+    }
+}

@@ -1,0 +1,71 @@
+# Calibrated physical dynamics, actuator, stand, latency, and sensor parameters for Unitree R1 EDU (A5).
+# Used by SimBackend, MujocoInterface (when realistic=True), Level0StandEnv domain randomization,
+# and updated automatically by `python -m robotcontrol.tools.calibrate_sim`.
+
+version: 1
+last_calibrated_at: null
+parity_rms_deg: null
+parity_max_deg: null
+
+timing:
+  physics_dt_s: 0.005        # 200 Hz MuJoCo physics step (preserved per project contract)
+  policy_hz: 50.0            # 50 Hz high-level / RL / behaviour tick
+  control_delay_ms: 10.0     # DDS + Jetson round-trip latency (2 x 5 ms physics steps)
+
+actuator:
+  lowpass_tau_s: 0.015       # First-order current / target bandwidth time constant
+  nominal_bus_v: 48.0        # Nominal pack voltage
+  bus_voltage_v: 48.0        # Measured DC bus voltage (scales peak torque)
+  bemf_nm_per_rad_s: 0.12    # Back-EMF velocity-dependent torque roll-off slope
+
+sensors:
+  pos_noise_rad: 0.0012      # Encoder Gaussian sigma (~0.07 deg)
+  vel_noise_rad_s: 0.03      # Joint velocity estimation sigma
+  vel_filter_alpha: 0.35     # First-order LPF weight on raw dq
+  imu_noise_rad: 0.003       # IMU roll/pitch/yaw Gaussian sigma (~0.17 deg)
+
+mass:
+  body_mass_scale: 1.0       # Global inertial scalar
+  torso_extra_mass_kg: 0.0   # Extra mounted Jetson/battery/guard payload on torso_link
+
+stand:
+  compliant: true
+  timeconst_s: 0.03          # Implicit weld tether softness (4 Hz harness flex, unconditionally stable at 5 ms)
+  damping_ratio: 1.0
+
+# Per-group planetary gearbox inertia (armature), viscous damping, Coulomb frictionloss,
+# and unpowered (mode=0) passive static friction in Nm.
+groups:
+  leg:
+    armature: 0.035
+    damping: 0.25
+    frictionloss: 0.35
+    unpowered_friction_nm: 3.00
+  waist:
+    armature: 0.030
+    damping: 0.22
+    frictionloss: 0.30
+    unpowered_friction_nm: 3.00
+  arm:
+    armature: 0.018
+    damping: 0.14
+    frictionloss: 0.22
+    unpowered_friction_nm: 4.50
+  wrist:
+    armature: 0.008
+    damping: 0.08
+    frictionloss: 0.12
+    unpowered_friction_nm: 1.00
+  head_pitch:
+    armature: 0.004
+    damping: 0.06
+    frictionloss: 0.08
+    unpowered_friction_nm: 0.20
+  head_yaw:
+    armature: 0.0008
+    damping: 0.015
+    frictionloss: 0.03
+    unpowered_friction_nm: 0.06
+
+# Optional per-joint calibrated overrides (armature, damping, frictionloss, unpowered_friction_nm, zero_offset_deg).
+joints: {}

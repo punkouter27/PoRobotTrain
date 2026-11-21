@@ -1,0 +1,15 @@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <div class="po-card">
+                <h1>Page not found</h1>
+                <p>No route matches this URL. <a href="/">Return to R1 Stand Explore</a>.</p>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>

@@ -66,12 +66,14 @@ class URLabInterface(RobotHardwareInterface):
                  sim_dt: float = 0.005, transport: str = "zmq", observations: str = "full",
                  target_hz: Optional[float] = None, mujoco_version_check: bool = True,
                  imu_sensor_names: Optional[Dict[str, str]] = None,
-                 sync_options_xml: Optional[str] = None, **client_kwargs):
+                 sync_options_xml: Optional[str] = None,
+                 reset_on_connect: bool = True, **client_kwargs):
         super().__init__(joint_map)
         if sync_options_xml is None:
             from .. import MJCF_DIR
             sync_options_xml = str(Path(MJCF_DIR) / "scene_stand.xml")
         self.sync_options_xml = sync_options_xml or None
+        self.reset_on_connect = bool(reset_on_connect)
         self.address = address
         self.step_mode = step_mode
         self.articulation_prefix = articulation
@@ -158,17 +160,18 @@ class URLabInterface(RobotHardwareInterface):
             if sname not in sensors:
                 log.warning("URLab sensor %r (%s) not found; falling back to root state", sname, k)
         self.connected = True
-        # Start from the same 'home' keyframe as the headless twin and training (PIE starts at qpos0).
-        try:
-            # URLab prefixes imported keyframe names with the actor name.
-            names = [k.name for k in self.client.runtime.list_keyframes()]
-            key = next((n for n in names if n == "home" or n.endswith("_home")), None)
-            if key is None:
-                raise RuntimeError(f"no home keyframe in {names}")
-            self._home_key = key
-            self.client.reset(keyframe_name=key)
-        except Exception as e:  # keyframe missing on an older import
-            log.warning("URLab reset to keyframe 'home' failed: %s", e)
+        if self.reset_on_connect:
+            # Start from the same 'home' keyframe as the headless twin and training (PIE starts at qpos0).
+            try:
+                # URLab prefixes imported keyframe names with the actor name.
+                names = [k.name for k in self.client.runtime.list_keyframes()]
+                key = next((n for n in names if n == "home" or n.endswith("_home")), None)
+                if key is None:
+                    raise RuntimeError(f"no home keyframe in {names}")
+                self._home_key = key
+                self.client.reset(keyframe_name=key)
+            except Exception as e:  # keyframe missing on an older import
+                log.warning("URLab reset to keyframe 'home' failed: %s", e)
         log.info("URLabInterface connected: prefix=%s mode=%s step_mode=%s substeps=%d",
                  art.prefix, mode, self.step_mode, self.substeps)
 
