@@ -349,9 +349,12 @@ def write_report(rep: dict, out: pathlib.Path) -> None:
     ]
     for y, row in zip(it["y"]["levels"], it["cells"]):
         lines.append(f"| {y:g} | " + " | ".join(fmt(c) for c in row) + " |")
-    lines += ["", "![heatmap](heatmap.png)", ""]
+    try:  # the picture is optional: latest.json and report.md carry everything the clients read
+        _plot(rep, out / "heatmap.png")
+        lines += ["", "![heatmap](heatmap.png)", ""]
+    except ImportError:
+        print("heatmap.png skipped: matplotlib is not installed (latest.json and report.md are complete)", flush=True)
     (out / "report.md").write_text("\n".join(lines), encoding="utf-8")
-    _plot(rep, out / "heatmap.png")
 
 
 def _plot(rep: dict, path: pathlib.Path) -> None:

@@ -57,4 +57,10 @@ def test_short_sweep_writes_contract_report(tmp_path):
         assert c["acc_joint"].endswith("_joint")
     s = data["summary"]
     assert s["pass"] + s["warn"] + s["fail"] == 55 and s["worst"]
-    assert (tmp_path / "report.md").exists() and (tmp_path / "heatmap.png").exists()
+    assert (tmp_path / "report.md").exists()
+    try:  # the heatmap PNG is optional (CI installs no matplotlib)
+        import matplotlib  # noqa: F401
+    except ImportError:
+        assert not (tmp_path / "heatmap.png").exists()
+    else:
+        assert (tmp_path / "heatmap.png").exists()
