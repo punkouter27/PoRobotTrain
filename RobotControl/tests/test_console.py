@@ -156,7 +156,9 @@ def test_run_needs_preflight(svc, monkeypatch):
     assert "pre-flight" in svc.move_joint("head_yaw_joint", 5.0, target="real", confirm=True)["error"]
     assert svc.run(p, confirm=True, practice=True) == {"ok": True}  # practice never needs the checklist
     svc.job = None
-    monkeypatch.setattr(svc.console.preflight, "auto_checks", lambda: [{"id": "x", "label": "a", "ok": True, "detail": ""}])
+    monkeypatch.setattr(
+        svc.console.preflight, "auto_checks", lambda: [{"id": "x", "label": "a", "ok": True, "detail": ""}]
+    )
     pf = svc.console.preflight
     for item, _ in pf.MANUAL:
         st = pf.tick(item, True)
@@ -168,7 +170,9 @@ def test_run_needs_preflight(svc, monkeypatch):
 
 
 def test_preflight_auto_check_failure_blocks(svc, monkeypatch):
-    monkeypatch.setattr(svc.console.preflight, "auto_checks", lambda: [{"id": "x", "label": "r", "ok": False, "detail": ""}])
+    monkeypatch.setattr(
+        svc.console.preflight, "auto_checks", lambda: [{"id": "x", "label": "r", "ok": False, "detail": ""}]
+    )
     for item, _ in svc.console.preflight.MANUAL:
         svc.console.preflight.tick(item, True)
     assert "pre-flight" in svc.console.preflight_why_not()
@@ -281,7 +285,9 @@ def test_stop_and_estop_halt_the_player(svc):
 
 def test_modes(svc):
     c = svc.console
-    assert "not on the real robot" in c.set_mode({"mode": "damp", "target": "real", "joints": ["head_yaw_joint"]})["error"]
+    assert (
+        "not on the real robot" in c.set_mode({"mode": "damp", "target": "real", "joints": ["head_yaw_joint"]})["error"]
+    )
     with pytest.raises(ValueError, match="only the joints you name"):
         c.set_mode({"mode": "hold", "target": "practice"})
     with pytest.raises(ValueError):

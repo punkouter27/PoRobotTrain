@@ -90,10 +90,20 @@ class ChatAssistant:
                         say="Same again, selected.")  # fmt: skip
         if last and last.get("kind") == "behaviour" and _any(t, ("bigger", "more", "larger", "further", "higher")):
             amp = min(30.0, float(last.get("amplitude") or 10.0) + 10.0)
-            return dict(last, amplitude=amp, note=f"{last['label']} at {amp:.0f} deg.", say=f"{last['label']}, {amp:.0f} degrees.")
+            return dict(
+                last,
+                amplitude=amp,
+                note=f"{last['label']} at {amp:.0f} deg.",
+                say=f"{last['label']}, {amp:.0f} degrees.",
+            )
         if last and last.get("kind") == "behaviour" and _any(t, ("smaller", "less", "gentler", "lower")):
             amp = max(10.0, float(last.get("amplitude") or 20.0) - 10.0)
-            return dict(last, amplitude=amp, note=f"{last['label']} at {amp:.0f} deg.", say=f"{last['label']}, {amp:.0f} degrees.")
+            return dict(
+                last,
+                amplitude=amp,
+                note=f"{last['label']} at {amp:.0f} deg.",
+                say=f"{last['label']}, {amp:.0f} degrees.",
+            )
         if re.search(r"what (did|have) (i|you)|what was|recap|history", t):
             past = [x["text"] for x in list(s["turns"])[:-1] if x["role"] == "user"][-3:]
             if not past:
@@ -158,7 +168,9 @@ class ChatAssistant:
                 return self._answer("The twin is ready. The real robot is not connected, so only the twin can move.",
                                     "The twin is ready. The real robot is not connected.")  # fmt: skip
             if pf.get("complete"):
-                return self._answer("Real robot connected and the pre-flight checklist is complete: preview, check, then run.")
+                return self._answer(
+                    "Real robot connected and the pre-flight checklist is complete: preview, check, then run."
+                )
             n = len(pf.get("missing") or [])
             return self._answer(f"Real robot connected, but {n} pre-flight item(s) are open: see Setup.",
                                 f"Not yet: {n} pre-flight items are open.")  # fmt: skip

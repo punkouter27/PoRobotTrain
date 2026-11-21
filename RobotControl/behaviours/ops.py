@@ -220,7 +220,9 @@ class SessionLimits:
             raise ValueError(f"amplitude {p['amplitude']:g} deg is above the session cap "
                              f"{self.values['amplitude_cap_deg']:g} deg (Limits)")  # fmt: skip
         if p["freq"] > self.values["freq_cap_hz"] + 1e-9:
-            raise ValueError(f"frequency {p['freq']:g} Hz is above the session cap {self.values['freq_cap_hz']:g} Hz (Limits)")
+            raise ValueError(
+                f"frequency {p['freq']:g} Hz is above the session cap {self.values['freq_cap_hz']:g} Hz (Limits)"
+            )
 
     def clamp_joint(self, jm: JointMap, joint: str, deg: float) -> tuple[float, bool]:
         if joint not in jm.names:

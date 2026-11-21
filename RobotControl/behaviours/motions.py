@@ -42,7 +42,9 @@ def joint_group(name: str) -> str:
         return "head"
     if name.startswith("waist_"):
         return "waist"
-    if any(name.startswith(p) for p in ("left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle")):
+    if any(
+        name.startswith(p) for p in ("left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle")
+    ):
         return "leg"
     return "arm"
 

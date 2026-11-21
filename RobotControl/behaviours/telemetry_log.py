@@ -315,7 +315,9 @@ def scan_telemetry(
             if t is None:
                 continue
             if t >= TEMP_CRIT_C:
-                log.record("critical", "temperature", f"{n} at {t} C (critical {TEMP_CRIT_C} C)", who, n, f"tc:{who}:{n}")
+                log.record(
+                    "critical", "temperature", f"{n} at {t} C (critical {TEMP_CRIT_C} C)", who, n, f"tc:{who}:{n}"
+                )
             elif t >= TEMP_WARN_C:
                 log.record("warn", "temperature", f"{n} at {t} C (warning {TEMP_WARN_C} C)", who, n, f"tw:{who}:{n}")
     q = pkt.get("q_deg")

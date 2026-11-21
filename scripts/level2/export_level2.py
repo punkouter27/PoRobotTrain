@@ -137,7 +137,7 @@ def main() -> None:
     agent_cfg = load_rl_cfg(args.task)
     agent_cfg.logger = "tensorboard"
     agent_cfg.upload_model = False
-    env =ManagerBasedRlEnv(cfg=env_cfg, device=args.device)
+    env = ManagerBasedRlEnv(cfg=env_cfg, device=args.device)
     venv = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
     runner_cls = load_runner_cls(args.task)
     runner = runner_cls(venv, asdict(agent_cfg), None, args.device)
@@ -232,11 +232,20 @@ def main() -> None:
         "damping": [round(float(mm.dof_damping[d]), 6) for d in dofs],
         "frictionloss": [round(float(mm.dof_frictionloss[d]), 6) for d in dofs],
         "total_mass_kg": round(float(mm.body_mass.sum()), 4),
-        "foot_geom": {"condim": int(mm.geom_condim[foot]), "friction": [float(x) for x in mm.geom_friction[foot]],
-                      "priority": int(mm.geom_priority[foot]), "randomised_friction": [0.3, 1.6]},  # fmt: skip
-        "opt": {"timestep": float(mm.opt.timestep), "integrator": int(mm.opt.integrator), "cone": int(mm.opt.cone),
-                "iterations": int(mm.opt.iterations), "ls_iterations": int(mm.opt.ls_iterations),
-                "impratio": float(mm.opt.impratio)},  # fmt: skip
+        "foot_geom": {
+            "condim": int(mm.geom_condim[foot]),
+            "friction": [float(x) for x in mm.geom_friction[foot]],
+            "priority": int(mm.geom_priority[foot]),
+            "randomised_friction": [0.3, 1.6],
+        },  # fmt: skip
+        "opt": {
+            "timestep": float(mm.opt.timestep),
+            "integrator": int(mm.opt.integrator),
+            "cone": int(mm.opt.cone),
+            "iterations": int(mm.opt.iterations),
+            "ls_iterations": int(mm.opt.ls_iterations),
+            "impratio": float(mm.opt.impratio),
+        },  # fmt: skip
     }
     deploy = {
         "level": 2,
@@ -258,8 +267,12 @@ def main() -> None:
         "decimation": int(env.cfg.decimation),
         "gait_period": GAIT_PERIOD,
         "obs_terms": OBS_TERMS,
-        "commands": {"lin_vel_x": play_ranges["lin_vel_x"], "lin_vel_y": play_ranges["lin_vel_y"],
-                     "ang_vel_z": play_ranges["ang_vel_z"], "standing_threshold": 0.1},  # fmt: skip
+        "commands": {
+            "lin_vel_x": play_ranges["lin_vel_x"],
+            "lin_vel_y": play_ranges["lin_vel_y"],
+            "ang_vel_z": play_ranges["ang_vel_z"],
+            "standing_threshold": 0.1,
+        },  # fmt: skip
         "termination": {"bad_orientation_deg": 70.0},
         "training_dynamics": training_dynamics,
         "metadata": {

@@ -80,7 +80,9 @@ class Console:
         src = "practice" if practice else ("virtual" if job in ("preview", "move_virtual") else "real")
         if ok:
             self.events.record("info", "job", f"{job} finished", src)
-        elif reason.startswith(("tracking", "torque", "other joint", "stale")) or "ABORT" in reason or "abort" in reason:
+        elif (
+            reason.startswith(("tracking", "torque", "other joint", "stale")) or "ABORT" in reason or "abort" in reason
+        ):
             self.events.record("critical", "trip", f"{job} safety trip: {reason}", src)
         else:
             self.events.record("warn", "fault", f"{job} failed: {reason}", src)
@@ -231,7 +233,9 @@ class Console:
         """Cheap: manual ticks first (no probes while they are open), cached automatic checks after."""
         st_ticks = self.preflight.ticks
         now = time.time()
-        open_manual = [k for k, _ in self.preflight.MANUAL if not (k in st_ticks and now - st_ticks[k] <= ops.PREFLIGHT_VALID_S)]
+        open_manual = [
+            k for k, _ in self.preflight.MANUAL if not (k in st_ticks and now - st_ticks[k] <= ops.PREFLIGHT_VALID_S)
+        ]
         if open_manual:
             return f"complete the pre-flight checklist ({len(open_manual)} item(s) open)"
         return self.preflight.why_not()
@@ -251,7 +255,9 @@ class Console:
         if self.recorder.active:
             self.recorder.stop()
             stopped.append("recording")
-        self.events.record("critical", "estop", "E-STOP pressed" + (f": stopped {', '.join(stopped)}" if stopped else ""))
+        self.events.record(
+            "critical", "estop", "E-STOP pressed" + (f": stopped {', '.join(stopped)}" if stopped else "")
+        )
         self.svc.log("E-STOP: " + (", ".join(stopped) if stopped else "nothing was running"))
         return {"ok": True, "stopped": stopped,
                 "note": "software stop sent; on the real robot the remote (L2+B for 5 s) is the emergency stop"}  # fmt: skip
@@ -310,13 +316,17 @@ class Console:
     def _chat_ctx(self) -> dict:
         src = self._source({})
         return {
-            "status": {"job": self.svc.job, "last_result": self.svc.last_result,
-                       "real_connected": self.svc.real_connected},  # fmt: skip
+            "status": {
+                "job": self.svc.job,
+                "last_result": self.svc.last_result,
+                "real_connected": self.svc.real_connected,
+            },  # fmt: skip
             "power": self.history.power(src),
             "temps": self.history.temperatures(src),
             "events": self.events.list(limit=10),
-            "preflight": self.preflight.state() if not self.preflight_why_not_manual() else
-                         {"complete": False, "missing": self._open_manual_labels()},  # fmt: skip
+            "preflight": self.preflight.state()
+            if not self.preflight_why_not_manual()
+            else {"complete": False, "missing": self._open_manual_labels()},  # fmt: skip
             "limits": self.limits.describe(),
             "versions": {"service": ops.SERVICE_VERSION, "repo": ops.repo_version(), "policies": ops.policy_versions()},
             "motions": self.library.list(),
@@ -451,7 +461,9 @@ class Console:
             clip = body.get("clip") or self.library.get(str(body.get("name", "")))
             if not clip:
                 return 404, {"ok": False, "error": "no such motion"}
-            return self._r(self.play(clip, str(body.get("target", "practice")), bool(body.get("loop", False)), "motion"))
+            return self._r(
+                self.play(clip, str(body.get("target", "practice")), bool(body.get("loop", False)), "motion")
+            )
         if path == "/motions/record/start":
             return 200, self.recorder.start(str(body.get("source", "practice")))
         if path == "/motions/record/stop":
@@ -476,7 +488,9 @@ class Console:
                 self.events.record("info", "calibration", f"zero offsets stored ({len(res['offsets_deg'])} joints)")
             return self._r(res)
         if path == "/network/test":
-            return 200, ops.probe_connection(str(body.get("host", "")), int(body.get("port", 22)), bool(body.get("icmp", True)))
+            return 200, ops.probe_connection(
+                str(body.get("host", "")), int(body.get("port", 22)), bool(body.get("icmp", True))
+            )
         if path == "/network/profiles":
             return 200, self.profiles.upsert(body.get("profile") or body)
         if path == "/network/profiles/delete":
