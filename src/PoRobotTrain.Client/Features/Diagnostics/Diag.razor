@@ -35,7 +35,7 @@
         </span>
     </div>
     <p class="po-muted">Probed live from this browser now. Nothing here moves the robot.</p>
-    @foreach (var section in new[] { "GPU", "Data", "Services", "Checks" })
+    @foreach (var section in new[] { "GPU", "Data", "Services", "Checks", "Sandbox" })
     {
         var rows = _rows.Where(r => r.Section == section).ToList();
         <h3 class="diag-sec">@SectionTitle(section)</h3>
@@ -61,9 +61,11 @@
     private DiagSnapshotDto? _diag;
     private IJSObjectReference? _module;
     private readonly List<TwinProbeRow> _rows = [];
-    private readonly HashSet<string> _pending = ["GPU", "Data", "Services", "Checks"];
+    private readonly HashSet<string> _pending = ["GPU", "Data", "Services", "Checks", "Sandbox"];
 
-    private static bool IsOptional(TwinProbeRow r) => r.Name.StartsWith("WebGPU", StringComparison.Ordinal);
+    // optional: a fallback exists (WebGL2 + CPU for WebGPU, local Whisper for the Web Speech API)
+    private static bool IsOptional(TwinProbeRow r) =>
+        r.Name.StartsWith("WebGPU", StringComparison.Ordinal) || r.Name.StartsWith("Speech recognition", StringComparison.Ordinal);
 
     private bool? Overall => _pending.Count > 0 ? null : _rows.All(r => r.Ok || IsOptional(r));
 
@@ -72,6 +74,7 @@
         "GPU" => "GPU (WebGPU is optional: WebGL2 + CPU fallbacks are used without it)",
         "Data" => "Data (twin assets, decoders)",
         "Services" => "Services (CDN modules)",
+        "Sandbox" => "Voice, robustness explorer, walk sandbox (speech, model files, live API calls)",
         _ => "Checks (contracts verified in the browser)",
     };
 
@@ -102,6 +105,7 @@
         await RunAsync("Services", "modulesJson");
         await RunAsync("Checks", "selfTestsJson", keepPending: true);
         await RunAsync("Checks", "policyParityJson");
+        await RunAsync("Sandbox", "sandboxJson");
     }
 
     private async Task RunAsync(string section, string fn, bool keepPending = false)

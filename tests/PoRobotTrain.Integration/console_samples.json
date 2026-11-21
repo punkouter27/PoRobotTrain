@@ -1,0 +1,2156 @@
+{
+ "HealthDto": {
+  "ok": true,
+  "overall": "degraded",
+  "failing": 1,
+  "rows": [
+   {
+    "section": "Services",
+    "name": "Behaviour service",
+    "ok": true,
+    "optional": false,
+    "ms": 0.0,
+    "detail": "up 1775 s, v2026.11.21"
+   },
+   {
+    "section": "Services",
+    "name": "Unreal twin (URLab)",
+    "ok": false,
+    "optional": true,
+    "ms": 612.4,
+    "detail": "localhost:5555 TimeoutError"
+   },
+   {
+    "section": "Services",
+    "name": "Robot SSH (192.168.123.164:22)",
+    "ok": false,
+    "optional": true,
+    "ms": 503.1,
+    "detail": "192.168.123.164:22 TimeoutError"
+   },
+   {
+    "section": "Services",
+    "name": "Robot state stream",
+    "ok": false,
+    "optional": true,
+    "ms": 0.0,
+    "detail": "no live robot state (Monitor or Snapshot reads it)"
+   },
+   {
+    "section": "Data",
+    "name": "Joint map",
+    "ok": true,
+    "optional": false,
+    "ms": 0.0,
+    "detail": "26 joints"
+   },
+   {
+    "section": "Data",
+    "name": "Pose library",
+    "ok": true,
+    "optional": false,
+    "ms": 2.0,
+    "detail": "8 poses"
+   },
+   {
+    "section": "Data",
+    "name": "Motion library",
+    "ok": true,
+    "optional": false,
+    "ms": 0.0,
+    "detail": "3 motions, 0 invalid"
+   },
+   {
+    "section": "Data",
+    "name": "Robustness report",
+    "ok": true,
+    "optional": true,
+    "ms": 0.6,
+    "detail": "logs/robustness/latest.json"
+   },
+   {
+    "section": "Data",
+    "name": "Level 2 walk policy",
+    "ok": false,
+    "optional": true,
+    "ms": 0.2,
+    "detail": "sandbox only, needs validate_level2"
+   },
+   {
+    "section": "Data",
+    "name": "Docs",
+    "ok": true,
+    "optional": false,
+    "ms": 15.0,
+    "detail": "11 documents"
+   },
+   {
+    "section": "Robot",
+    "name": "Critical events (10 min)",
+    "ok": false,
+    "optional": false,
+    "ms": 0.0,
+    "detail": "1 critical"
+   },
+   {
+    "section": "Robot",
+    "name": "Motor temperatures",
+    "ok": true,
+    "optional": true,
+    "ms": 0.0,
+    "detail": "practice: max 34 C (?)"
+   },
+   {
+    "section": "Robot",
+    "name": "Battery",
+    "ok": true,
+    "optional": true,
+    "ms": 0.1,
+    "detail": "48.0 V, about 38 % (estimate)"
+   },
+   {
+    "section": "Jobs",
+    "name": "Active job",
+    "ok": true,
+    "optional": false,
+    "ms": 0.0,
+    "detail": "idle"
+   },
+   {
+    "section": "Jobs",
+    "name": "Last job result",
+    "ok": true,
+    "optional": true,
+    "ms": 0.0,
+    "detail": "monitor OK"
+   },
+   {
+    "section": "Data",
+    "name": "Policy r1_level0_upperbody",
+    "ok": true,
+    "optional": false,
+    "ms": 0.0,
+    "detail": "validated (Level 0 gate report) \u00b7 sha e6e201a10e57"
+   }
+  ],
+  "checked_at": 1795278898.1149683
+ },
+ "EventsDto": {
+  "ok": true,
+  "events": [
+   {
+    "id": 4,
+    "at": 1795278773.727,
+    "level": "critical",
+    "kind": "estop",
+    "message": "E-STOP pressed"
+   },
+   {
+    "id": 3,
+    "at": 1795277156.859,
+    "level": "info",
+    "kind": "calibration",
+    "message": "zero offsets captured from practice"
+   },
+   {
+    "id": 2,
+    "at": 1795277156.731,
+    "level": "info",
+    "kind": "limits",
+    "message": "session limits: walk_speed_scale"
+   },
+   {
+    "id": 1,
+    "at": 1795277153.587,
+    "level": "info",
+    "kind": "job",
+    "message": "pose finished"
+   }
+  ],
+  "counts": {
+   "info": 3,
+   "warn": 0,
+   "critical": 1
+  }
+ },
+ "TempHistoryDto": {
+  "ok": true,
+  "source": "practice",
+  "warn_c": 55,
+  "crit_c": 65,
+  "joint_names": [
+   "left_hip_pitch",
+   "left_hip_roll",
+   "left_hip_yaw",
+   "left_knee",
+   "left_ankle_pitch",
+   "left_ankle_roll",
+   "right_hip_pitch",
+   "right_hip_roll",
+   "right_hip_yaw",
+   "right_knee",
+   "right_ankle_pitch",
+   "right_ankle_roll",
+   "waist_roll",
+   "waist_yaw",
+   "left_shoulder_pitch",
+   "left_shoulder_roll",
+   "left_shoulder_yaw",
+   "left_elbow",
+   "left_wrist_roll",
+   "right_shoulder_pitch",
+   "right_shoulder_roll",
+   "right_shoulder_yaw",
+   "right_elbow",
+   "right_wrist_roll",
+   "head_pitch",
+   "head_yaw"
+  ],
+  "t": [
+   -264.7,
+   -263.6,
+   -262.6,
+   -261.3,
+   -260.3,
+   -259.3,
+   -258.3,
+   -257.2,
+   -256.2,
+   -255.1,
+   -254.1,
+   -253.0,
+   -251.9,
+   -250.8,
+   -249.7,
+   -248.7,
+   -247.6,
+   -246.6,
+   -245.5
+  ],
+  "series": [
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ],
+   [
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34,
+    34
+   ]
+  ],
+  "latest": [
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34
+  ],
+  "peak": [
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34,
+   34
+  ],
+  "rate_c_per_min": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "hottest": {
+   "joint": "left_hip_pitch",
+   "temp_c": 34
+  }
+ },
+ "PowerDto": {
+  "ok": true,
+  "source": "practice",
+  "series_cells": 13,
+  "assumption": "state of charge estimated from bus voltage, generic Li-ion curve, 13S pack",
+  "current_a": null,
+  "current_note": "the low-level state stream does not report pack current",
+  "t": [
+   -264.7,
+   -263.6,
+   -262.6,
+   -261.3,
+   -260.3,
+   -259.3,
+   -258.3,
+   -257.2,
+   -256.2,
+   -255.1,
+   -254.1,
+   -253.0,
+   -251.9,
+   -250.8,
+   -249.8,
+   -248.7,
+   -247.6,
+   -246.6,
+   -245.5
+  ],
+  "bus_v": [
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0,
+   48.0
+  ],
+  "available": true,
+  "latest_v": 48.0,
+  "cell_v": 3.692,
+  "soc_pct": 38.5,
+  "trend_v_per_min": 0.0,
+  "minutes_left": null,
+  "low": false
+ },
+ "ImuCheckDto": {
+  "ok": true,
+  "source": "practice",
+  "available": false,
+  "verdict": "no_data",
+  "samples": 0,
+  "notes": [
+   "no IMU samples yet: start Monitor (read-only) or a practice stream"
+  ]
+ },
+ "VersionsDto": {
+  "ok": true,
+  "service": "2026.11.21",
+  "repo": {
+   "commit": "c719161",
+   "dirty_files": 135
+  },
+  "python": "3.11.9",
+  "packages": {
+   "mujoco": "4.0.1",
+   "onnxruntime": "1.32.0",
+   "numpy": "2.4.6",
+   "unitree_sdk2py": "not installed"
+  },
+  "robot": {
+   "firmware": null,
+   "note": "the low-level state stream does not report firmware; read it on the robot"
+  },
+  "policies": [
+   {
+    "name": "r1_level0_upperbody",
+    "policy_sha256": "e6e201a10e57ddbd54ccd72b68ee15deca8273d9089a7e73365cc7ddcfd19fee",
+    "expected_sha256": null,
+    "gate": "validated (Level 0 gate report)",
+    "ok": true,
+    "trained_at": "2026-11-09T15:18:27",
+    "num_obs": 23,
+    "num_actions": 7,
+    "joint_map_sha256": "df0a086ae8017262",
+    "joint_map_matches": true
+   }
+  ],
+  "warnings": []
+ },
+ "LimitsDto": {
+  "ok": true,
+  "values": {
+   "amplitude_cap_deg": 30.0,
+   "freq_cap_hz": 0.5,
+   "joint_range_frac": 0.9,
+   "walk_speed_scale": 0.5,
+   "motion_speed_scale": 1.0
+  },
+  "specs": {
+   "amplitude_cap_deg": {
+    "max": 30.0,
+    "min": 1.0,
+    "unit": "deg",
+    "label": "Behaviour sweep size cap"
+   },
+   "freq_cap_hz": {
+    "max": 0.5,
+    "min": 0.05,
+    "unit": "Hz",
+    "label": "Behaviour frequency cap"
+   },
+   "joint_range_frac": {
+    "max": 0.9,
+    "min": 0.2,
+    "unit": "x range",
+    "label": "Joint slider / motion range (fraction of the joint range)"
+   },
+   "walk_speed_scale": {
+    "max": 1.0,
+    "min": 0.0,
+    "unit": "x",
+    "label": "Walk sandbox velocity scale"
+   },
+   "motion_speed_scale": {
+    "max": 1.0,
+    "min": 0.1,
+    "unit": "x",
+    "label": "Motion playback speed scale"
+   }
+  },
+  "tightened": [
+   "walk_speed_scale"
+  ],
+  "changed_at": 1795277156.7314777
+ },
+ "PosesDto": {
+  "ok": true,
+  "poses": [
+   {
+    "name": "home",
+    "label": "Home",
+    "say": "Home pose, ready to preview.",
+    "words": [
+     "rest",
+     "neutral",
+     "default pose"
+    ],
+    "q_deg": {
+     "waist_roll_joint": 0.0,
+     "waist_yaw_joint": 0.0,
+     "left_shoulder_pitch_joint": 20.1,
+     "left_shoulder_roll_joint": 10.3,
+     "left_shoulder_yaw_joint": 0.0,
+     "left_elbow_joint": 49.8,
+     "left_wrist_roll_joint": 0.0,
+     "right_shoulder_pitch_joint": 20.1,
+     "right_shoulder_roll_joint": -10.3,
+     "right_shoulder_yaw_joint": 0.0,
+     "right_elbow_joint": 49.8,
+     "right_wrist_roll_joint": 0.0,
+     "head_pitch_joint": 0.0,
+     "head_yaw_joint": 0.0
+    }
+   },
+   {
+    "name": "look_left",
+    "label": "Look left",
+    "say": "",
+    "words": [],
+    "q_deg": {
+     "head_yaw_joint": 30.0,
+     "head_pitch_joint": 0.0
+    }
+   },
+   {
+    "name": "look_right",
+    "label": "Look right",
+    "say": "",
+    "words": [],
+    "q_deg": {
+     "head_yaw_joint": -30.0,
+     "head_pitch_joint": 0.0
+    }
+   },
+   {
+    "name": "look_up",
+    "label": "Look up",
+    "say": "",
+    "words": [],
+    "q_deg": {
+     "head_yaw_joint": 0.0,
+     "head_pitch_joint": -15.0
+    }
+   },
+   {
+    "name": "look_down",
+    "label": "Look down",
+    "say": "",
+    "words": [],
+    "q_deg": {
+     "head_yaw_joint": 0.0,
+     "head_pitch_joint": 15.0
+    }
+   },
+   {
+    "name": "arms_forward",
+    "label": "Arms forward",
+    "say": "",
+    "words": [
+     "arms up",
+     "reach forward"
+    ],
+    "q_deg": {
+     "left_shoulder_pitch_joint": -45.0,
+     "right_shoulder_pitch_joint": -45.0,
+     "left_elbow_joint": 30.0,
+     "right_elbow_joint": 30.0
+    }
+   },
+   {
+    "name": "arms_out",
+    "label": "Arms out",
+    "say": "",
+    "words": [
+     "t pose",
+     "arms wide"
+    ],
+    "q_deg": {
+     "left_shoulder_roll_joint": 70.0,
+     "right_shoulder_roll_joint": -70.0,
+     "left_elbow_joint": 10.0,
+     "right_elbow_joint": 10.0
+    }
+   },
+   {
+    "name": "wave_ready",
+    "label": "Wave ready",
+    "say": "",
+    "words": [
+     "hand up"
+    ],
+    "q_deg": {
+     "right_shoulder_pitch_joint": -20.0,
+     "right_shoulder_roll_joint": -60.0,
+     "right_elbow_joint": 90.0
+    }
+   }
+  ]
+ },
+ "MotionsDto": {
+  "ok": true,
+  "motions": [
+   {
+    "name": "look_around",
+    "title": "Look around",
+    "description": "Head pans left, right and back to centre.",
+    "author": "PoRobotTrain",
+    "tags": [
+     "head",
+     "builtin"
+    ],
+    "loop": false,
+    "source": "builtin",
+    "keyframes": 4,
+    "duration_s": 5.5,
+    "joints": [
+     "head_yaw_joint",
+     "head_pitch_joint"
+    ],
+    "valid": true,
+    "issues": [],
+    "sha256": "43756c65024449ff8bc0132e73c2bd6d0e35db804fdf4b04c7d4bb298e7d10b2"
+   },
+   {
+    "name": "nod_yes",
+    "title": "Nod yes",
+    "description": "Two small nods.",
+    "author": "PoRobotTrain",
+    "tags": [
+     "head",
+     "builtin"
+    ],
+    "loop": false,
+    "source": "builtin",
+    "keyframes": 5,
+    "duration_s": 2.4,
+    "joints": [
+     "head_pitch_joint",
+     "head_yaw_joint"
+    ],
+    "valid": true,
+    "issues": [],
+    "sha256": "d57d59435aebe38c4b61f418c03fa982b38065c6d721f21c40bbefb8536992e3"
+   },
+   {
+    "name": "wave_hello",
+    "title": "Wave hello",
+    "description": "Right arm up, three waves at the elbow, arm back down.",
+    "author": "PoRobotTrain",
+    "tags": [
+     "arm",
+     "builtin"
+    ],
+    "loop": false,
+    "source": "builtin",
+    "keyframes": 8,
+    "duration_s": 5.0,
+    "joints": [
+     "right_shoulder_pitch_joint",
+     "right_shoulder_roll_joint",
+     "right_elbow_joint"
+    ],
+    "valid": true,
+    "issues": [],
+    "sha256": "ac3e90243bbf656a352c7b75b4ed12a9bf98c68054b617b40192ce9a25248adc"
+   }
+  ]
+ },
+ "MotionDetailDto": {
+  "ok": true,
+  "clip": {
+   "name": "wave_hello",
+   "title": "Wave hello",
+   "description": "Right arm up, three waves at the elbow, arm back down.",
+   "author": "PoRobotTrain",
+   "tags": [
+    "arm",
+    "builtin"
+   ],
+   "loop": false,
+   "keyframes": [
+    {
+     "t": 0.0,
+     "q_deg": {
+      "right_shoulder_pitch_joint": -20.0,
+      "right_shoulder_roll_joint": -60.0,
+      "right_elbow_joint": 90.0
+     }
+    },
+    {
+     "t": 0.6,
+     "q_deg": {
+      "right_elbow_joint": 60.0
+     }
+    },
+    {
+     "t": 1.2,
+     "q_deg": {
+      "right_elbow_joint": 90.0
+     }
+    },
+    {
+     "t": 1.8,
+     "q_deg": {
+      "right_elbow_joint": 60.0
+     }
+    },
+    {
+     "t": 2.4,
+     "q_deg": {
+      "right_elbow_joint": 90.0
+     }
+    },
+    {
+     "t": 3.0,
+     "q_deg": {
+      "right_elbow_joint": 60.0
+     }
+    },
+    {
+     "t": 3.6,
+     "q_deg": {
+      "right_elbow_joint": 90.0
+     }
+    },
+    {
+     "t": 5.0,
+     "q_deg": {
+      "right_shoulder_pitch_joint": 20.1,
+      "right_shoulder_roll_joint": -10.3,
+      "right_elbow_joint": 49.8
+     }
+    }
+   ],
+   "source": "builtin"
+  },
+  "validation": {
+   "ok": true,
+   "issues": [],
+   "duration_s": 5.0,
+   "joints": [
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_elbow_joint"
+   ],
+   "max_vel_deg_s": {
+    "right_shoulder_pitch_joint": 43.0,
+    "right_shoulder_roll_joint": 53.3,
+    "right_elbow_joint": 75.0
+   },
+   "real_eligible": false,
+   "real_reasons": [
+    "multi-joint playback on the real robot is not enabled (simulation and Unreal only)"
+   ]
+  }
+ },
+ "PlayerStateDto": {
+  "ok": true,
+  "running": false,
+  "kind": "clip",
+  "job": "pose",
+  "target_who": "practice",
+  "name": "pose_wave_ready",
+  "t": 1.42,
+  "duration_s": 1.43,
+  "loop": false,
+  "mode": null,
+  "joints": [
+   "right_shoulder_pitch_joint",
+   "right_shoulder_roll_joint",
+   "right_elbow_joint"
+  ],
+  "stopped": false,
+  "reason": "",
+  "recording": {
+   "active": false,
+   "source": null,
+   "samples": 0,
+   "elapsed_s": 0.0
+  }
+ },
+ "CalibrationOffsetsDto": {
+  "ok": true,
+  "saved": null,
+  "pending": {
+   "source": "practice",
+   "reference": "home",
+   "captured_at": 1795277156.858503,
+   "rows": [
+    {
+     "joint": "waist_roll_joint",
+     "measured_deg": 0.3,
+     "reference_deg": 0.0,
+     "offset_deg": 0.3,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "waist_yaw_joint",
+     "measured_deg": 0.1,
+     "reference_deg": 0.0,
+     "offset_deg": 0.1,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "left_shoulder_pitch_joint",
+     "measured_deg": 19.9,
+     "reference_deg": 20.05,
+     "offset_deg": -0.15,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "left_shoulder_roll_joint",
+     "measured_deg": 10.2,
+     "reference_deg": 10.31,
+     "offset_deg": -0.11,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "left_shoulder_yaw_joint",
+     "measured_deg": -0.1,
+     "reference_deg": 0.0,
+     "offset_deg": -0.1,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "left_elbow_joint",
+     "measured_deg": 50.3,
+     "reference_deg": 49.85,
+     "offset_deg": 0.45,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "left_wrist_roll_joint",
+     "measured_deg": -0.1,
+     "reference_deg": 0.0,
+     "offset_deg": -0.1,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "right_shoulder_pitch_joint",
+     "measured_deg": -17.8,
+     "reference_deg": 20.05,
+     "offset_deg": -37.85,
+     "verdict": "check",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "right_shoulder_roll_joint",
+     "measured_deg": -54.6,
+     "reference_deg": -10.31,
+     "offset_deg": -44.29,
+     "verdict": "check",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "right_shoulder_yaw_joint",
+     "measured_deg": 0.4,
+     "reference_deg": 0.0,
+     "offset_deg": 0.4,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "right_elbow_joint",
+     "measured_deg": 90.4,
+     "reference_deg": 49.85,
+     "offset_deg": 40.55,
+     "verdict": "check",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "right_wrist_roll_joint",
+     "measured_deg": -0.0,
+     "reference_deg": 0.0,
+     "offset_deg": -0.0,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "head_pitch_joint",
+     "measured_deg": 0.2,
+     "reference_deg": 0.0,
+     "offset_deg": 0.2,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    },
+    {
+     "joint": "head_yaw_joint",
+     "measured_deg": -0.0,
+     "reference_deg": 0.0,
+     "offset_deg": -0.0,
+     "verdict": "ok",
+     "twin_offset_deg": 0.0
+    }
+   ]
+  }
+ },
+ "NetworkDto": {
+  "ok": true,
+  "interfaces": [
+   {
+    "name": "Ethernet 2",
+    "ipv4": [
+     "192.168.123.99"
+    ]
+   },
+   {
+    "name": "Wi-Fi",
+    "ipv4": [
+     "10.0.0.12"
+    ]
+   }
+  ],
+  "profiles": [
+   {
+    "name": "sim",
+    "target": "sim",
+    "host": "127.0.0.1",
+    "port": 8765,
+    "interface": "",
+    "note": "headless MuJoCo"
+   },
+   {
+    "name": "urlab",
+    "target": "urlab",
+    "host": "127.0.0.1",
+    "port": 5555,
+    "interface": "",
+    "note": "Unreal twin"
+   },
+   {
+    "name": "real",
+    "target": "real",
+    "host": "192.168.123.164",
+    "port": 22,
+    "interface": "",
+    "note": "R1 Jetson over Ethernet (set the interface for --network)"
+   }
+  ],
+  "active": "sim"
+ },
+ "PreflightDto": {
+  "ok": true,
+  "complete": false,
+  "items": [
+   {
+    "id": "on_stand",
+    "label": "Robot hangs on its stand, feet clear of the floor",
+    "kind": "manual",
+    "ok": true,
+    "detail": "ticked 1742 s ago"
+   },
+   {
+    "id": "estop_tested",
+    "label": "Remote in hand; L2+B emergency stop tested this session",
+    "kind": "manual",
+    "ok": false,
+    "detail": ""
+   },
+   {
+    "id": "area_clear",
+    "label": "Nobody within arm's reach of the robot",
+    "kind": "manual",
+    "ok": true,
+    "detail": "ticked 1741 s ago"
+   },
+   {
+    "id": "head_forward",
+    "label": "Head faces forward, arms hang at the sides",
+    "kind": "manual",
+    "ok": false,
+    "detail": ""
+   },
+   {
+    "id": "battery_checked",
+    "label": "Battery charged (check the Power panel)",
+    "kind": "manual",
+    "ok": false,
+    "detail": ""
+   },
+   {
+    "id": "l0_validated",
+    "label": "Level 0 validation report passed",
+    "ok": true,
+    "detail": "report says ALL CHECKS PASSED",
+    "kind": "auto"
+   },
+   {
+    "id": "policies",
+    "label": "Policies validated and trained on this joint map",
+    "ok": true,
+    "detail": "r1_level0_upperbody",
+    "kind": "auto"
+   },
+   {
+    "id": "robot_reachable",
+    "label": "Robot reachable (192.168.123.164:22)",
+    "ok": false,
+    "detail": "192.168.123.164:22 TimeoutError",
+    "kind": "auto"
+   },
+   {
+    "id": "fresh_state",
+    "label": "Robot state read in the last 60 s (Snapshot)",
+    "ok": false,
+    "detail": "take a Snapshot",
+    "kind": "auto"
+   },
+   {
+    "id": "temps",
+    "label": "Motor temperatures below 55 C",
+    "ok": false,
+    "detail": "no reading",
+    "kind": "auto"
+   },
+   {
+    "id": "no_critical",
+    "label": "No critical events in the last 10 min",
+    "ok": false,
+    "detail": "1 critical",
+    "kind": "auto"
+   }
+  ],
+  "valid_for_s": null,
+  "missing": [
+   "Remote in hand; L2+B emergency stop tested this session",
+   "Head faces forward, arms hang at the sides",
+   "Battery charged (check the Power panel)",
+   "Robot reachable (192.168.123.164:22)",
+   "Robot state read in the last 60 s (Snapshot)",
+   "Motor temperatures below 55 C",
+   "No critical events in the last 10 min"
+  ]
+ },
+ "DocsDto": {
+  "ok": true,
+  "docs": [
+   {
+    "name": "behaviours",
+    "title": "Behaviours: preview in Unreal, run on the robot",
+    "bytes": 4932
+   },
+   {
+    "name": "level2_walk",
+    "title": "Level 2 walk sandbox (simulation only)",
+    "bytes": 7322
+   },
+   {
+    "name": "robot_connection_guide",
+    "title": "Connecting the laptop to the R1 and running Level 0 on the stand",
+    "bytes": 8073
+   },
+   {
+    "name": "robustness",
+    "title": "Robustness explorer",
+    "bytes": 3235
+   },
+   {
+    "name": "service_api",
+    "title": "Behaviour service API: voice, robustness, walk sandbox, operator console",
+    "bytes": 30183
+   },
+   {
+    "name": "showcase",
+    "title": "Diagnostics overlay, idle demo mode and editor-exposed reward config",
+    "bytes": 2396
+   },
+   {
+    "name": "sim_to_real_level0",
+    "title": "Level 0 on the real R1: head sweep and arm raise on the stand",
+    "bytes": 3368
+   },
+   {
+    "name": "step5_runtime",
+    "title": "Step 5: Unreal finalization and runtime profile (Level 0, virtual only)",
+    "bytes": 4219
+   },
+   {
+    "name": "ue5_setup",
+    "title": "UE setup notes for the R1 digital twin (`UnrealProject/`)",
+    "bytes": 19761
+   },
+   {
+    "name": "voice",
+    "title": "Voice commands and spoken replies",
+    "bytes": 1933
+   },
+   {
+    "name": "web_twin",
+    "title": "Browser twin in the Blazor control UI",
+    "bytes": 4607
+   }
+  ]
+ },
+ "DocTextDto": {
+  "ok": true,
+  "name": "voice",
+  "title": "Voice commands and spoken replies",
+  "markdown": "# Voice commands and spoken replies\n\nSay what you want; the panel fills in the selection and answers out loud. Same feature in both clients:\n\n| | Blazor control UI | Unreal twin |\n|---|---|---|\n| Listen | mic button in the \"Ask in plain words\" box: Web Speech API (Chrome/Edge), else Whisper tiny.en via Transformers.js, local | mic button / push-to-talk key on the panel: Windows SAPI in-process rec"
+ },
+ "ChatResponseDto": {
+  "kind": "answer",
+  "answer": "Hottest motor: left_hip_pitch at 34 C (fine).",
+  "note": "Hottest motor: left_hip_pitch at 34 C (fine).",
+  "say": "The hottest motor is left hip pitch at 34 degrees, fine.",
+  "ok": true,
+  "session": "sample",
+  "turns": 2
+ },
+ "MotionResultDto": {
+  "ok": true,
+  "validation": {
+   "ok": true,
+   "issues": [],
+   "duration_s": 5.0,
+   "joints": [
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_elbow_joint"
+   ],
+   "max_vel_deg_s": {
+    "right_shoulder_pitch_joint": 43.0,
+    "right_shoulder_roll_joint": 53.3,
+    "right_elbow_joint": 75.0
+   },
+   "real_eligible": false,
+   "real_reasons": [
+    "multi-joint playback on the real robot is not enabled (simulation and Unreal only)"
+   ]
+  }
+ },
+ "NetworkTestDto": {
+  "ok": true,
+  "host": "127.0.0.1",
+  "port": 9,
+  "tcp_ok": false,
+  "tcp_ms": 1009.0,
+  "detail": "127.0.0.1:9 TimeoutError",
+  "reachable": false
+ },
+ "RobotStatusDto": {
+  "job": null,
+  "progress": null,
+  "last_result": "monitor OK",
+  "previewed": null,
+  "checked": null,
+  "check_age_s": null,
+  "can_run_robot": false,
+  "why_not_run": "no parameters",
+  "real_connected": false,
+  "mirror_samples": 186,
+  "results": {
+   "snapshot": {
+    "ok": true,
+    "amplitude": 0.0,
+    "at": 1795277156.792043,
+    "reason": ""
+   },
+   "monitor": {
+    "ok": true,
+    "amplitude": 0.0,
+    "at": 1795278653.4500346,
+    "reason": ""
+   },
+   "pose": {
+    "ok": true,
+    "amplitude": 0.0,
+    "at": 1795277153.5873578,
+    "reason": ""
+   }
+  },
+  "head": {
+   "practice": {
+    "yaw": -0.0441829328236892,
+    "pitch": 0.3890306921119749,
+    "source": "monitor",
+    "at": 1795278653.3494728,
+    "age_s": 246.9
+   }
+  },
+  "telemetry": {
+   "practice": {
+    "t": 19.91,
+    "q_deg": [
+     -6.0,
+     0.1,
+     -0.0,
+     16.6,
+     -11.7,
+     0.0,
+     -5.8,
+     -0.0,
+     0.0,
+     16.7,
+     -11.6,
+     0.0,
+     1.7,
+     0.2,
+     19.8,
+     10.2,
+     -0.2,
+     50.7,
+     -0.2,
+     -17.3,
+     -53.6,
+     0.6,
+     90.6,
+     -0.0,
+     0.4,
+     -0.0
+    ],
+    "temps_c": [
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34,
+     34
+    ],
+    "max_temp_c": 34,
+    "bus_v": 48.0,
+    "mode_machine": 1,
+    "active_motors": 0,
+    "imu_rpy_deg": [
+     -0.1,
+     0.2,
+     -0.1
+    ],
+    "source": "monitor",
+    "at": 1795278653.3494728,
+    "age_s": 246.9
+   }
+  },
+  "behaviours": [
+   {
+    "id": "neck_turn",
+    "label": "Neck Turn",
+    "desc": "Turns head left/right. Only neck yaw motor moves.",
+    "primary_label": "HEAD YAW",
+    "max_deg": 30.0
+   },
+   {
+    "id": "neck_nod",
+    "label": "Neck Nod",
+    "desc": "Nods head up/down (max 20 deg). Only neck pitch motor moves.",
+    "primary_label": "HEAD PITCH",
+    "max_deg": 20.0
+   },
+   {
+    "id": "arm_raise",
+    "label": "Arm Raise",
+    "desc": "Gently raises/lowers right arm forward. Only shoulder pitch moves.",
+    "primary_label": "R.SHOULDER",
+    "max_deg": 30.0
+   },
+   {
+    "id": "hand_wave",
+    "label": "Hand Wave",
+    "desc": "Gentle stand-safe right-arm wave (max 20 deg). Legs/waist stay off.",
+    "primary_label": "R.ARM WAVE",
+    "max_deg": 20.0
+   }
+  ],
+  "joint_names": [
+   "left_hip_pitch",
+   "left_hip_roll",
+   "left_hip_yaw",
+   "left_knee",
+   "left_ankle_pitch",
+   "left_ankle_roll",
+   "right_hip_pitch",
+   "right_hip_roll",
+   "right_hip_yaw",
+   "right_knee",
+   "right_ankle_pitch",
+   "right_ankle_roll",
+   "waist_roll",
+   "waist_yaw",
+   "left_shoulder_pitch",
+   "left_shoulder_roll",
+   "left_shoulder_yaw",
+   "left_elbow",
+   "left_wrist_roll",
+   "right_shoulder_pitch",
+   "right_shoulder_roll",
+   "right_shoulder_yaw",
+   "right_elbow",
+   "right_wrist_roll",
+   "head_pitch",
+   "head_yaw"
+  ],
+  "joint_limits_deg": [
+   [
+    -168.0,
+    146.0
+   ],
+   [
+    -60.0,
+    100.0
+   ],
+   [
+    -157.0,
+    157.0
+   ],
+   [
+    -10.0,
+    139.0
+   ],
+   [
+    -50.0,
+    33.0
+   ],
+   [
+    -15.0,
+    15.0
+   ],
+   [
+    -168.0,
+    146.0
+   ],
+   [
+    -100.0,
+    60.0
+   ],
+   [
+    -157.0,
+    157.0
+   ],
+   [
+    -10.0,
+    139.0
+   ],
+   [
+    -50.0,
+    33.0
+   ],
+   [
+    -15.0,
+    15.0
+   ],
+   [
+    -30.0,
+    30.0
+   ],
+   [
+    -150.0,
+    150.0
+   ],
+   [
+    -180.0,
+    120.0
+   ],
+   [
+    -13.0,
+    142.0
+   ],
+   [
+    -110.0,
+    110.0
+   ],
+   [
+    -55.9,
+    125.2
+   ],
+   [
+    -110.0,
+    110.0
+   ],
+   [
+    -180.0,
+    120.0
+   ],
+   [
+    -142.0,
+    13.0
+   ],
+   [
+    -110.0,
+    110.0
+   ],
+   [
+    -55.9,
+    125.2
+   ],
+   [
+    -110.0,
+    110.0
+   ],
+   [
+    -36.0,
+    36.0
+   ],
+   [
+    -115.0,
+    115.0
+   ]
+  ],
+  "joint_defaults_deg": [
+   -5.7,
+   0.0,
+   0.0,
+   17.2,
+   -11.5,
+   0.0,
+   -5.7,
+   0.0,
+   0.0,
+   17.2,
+   -11.5,
+   0.0,
+   0.0,
+   0.0,
+   20.1,
+   10.3,
+   0.0,
+   49.8,
+   0.0,
+   20.1,
+   -10.3,
+   0.0,
+   49.8,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "calibration": {
+   "control_delay_ms": 10.0,
+   "lowpass_tau_s": 0.015,
+   "bus_voltage_v": 48.0,
+   "bemf_nm_per_rad_s": 0.12,
+   "pos_noise_deg": 0.069,
+   "compliant_stand": true,
+   "body_mass_scale": 1.0,
+   "last_calibrated_at": null,
+   "parity_rms_deg": null,
+   "parity_max_deg": null
+  },
+  "console": {
+   "limits": {
+    "amplitude_cap_deg": 30.0,
+    "freq_cap_hz": 0.5,
+    "joint_range_frac": 0.9,
+    "walk_speed_scale": 0.5,
+    "motion_speed_scale": 1.0
+   },
+   "limits_tightened": [
+    "walk_speed_scale"
+   ],
+   "event_counts": {
+    "info": 0,
+    "warn": 0,
+    "critical": 1
+   },
+   "recording": {
+    "active": false,
+    "source": null,
+    "samples": 0,
+    "elapsed_s": 0.0
+   },
+   "player": {
+    "running": false,
+    "kind": "clip",
+    "name": "pose_wave_ready",
+    "t": 1.42
+   }
+  },
+  "lines": [
+   "11:05:22 snapshot: reading current physical robot joint angles (0% motor power)",
+   "11:05:26 snapshot: ended after 0 samples",
+   "11:05:30 practice snapshot: read virtual stand twin pose (0% motor power)",
+   "11:05:30 practice monitor: read-only live stream on virtual stand twin",
+   "11:05:51 practice monitor: ended after 195 samples",
+   "11:05:51 pose: pose_wave_ready on practice",
+   "11:05:56 practice snapshot: read virtual stand twin pose (0% motor power)",
+   "11:05:56 practice monitor: read-only live stream on virtual stand twin",
+   "11:06:17 practice monitor: ended after 195 samples",
+   "11:30:32 practice monitor: read-only live stream on virtual stand twin",
+   "11:30:53 practice monitor: ended after 186 samples",
+   "11:32:53 E-STOP: nothing was running"
+  ]
+ },
+ "CalibrationCaptureDto": {
+  "source": "practice",
+  "reference": "home",
+  "captured_at": 1795277156.858503,
+  "rows": [
+   {
+    "joint": "waist_roll_joint",
+    "measured_deg": 0.3,
+    "reference_deg": 0.0,
+    "offset_deg": 0.3,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "waist_yaw_joint",
+    "measured_deg": 0.1,
+    "reference_deg": 0.0,
+    "offset_deg": 0.1,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "left_shoulder_pitch_joint",
+    "measured_deg": 19.9,
+    "reference_deg": 20.05,
+    "offset_deg": -0.15,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "left_shoulder_roll_joint",
+    "measured_deg": 10.2,
+    "reference_deg": 10.31,
+    "offset_deg": -0.11,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "left_shoulder_yaw_joint",
+    "measured_deg": -0.1,
+    "reference_deg": 0.0,
+    "offset_deg": -0.1,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "left_elbow_joint",
+    "measured_deg": 50.3,
+    "reference_deg": 49.85,
+    "offset_deg": 0.45,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "left_wrist_roll_joint",
+    "measured_deg": -0.1,
+    "reference_deg": 0.0,
+    "offset_deg": -0.1,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "right_shoulder_pitch_joint",
+    "measured_deg": -17.8,
+    "reference_deg": 20.05,
+    "offset_deg": -37.85,
+    "verdict": "check",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "right_shoulder_roll_joint",
+    "measured_deg": -54.6,
+    "reference_deg": -10.31,
+    "offset_deg": -44.29,
+    "verdict": "check",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "right_shoulder_yaw_joint",
+    "measured_deg": 0.4,
+    "reference_deg": 0.0,
+    "offset_deg": 0.4,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "right_elbow_joint",
+    "measured_deg": 90.4,
+    "reference_deg": 49.85,
+    "offset_deg": 40.55,
+    "verdict": "check",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "right_wrist_roll_joint",
+    "measured_deg": -0.0,
+    "reference_deg": 0.0,
+    "offset_deg": -0.0,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "head_pitch_joint",
+    "measured_deg": 0.2,
+    "reference_deg": 0.0,
+    "offset_deg": 0.2,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   },
+   {
+    "joint": "head_yaw_joint",
+    "measured_deg": -0.0,
+    "reference_deg": 0.0,
+    "offset_deg": -0.0,
+    "verdict": "ok",
+    "twin_offset_deg": 0.0
+   }
+  ]
+ }
+}

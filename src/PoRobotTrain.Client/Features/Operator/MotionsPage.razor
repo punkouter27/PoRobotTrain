@@ -1,0 +1,687 @@
+@page "/motions"
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Text.Json
+@implements IAsyncDisposable
+@inject ConsoleApiClient Console
+@inject IJSRuntime JS
+@inject UiState Ui
+
+@* Control and motions (docs/service_api.md section 5): modes (#7), session limits (#10), poses (#11), record and replay
+   (#12), timeline editor (#13), local action store (#14). Everything here runs on the simulated stand twin; the
+   physical robot is never a target (these power several joints at once). *@
+<PageTitle>Motions — PoRobotTrain</PageTitle>
+
+<div class="ops-grid">
+    <section class="po-card ops-span2">
+        <div class="sec-hdr">
+            <h1 class="dash-h1">MOTIONS</h1>
+            <span class="po-pill po-pill--blue">TWIN ONLY · NOTHING PHYSICAL MOVES</span>
+        </div>
+        <p class="po-muted">Pick a motion and press ▶ to watch it on the twin (the 3D view on Control, or Unreal). Motions move several joints at once, so they never run on the real robot.</p>
+        <div class="ctrl-row ops-row">
+            <span class="ctrl-label">Twin engine</span>
+            <button type="button" class="po-chip @(Ui.Engine == "builtin" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("builtin")'>Built-in</button>
+            <button type="button" class="po-chip @(Ui.Engine == "unreal" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("unreal")'>Unreal</button>
+        </div>
+        <div class="player-bar" role="status">
+            @if (_player is { Running: true } pl)
+            {
+                <span class="po-pill po-pill--blue">▶ @(pl.Kind == "mode" ? $"MODE {pl.Mode}" : $"PLAYING {pl.Name}")</span>
+                <span class="po-muted">@($"{pl.T:0.0}") s@(pl.DurationS is double d ? $" / {d:0.0} s" : string.Empty)@(pl.Loop == true ? " · loop" : string.Empty)</span>
+                <button type="button" class="po-btn po-btn--danger" @onclick="StopPlayerAsync">Stop</button>
+            }
+            else
+            {
+                <span class="po-muted">Nothing playing.@(_player?.Reason is { Length: > 0 } r ? $" Last: {r}" : string.Empty)</span>
+            }
+            @if (_msg is not null)
+            {
+                <span class="assist-out @(_msgOk ? string.Empty : "warn")">@_msg</span>
+            }
+        </div>
+    </section>
+
+    <section class="po-card ops-span2">
+        <div class="sec-hdr">
+            <h2 class="tel-title">MOTION LIBRARY</h2>
+            <div class="row-actions">
+                <button type="button" class="po-btn po-btn--blue" @onclick="NewClip">+ New motion</button>
+                <label class="po-chip file-pick">Import… <InputFile OnChange="ImportAsync" accept=".json,application/json" /></label>
+            </div>
+        </div>
+        @if (Busy)
+        {
+            <div class="why">Play is off while @(_player?.Name ?? "something") is playing: press Stop above first.</div>
+        }
+        <div class="motion-cards">
+            @foreach (var m in _motions)
+            {
+                <article class="motion-card @(m.Valid ? string.Empty : "invalid")">
+                    <div class="motion-card__head">
+                        <b>@m.Title</b>
+                        <span class="po-pill">@(m.Source == "builtin" ? "built-in" : "yours")</span>
+                    </div>
+                    <div class="po-muted">@(string.IsNullOrEmpty(m.Description) ? string.Join(", ", m.Joints.Select(Short)) : m.Description)</div>
+                    <div class="po-muted">@($"{m.DurationS:0.0}") s · @m.Joints.Count joint@(m.Joints.Count == 1 ? string.Empty : "s")</div>
+                    @if (!m.Valid)
+                    {
+                        <div class="why">Can't play: @string.Join("; ", m.Issues)</div>
+                    }
+                    <div class="motion-card__actions">
+                        <button type="button" class="po-btn po-btn--blue" disabled="@(Busy || !m.Valid)" @onclick="() => PlayAsync(m.Name, false)">▶ Play on twin</button>
+                        <button type="button" class="po-chip" disabled="@(Busy || !m.Valid)" @onclick="() => PlayAsync(m.Name, true)" title="Repeat until Stop">⟳ Loop</button>
+                        <button type="button" class="po-chip" @onclick="() => EditAsync(m.Name)">Edit</button>
+                        <button type="button" class="po-chip" @onclick="() => ExportAsync(m.Name)" title="Download a checksummed package to share">Export</button>
+                        @if (m.Source == "user")
+                        {
+                            <button type="button" class="po-chip" @onclick="() => DeleteAsync(m.Name)">Delete</button>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="po-card ops-span2">
+        <h2 class="tel-title">QUICK POSES</h2>
+        <p class="po-muted">One click moves the twin smoothly to the pose. You can also ask: "go to the arms out pose".</p>
+        <div class="pose-grid">
+            @foreach (var p in _poses)
+            {
+                <button type="button" class="po-btn po-btn--blue-soft" disabled="@Busy" @onclick="() => PoseAsync(p.Name)" title="@string.Join(", ", p.QDeg.Select(kv => $"{Short(kv.Key)} {kv.Value:0}°"))">@p.Label</button>
+            }
+        </div>
+    </section>
+
+    @if (Ui.Advanced)
+    {
+    <section class="po-card">
+        <h2 class="tel-title">MODES <span class="po-pill">ADVANCED</span></h2>
+        <p class="po-muted">Damp: ticked joints can be moved by hand (velocity damping only). Hold: ticked joints keep their angle. Zero torque: nothing powered. Only the joints you tick get stiffness.</p>
+        <div class="ctrl-row ops-row">
+            @foreach (var m in new[] { "damp", "hold", "zero_torque" })
+            {
+                <button type="button" class="po-chip @(_mode == m ? "active" : string.Empty)" @onclick="() => _mode = m">@m.Replace('_', ' ')</button>
+            }
+        </div>
+        @if (_mode != "zero_torque")
+        {
+            <div class="joint-picks">
+                @foreach (var j in UpperBody)
+                {
+                    <label class="joint-pick"><input type="checkbox" checked="@_modeJoints.Contains(j.Name)" @onchange="e => ToggleModeJoint(j.Name, (bool)e.Value!)" /> @j.DisplayLabel</label>
+                }
+            </div>
+        }
+        <div class="ctrl-row ops-row">
+            <button type="button" class="po-btn po-btn--blue" disabled="@(Busy || (_mode != "zero_torque" && _modeJoints.Count == 0))" @onclick="StartModeAsync">Start @_mode.Replace('_', ' ')</button>
+            <button type="button" class="po-btn" disabled="@(_player?.Kind != "mode" || _player?.Running != true)" @onclick="ModeOffAsync">Mode off</button>
+        </div>
+        @if (_mode != "zero_torque" && _modeJoints.Count == 0)
+        {
+            <div class="why">Tick at least one joint: only ticked joints get stiffness.</div>
+        }
+        else if (Busy && _player?.Kind != "mode")
+        {
+            <div class="why">Stop the playing motion first.</div>
+        }
+        @if (_player?.Kind != "mode" || _player?.Running != true)
+        {
+            <div class="po-muted">Mode off is available while a mode is running.</div>
+        }
+    </section>
+
+    <section class="po-card">
+        <h2 class="tel-title">SESSION LIMITS <span class="po-pill">ADVANCED</span></h2>
+        <p class="po-muted">Caps for this service session. They can only make things gentler than the built-in limits.</p>
+        @if (_limits?.Specs is { } specs && _limitEdit.Count > 0)
+        {
+            <table class="diag-table">
+                @foreach (var (key, spec) in specs)
+                {
+                    <tr>
+                        <td>@spec.Label @(_limits.Tightened?.Contains(key) == true ? "⚠" : string.Empty)</td>
+                        <td class="lim-cell">
+                            <input type="range" min="@spec.Min" max="@spec.Max" step="@Step(spec)" value="@_limitEdit[key]" aria-label="@spec.Label"
+                                   @oninput="e => _limitEdit[key] = double.Parse(e.Value!.ToString()!, System.Globalization.CultureInfo.InvariantCulture)" />
+                            <span class="num">@_limitEdit[key].ToString("0.##") @spec.Unit</span>
+                        </td>
+                    </tr>
+                }
+            </table>
+            <div class="ctrl-row ops-row">
+                <button type="button" class="po-btn po-btn--blue-soft" @onclick="ApplyLimitsAsync">Apply limits</button>
+                <button type="button" class="po-chip" @onclick="ResetLimitsAsync">Reset to defaults</button>
+            </div>
+        }
+    </section>
+    }
+
+    @if (_clip is not null)
+    {
+        <section class="po-card ops-span2">
+            <div class="sec-hdr">
+                <h2 class="tel-title">TIMELINE EDITOR</h2>
+                @if (_validation is { } v)
+                {
+                    <span class="po-pill @(v.Ok ? "po-pill--ok" : "po-pill--bad")">@(v.Ok ? $"✓ VALID · {v.DurationS:0.0} s" : $"✕ {v.Issues.Count} ISSUE(S)")</span>
+                }
+            </div>
+            <div class="editor-meta">
+                <label>Name <input class="assist-input" @bind="_clipName" aria-label="Motion name (a-z, 0-9, _)" /></label>
+                <label>Title <input class="assist-input" @bind="_clipTitle" /></label>
+                <label>Description <input class="assist-input" @bind="_clipDesc" /></label>
+                <label class="joint-pick"><input type="checkbox" @bind="_clipLoop" /> loop</label>
+            </div>
+            <div class="teach">
+                <span class="ctrl-label">Record into this editor</span>
+                @if (_rec?.Active == true)
+                {
+                    <span class="po-pill po-pill--orange">● RECORDING @(_rec.Source == "real" ? "real robot" : "twin") · @_rec.Samples samples · @($"{_rec.ElapsedS:0.0}") s</span>
+                    <button type="button" class="po-btn po-btn--orange" @onclick="RecordStopAsync">■ Stop and load</button>
+                }
+                else
+                {
+                    <button type="button" class="po-chip @(_recSource == "practice" ? "active" : string.Empty)" @onclick='() => _recSource = "practice"'>From the twin</button>
+                    <button type="button" class="po-chip @(_recSource == "real" ? "active" : string.Empty)" @onclick='() => _recSource = "real"'>From the real robot (read-only)</button>
+                    <button type="button" class="po-btn po-btn--orange-soft" @onclick="RecordStartAsync">● Record</button>
+                }
+                <div class="po-muted">@(_recSource == "real"
+                    ? "Start \"Check the real robot → Live view\" on Control, then move a limp arm by hand. No motor is powered."
+                    : "Move the twin with the joint sliders on Control (or play a motion) while recording.")</div>
+            </div>
+            <div class="timeline-wrap">
+                <svg class="timeline" @ref="_timeline" role="img" aria-label="Keyframes on a timeline; drag a diamond to retime it">
+                    @for (var s = 0; s <= (int)Math.Ceiling(TimelineSpan); s++)
+                    {
+                        <line x1="@Pct(s)" x2="@Pct(s)" y1="0" y2="100%" class="tl-grid" />
+                        @((MarkupString)$"<text x=\"{Pct(s)}\" y=\"12\" class=\"tl-tick\">{s}s</text>")
+                    }
+                    @for (var k = 0; k < _clip.Count; k++)
+                    {
+                        var kk = k;
+                        <circle cx="@Pct(_clip[k].T)" cy="60%" r="8" class="tl-kf @(k == _selKf ? "sel" : string.Empty)" data-kf="@k" data-t="@_clip[k].T"
+                                @onclick="() => SelectKf(kk)" tabindex="0" aria-label="@($"keyframe {k + 1} at {_clip[k].T:0.00} s")"></circle>
+                    }
+                </svg>
+            </div>
+            <div class="ctrl-row ops-row">
+                <button type="button" class="po-chip" @onclick="AddKeyframe">+ Keyframe (+1 s)</button>
+                <select class="assist-input ops-select" @onchange="AddPoseKeyframe" aria-label="Add a keyframe from a pose">
+                    <option value="">+ Keyframe from pose…</option>
+                    @foreach (var p in _poses)
+                    {
+                        <option value="@p.Name">@p.Label</option>
+                    }
+                </select>
+                <select class="assist-input ops-select" @onchange="AddJoint" aria-label="Add a joint column">
+                    <option value="">+ Joint…</option>
+                    @foreach (var j in UpperBody.Where(j => !_joints.Contains(j.Name)))
+                    {
+                        <option value="@j.Name">@j.DisplayLabel</option>
+                    }
+                </select>
+                <button type="button" class="po-btn po-btn--blue-soft" @onclick="CheckAsync">Check</button>
+                <button type="button" class="po-btn po-btn--blue" disabled="@Busy" @onclick="PreviewClipAsync">▶ Preview on twin</button>
+                <button type="button" class="po-btn po-btn--teal" @onclick="SaveAsync">Save</button>
+                <label class="joint-pick"><input type="checkbox" @bind="_overwrite" /> replace if the name exists</label>
+                <button type="button" class="po-chip" @onclick="() => _clip = null">Close</button>
+            </div>
+            <div class="kf-table-wrap">
+                <table class="diag-table kf-table">
+                    <tr>
+                        <th>#</th><th>t (s)</th><th>ease</th>
+                        @foreach (var j in _joints)
+                        {
+                            <th>@Short(j) <button type="button" class="x-btn" title="Remove joint" @onclick="() => RemoveJoint(j)">×</button></th>
+                        }
+                        <th></th>
+                    </tr>
+                    @for (var k = 0; k < _clip.Count; k++)
+                    {
+                        var kf = _clip[k];
+                        var idx = k;
+                        <tr class="@(k == _selKf ? "sel" : string.Empty)" @onclick="() => SelectKf(idx)">
+                            <td>@(k + 1)</td>
+                            <td><input type="number" step="0.1" min="0" class="assist-input num-in" value="@kf.T.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" @onchange="e => SetT(idx, e)" /></td>
+                            <td>
+                                <select class="assist-input" value="@kf.Ease" @onchange="e => SetEase(idx, e)">
+                                    <option value="smooth">smooth</option>
+                                    <option value="linear">linear</option>
+                                </select>
+                            </td>
+                            @foreach (var j in _joints)
+                            {
+                                var joint = j;
+                                <td><input type="number" step="1" class="assist-input num-in" placeholder="hold" aria-label="@($"{Short(joint)} at keyframe {idx + 1}")"
+                                           value="@(kf.Q.TryGetValue(joint, out var qv) ? qv.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) : string.Empty)"
+                                           @onchange="e => SetQ(idx, joint, e)" /></td>
+                            }
+                            <td><button type="button" class="x-btn" title="Delete keyframe" @onclick="() => DeleteKf(idx)" @onclick:stopPropagation>×</button></td>
+                        </tr>
+                    }
+                </table>
+            </div>
+            <p class="po-muted">Empty cell = hold the previous keyframe's angle. Speed limits: head 90°/s, arms 120°/s, waist 45°/s (smooth ease peaks at 1.5× the average). Angles must stay inside the session's joint range.</p>
+            @foreach (var i in _validation?.Issues ?? [])
+            {
+                <div class="assist-out warn">✕ @(i.Keyframe is int kk ? $"keyframe {kk + 1}: " : string.Empty)@i.Message</div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private sealed class Kf
+    {
+        public double T { get; set; }
+        public string Ease { get; set; } = "smooth";
+        public Dictionary<string, double> Q { get; set; } = [];
+    }
+
+    private static readonly IReadOnlyList<JointSpec> UpperBody = RobotJointCatalog.All.Where(j => j.Group is not (JointGroup.LeftLeg or JointGroup.RightLeg)).ToList();
+    private static RobotJsonContext Ctx => RobotJsonContext.Default;
+
+    private string _target => Ui.PlayTarget;
+    private List<PoseDto> _poses = [];
+    private List<MotionSummaryDto> _motions = [];
+    private PlayerStateDto? _player;
+    private RecordingStatusDto? _rec;
+    private string _recSource = "practice";
+    private string _recName = "my_motion";
+    private string? _msg;
+    private bool _msgOk = true;
+    private string _mode = "hold";
+    private readonly HashSet<string> _modeJoints = ["right_elbow_joint"];
+    private LimitsDto? _limits;
+    private readonly Dictionary<string, double> _limitEdit = [];
+    private bool _overwrite;
+
+    // editor
+    private List<Kf>? _clip;
+    private List<string> _joints = [];
+    private string _clipName = "my_motion", _clipTitle = string.Empty, _clipDesc = string.Empty;
+    private bool _clipLoop;
+    private int _selKf = -1;
+    private MotionValidationDto? _validation;
+    private ElementReference _timeline;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<MotionsPage>? _self;
+    private readonly CancellationTokenSource _cts = new();
+
+    private bool Busy => _player?.Running == true;
+    private double TimelineSpan => Math.Max(2.0, (_clip?.Count > 0 ? _clip.Max(k => k.T) : 0) + 1.0);
+    private string Pct(double t) => $"{Math.Clamp(t / TimelineSpan * 100.0, 0, 100).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%";
+    private static string Short(string joint) => RobotJointCatalog.All.FirstOrDefault(j => j.Name == joint)?.DisplayLabel ?? joint.Replace("_joint", string.Empty);
+    private static double Step(LimitSpecDto s) => s.Max - s.Min > 5 ? 1 : 0.05;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _poses = (await Console.PosesAsync()).Value?.Poses ?? [];
+        await LoadMotionsAsync();
+        await LoadLimitsAsync();
+        _ = PollAsync(_cts.Token);
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                var (p, _) = await Console.GetAsync("player", Ctx.PlayerStateDto, ct);
+                _player = p;
+                _rec = p?.Recording;
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page closed
+        }
+    }
+
+    private void Say(string? text, bool ok)
+    {
+        _msg = text;
+        _msgOk = ok;
+    }
+
+    private async Task LoadMotionsAsync() => _motions = (await Console.GetAsync("motions", Ctx.MotionsDto)).Value?.Motions ?? [];
+
+    private async Task LoadLimitsAsync()
+    {
+        _limits = (await Console.GetAsync("limits", Ctx.LimitsDto)).Value;
+        _limitEdit.Clear();
+        foreach (var kv in _limits?.Values ?? [])
+        {
+            _limitEdit[kv.Key] = kv.Value;
+        }
+    }
+
+    // ---- poses, playback, modes
+    private async Task PoseAsync(string name)
+    {
+        var (r, err) = await Console.PreviewPoseAsync(name, _target);
+        Say(r?.Ok == true ? $"Moving the twin to {name.Replace('_', ' ')}." : $"Pose not started: {err}", r?.Ok == true);
+    }
+
+    private async Task PlayAsync(string name, bool loop)
+    {
+        var (r, err) = await Console.PostAsync("motions/play", new NameTargetRequest(name, _target, loop), Ctx.NameTargetRequest, Ctx.MotionResultDto);
+        Say(r?.Ok == true ? $"Playing {name} on the twin ({r.DurationS:0.0} s{(loop ? ", looping" : string.Empty)})." : $"Not started: {err}", r?.Ok == true);
+    }
+
+    private async Task StopPlayerAsync()
+    {
+        await Console.PostAsync("player/stop", new EmptyBody(), Ctx.EmptyBody, Ctx.EstopResultDto);
+        Say("Stop sent.", true);
+    }
+
+    private void ToggleModeJoint(string joint, bool on)
+    {
+        if (on)
+        {
+            _modeJoints.Add(joint);
+        }
+        else
+        {
+            _modeJoints.Remove(joint);
+        }
+    }
+
+    private async Task StartModeAsync()
+    {
+        var req = new ModeRequest(_mode, _target, _mode == "zero_torque" ? [] : [.. _modeJoints]);
+        var (r, err) = await Console.PostAsync("mode", req, Ctx.ModeRequest, Ctx.MotionResultDto);
+        Say(r?.Ok == true ? $"{_mode.Replace('_', ' ')} on the {_target} twin: {(req.Joints is { Count: > 0 } j ? string.Join(", ", j.Select(Short)) : "all joints limp")}." : $"Mode refused: {err}", r?.Ok == true);
+    }
+
+    private async Task ModeOffAsync()
+    {
+        await Console.PostAsync("mode", new ModeRequest("off", _target), Ctx.ModeRequest, Ctx.MotionResultDto);
+        Say("Mode off.", true);
+    }
+
+    // ---- limits
+    private async Task ApplyLimitsAsync()
+    {
+        var (r, err) = await Console.PostAsync("limits", new LimitsRequest(new Dictionary<string, double>(_limitEdit)), Ctx.LimitsRequest, Ctx.LimitsDto);
+        if (r?.Ok == true)
+        {
+            _limits = r;
+            Say(r.Tightened is { Count: > 0 } t ? $"Limits applied: tightened {string.Join(", ", t)}." : "Limits at defaults.", true);
+        }
+        else
+        {
+            Say($"Limits refused: {err}", false);
+            await LoadLimitsAsync();
+        }
+    }
+
+    private async Task ResetLimitsAsync()
+    {
+        await Console.PostAsync("limits/reset", new EmptyBody(), Ctx.EmptyBody, Ctx.LimitsDto);
+        await LoadLimitsAsync();
+        Say("Limits reset to defaults.", true);
+    }
+
+    // ---- teach mode
+    private async Task RecordStartAsync()
+    {
+        var (r, err) = await Console.PostAsync("motions/record/start", new RecordStartRequest(_recSource), Ctx.RecordStartRequest, Ctx.MotionResultDto);
+        Say(r?.Ok == true ? $"Recording the {(_recSource == "real" ? "real robot" : "twin")}…" : $"Recording not started: {err}", r?.Ok == true);
+    }
+
+    private async Task RecordStopAsync()
+    {
+        var (r, err) = await Console.PostAsync("motions/record/stop", new RecordStopRequest(_clip is null ? _recName : _clipName), Ctx.RecordStopRequest, Ctx.MotionResultDto);
+        if (r?.Ok == true && r.Clip is { } clip)
+        {
+            LoadIntoEditor(clip);
+            _validation = r.Validation;
+            Say($"Recorded {clip.Keyframes.Count} keyframes. Review, then Save.", true);
+        }
+        else
+        {
+            Say($"Recording not kept: {err}", false);
+        }
+    }
+
+    // ---- store
+    private async Task ExportAsync(string name)
+    {
+        try
+        {
+            var (text, err) = await Console.GetTextAsync($"motions/{Uri.EscapeDataString(name)}/export");
+            if (text is null)
+            {
+                Say($"Export failed: {err}", false);
+                return;
+            }
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/console/console.js");
+            await _module.InvokeVoidAsync("downloadText", $"{name}.motion.json", text, "application/json");
+            Say($"Exported {name}.motion.json (checksummed package).", true);
+        }
+        catch (HttpRequestException ex)
+        {
+            Say($"Export failed: {ex.Message}", false);
+        }
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 512 * 1024);
+            using var doc = await JsonDocument.ParseAsync(stream);
+            var req = new PackageImportRequest(doc.RootElement.Clone(), _overwrite);
+            var (r, err) = await Console.PostAsync("motions/import", req, Ctx.PackageImportRequest, Ctx.MotionResultDto);
+            Say(r?.Ok == true ? $"Imported {r.Name} (validated)." : $"Import refused: {err}{(r?.Validation is { Ok: false } v ? " — " + string.Join("; ", v.Issues.Select(i => i.Message)) : string.Empty)}", r?.Ok == true);
+            await LoadMotionsAsync();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            Say($"Not a motion package: {ex.Message}", false);
+        }
+    }
+
+    private async Task DeleteAsync(string name)
+    {
+        var (r, err) = await Console.PostAsync("motions/delete", new NameRequest(name), Ctx.NameRequest, Ctx.MotionResultDto);
+        Say(r?.Ok == true ? $"Deleted {name}." : $"Delete refused: {err}", r?.Ok == true);
+        await LoadMotionsAsync();
+    }
+
+    // ---- editor
+    private void NewClip()
+    {
+        LoadIntoEditor(new MotionClipDto("my_motion", [
+            new KeyframeDto(0, new() { ["head_yaw_joint"] = 0 }),
+            new KeyframeDto(1.5, new() { ["head_yaw_joint"] = 20 }),
+            new KeyframeDto(3, new() { ["head_yaw_joint"] = 0 }),
+        ], "My motion"));
+        _validation = null;
+    }
+
+    private async Task EditAsync(string name)
+    {
+        var (d, err) = await Console.GetAsync("motions/" + Uri.EscapeDataString(name), Ctx.MotionDetailDto);
+        if (d?.Clip is { } clip)
+        {
+            LoadIntoEditor(clip);
+            _validation = d.Validation;
+            if (clip.Source == "builtin")
+            {
+                _clipName = clip.Name + "_copy";
+                Say("Built-in motion opened as a copy: save it under the new name.", true);
+            }
+        }
+        else
+        {
+            Say($"Could not open {name}: {err}", false);
+        }
+    }
+
+    private void LoadIntoEditor(MotionClipDto clip)
+    {
+        _clip = clip.Keyframes.Select(k => new Kf { T = k.T, Ease = k.Ease ?? "smooth", Q = new Dictionary<string, double>(k.QDeg) }).ToList();
+        _joints = clip.Keyframes.SelectMany(k => k.QDeg.Keys).Distinct().ToList();
+        _clipName = clip.Name;
+        _clipTitle = clip.Title ?? clip.Name;
+        _clipDesc = clip.Description ?? string.Empty;
+        _clipLoop = clip.Loop;
+        _selKf = -1;
+    }
+
+    private MotionClipDto BuildClip() => new(
+        _clipName.Trim(),
+        _clip!.OrderBy(k => k.T).Select(k => new KeyframeDto(Math.Round(k.T, 3), k.Q.Where(kv => _joints.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value), k.Ease)).ToList(),
+        _clipTitle, _clipDesc, Author: "operator", Tags: ["user"], Loop: _clipLoop);
+
+    private void SelectKf(int k) => _selKf = k;
+
+    private void AddKeyframe()
+    {
+        var last = _clip!.Count > 0 ? _clip[^1] : null;
+        _clip.Add(new Kf { T = Math.Round((last?.T ?? -1) + 1.0, 2), Ease = "smooth", Q = last is null ? [] : new Dictionary<string, double>(last.Q) });
+        _selKf = _clip.Count - 1;
+    }
+
+    private void AddPoseKeyframe(ChangeEventArgs e)
+    {
+        var pose = _poses.FirstOrDefault(p => p.Name == e.Value?.ToString());
+        if (pose is null || _clip is null)
+        {
+            return;
+        }
+        var t = _clip.Count > 0 ? Math.Round(_clip.Max(k => k.T) + 1.5, 2) : 0;
+        _clip.Add(new Kf { T = t, Q = new Dictionary<string, double>(pose.QDeg) });
+        foreach (var j in pose.QDeg.Keys.Where(j => !_joints.Contains(j)))
+        {
+            _joints.Add(j);
+        }
+        _selKf = _clip.Count - 1;
+    }
+
+    private void AddJoint(ChangeEventArgs e)
+    {
+        if (e.Value?.ToString() is { Length: > 0 } j && !_joints.Contains(j))
+        {
+            _joints.Add(j);
+            if (_clip is { Count: > 0 })
+            {
+                _clip[0].Q[j] = RobotJointCatalog.All.First(x => x.Name == j).DefaultDeg;
+            }
+        }
+    }
+
+    private void RemoveJoint(string j)
+    {
+        _joints.Remove(j);
+        foreach (var k in _clip!)
+        {
+            k.Q.Remove(j);
+        }
+    }
+
+    private void DeleteKf(int k)
+    {
+        _clip!.RemoveAt(k);
+        _selKf = -1;
+    }
+
+    private static double? ParseNum(ChangeEventArgs e) =>
+        double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+
+    private void SetT(int k, ChangeEventArgs e)
+    {
+        if (ParseNum(e) is double t)
+        {
+            _clip![k].T = Math.Max(0, t);
+        }
+    }
+
+    private void SetEase(int k, ChangeEventArgs e) => _clip![k].Ease = e.Value?.ToString() ?? "smooth";
+
+    private void SetQ(int k, string joint, ChangeEventArgs e)
+    {
+        if (ParseNum(e) is double v)
+        {
+            _clip![k].Q[joint] = v;
+        }
+        else
+        {
+            _clip![k].Q.Remove(joint);
+        }
+    }
+
+    [JSInvokable]
+    public void OnKeyframeDragged(int index, double t)
+    {
+        if (_clip is not null && index >= 0 && index < _clip.Count)
+        {
+            _clip[index].T = t;
+            _selKf = index;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_clip is null)
+        {
+            return;
+        }
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/console/console.js");
+            _self ??= DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("bindTimeline", _timeline, _self, TimelineSpan);
+        }
+        catch (JSException)
+        {
+            // dragging is optional; times can be typed
+        }
+    }
+
+    private async Task CheckAsync()
+    {
+        var (r, err) = await Console.PostAsync("motions/check", new ClipRequest(BuildClip()), Ctx.ClipRequest, Ctx.MotionResultDto);
+        _validation = r?.Validation;
+        Say(r?.Validation?.Ok == true ? "Motion is valid." : $"Check: {err ?? "issues listed below"}", r?.Validation?.Ok == true);
+    }
+
+    private async Task PreviewClipAsync()
+    {
+        var (r, err) = await Console.PostAsync("motions/play", new ClipRequest(BuildClip(), Target: _target), Ctx.ClipRequest, Ctx.MotionResultDto);
+        _validation = r?.Validation ?? _validation;
+        Say(r?.Ok == true ? "Previewing your edit on the twin." : $"Preview not started: {err}", r?.Ok == true);
+    }
+
+    private async Task SaveAsync()
+    {
+        var (r, err) = await Console.PostAsync("motions/save", new ClipRequest(BuildClip(), _overwrite), Ctx.ClipRequest, Ctx.MotionResultDto);
+        _validation = r?.Validation ?? _validation;
+        Say(r?.Ok == true ? $"Saved {r.Name}." : $"Not saved: {err}", r?.Ok == true);
+        await LoadMotionsAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts.Cancel();
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+        _self?.Dispose();
+    }
+}

@@ -2,17 +2,46 @@
 @using PoRobotTrain.Client.Features.Dashboard.Twin
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject ConsoleApiClient Console
 
 @* Plain-language picker (Transformers.js, runs locally after a one-time model download). It only fills in the
-   Behaviour / Sweep Size selection or points at a joint slider; Steps 1 + 2 and the confirm dialog still gate any run. *@
+   Behaviour / Sweep Size selection or points at a joint slider; Steps 1 + 2 and the confirm dialog still gate any run.
+   Voice (idea #11): a spoken request is interpreted the same way and then applied as the matching click would be
+   (select the behaviour, or show the joint slider), and the reply is spoken. Voice never starts, checks or runs.
+   Chat (#20, docs/service_api.md section 7): every message goes to POST /assistant/chat first, which answers status
+   questions ("how hot are the motors?"), remembers the conversation ("again", "bigger") and names poses; when it
+   does not recognise a motion, the local MiniLM matcher below takes over. *@
 <div class="assist">
     <form class="assist-row" @onsubmit="AskAsync" @onsubmit:preventDefault>
-        <input class="assist-input" placeholder="@(_loaded ? "e.g. nod the head 20 degrees" : "Ask in plain words (loads a 23 MB local model once)")"
+        <input class="assist-input" placeholder="Ask or tell the robot… e.g. is the robot ready?"
                @bind="_text" @bind:event="oninput" disabled="@_busy" aria-label="Describe the motion" />
         <button type="submit" class="po-chip" disabled="@(_busy || string.IsNullOrWhiteSpace(_text))">
-            @(_busy ? (_loaded ? "Thinking…" : _progress ?? "Loading model…") : "Suggest")
+            @(_busy ? (_loaded ? "Thinking…" : _progress ?? "Thinking…") : "Ask")
         </button>
     </form>
+    <div class="askbar__chips">
+        @foreach (var ex in Examples)
+        {
+            <button type="button" class="po-chip askbar__chip" disabled="@_busy" @onclick="() => AskExampleAsync(ex)">@ex</button>
+        }
+    </div>
+    <VoiceInput @ref="_voice" Disabled="_busy" OnPartial="OnVoicePartial" OnFinal="OnVoiceFinalAsync" />
+    @if (_turns.Count > 0)
+    {
+        <div class="chat-log" aria-live="polite">
+            @foreach (var (who, text) in _turns.TakeLast(6))
+            {
+                <div class="chat-line @(who == "you" ? "you" : "bot")"><b>@(who == "you" ? "You" : "R1")</b> @text</div>
+            }
+        </div>
+    }
+    @if (_chat is { Kind: "pose", Pose: { } pose })
+    {
+        <div class="assist-out">
+            <span>@_chat.Note</span>
+            <button type="button" class="po-chip active" @onclick="() => PreviewPoseAsync(pose)">Preview @_chat.Label on practice twin</button>
+        </div>
+    }
     @if (_suggestion is { } s)
     {
         <div class="assist-out @(s.Kind == "unknown" || s.Blocked ? "warn" : string.Empty)">
@@ -47,8 +76,68 @@
     private string? _progress;
     private string? _error;
     private AssistantSuggestion? _suggestion;
+    private VoiceInput? _voice;
+    private static readonly string[] Examples = ["Is the robot ready?", "Nod the head 20 degrees", "What's the hottest motor?", "Go to the arms out pose"];
 
-    private async Task AskAsync()
+    private async Task AskExampleAsync(string text)
+    {
+        _text = text;
+        await AskCoreAsync(fromVoice: false);
+    }
+    private ChatResponseDto? _chat;
+    private readonly List<(string Who, string Text)> _turns = [];
+    private readonly string _session = "blazor-" + Guid.NewGuid().ToString("N")[..8];
+
+    private async Task PreviewPoseAsync(string pose)
+    {
+        var (r, err) = await Console.PreviewPoseAsync(pose, "practice");
+        _turns.Add(("R1", r?.Ok == true ? $"Previewing {pose} on the practice twin." : $"Pose refused: {err}"));
+    }
+
+    /// <summary>Service chat first: true when it produced the reply (answer, pose, or a recognised motion).</summary>
+    private async Task<bool> TryChatAsync(bool fromVoice)
+    {
+        var (c, _) = await Console.ChatAsync(new ChatRequest(_text, _session, ArmUnlocked));
+        if (c is null || c.Kind == "unknown")
+        {
+            return false;
+        }
+        _turns.Add(("you", _text));
+        _turns.Add(("R1", c.Answer ?? c.Note ?? string.Empty));
+        _chat = c;
+        _suggestion = c.Kind is "behaviour" or "joint"
+            ? new AssistantSuggestion(c.Kind, c.Id, c.Label, c.Amplitude, c.Joint, c.Deg, null, c.Blocked, c.Note, c.Say)
+            : null;
+        if (fromVoice)
+        {
+            if (_suggestion is { Kind: "behaviour", Blocked: false, Id: not null })
+            {
+                await ApplyAsync();
+            }
+            else if (_suggestion is { Kind: "joint", Joint: not null })
+            {
+                await ShowJointAsync();
+            }
+            if (_voice is not null)
+            {
+                await _voice.SpeakAsync(c.Say);
+            }
+        }
+        _text = string.Empty;
+        return true;
+    }
+
+    private Task AskAsync() => AskCoreAsync(fromVoice: false);
+
+    private void OnVoicePartial(string text) => _text = text;
+
+    private async Task OnVoiceFinalAsync(string text)
+    {
+        _text = text;
+        await AskCoreAsync(fromVoice: true);
+    }
+
+    private async Task AskCoreAsync(bool fromVoice)
     {
         if (string.IsNullOrWhiteSpace(_text))
         {
@@ -56,8 +145,13 @@
         }
         _busy = true;
         _error = null;
+        _chat = null;
         try
         {
+            if (await TryChatAsync(fromVoice))
+            {
+                return;
+            }
             _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/twin/assistant.js");
             if (!_loaded)
             {
@@ -74,6 +168,22 @@
                 ArmUnlocked);
             var json = await _module.InvokeAsync<string>("interpretJson", JsonSerializer.Serialize(req, TwinInteropJsonContext.Default.AssistantRequest));
             _suggestion = JsonSerializer.Deserialize(json, TwinInteropJsonContext.Default.AssistantSuggestion);
+            if (fromVoice && _suggestion is { } s)
+            {
+                // A spoken request acts like the matching click: select (never run) or show the slider.
+                if (s.Kind == "behaviour" && !s.Blocked && s.Id is not null)
+                {
+                    await ApplyAsync();
+                }
+                else if (s.Kind == "joint" && s.Joint is not null)
+                {
+                    await ShowJointAsync();
+                }
+                if (_voice is not null)
+                {
+                    await _voice.SpeakAsync(s.Say);
+                }
+            }
         }
         catch (JSException ex)
         {

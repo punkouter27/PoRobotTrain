@@ -32,6 +32,7 @@ packages = [
     "robotcontrol.state_machine",
     "robotcontrol.training",
     "robotcontrol.behaviours",
+    "robotcontrol.walk",
     "robotcontrol.tests",
 ]
 

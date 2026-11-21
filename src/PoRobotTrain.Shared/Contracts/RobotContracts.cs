@@ -36,7 +36,8 @@ public sealed record MoveJointRequest(
 public sealed record CommandResultDto(
     [property: JsonPropertyName("ok")] bool Ok,
     [property: JsonPropertyName("error")] string? Error = null,
-    [property: JsonPropertyName("note")] string? Note = null);
+    [property: JsonPropertyName("note")] string? Note = null,
+    [property: JsonPropertyName("policy_reason")] string? PolicyReason = null);
 
 public sealed record JobResultDto(
     [property: JsonPropertyName("ok")] bool Ok,
@@ -111,7 +112,9 @@ public sealed record RobotStatusDto(
     [property: JsonPropertyName("joint_defaults_deg")] List<double> JointDefaultsDeg,
     [property: JsonPropertyName("lines")] List<string> Lines,
     [property: JsonPropertyName("calibration")] SimCalibrationDto? Calibration = null,
-    [property: JsonPropertyName("real_connected")] bool RealConnected = false);
+    [property: JsonPropertyName("real_connected")] bool RealConnected = false,
+    [property: JsonPropertyName("progress")] JobProgressDto? Progress = null,
+    [property: JsonPropertyName("console")] ConsoleStatusDto? Console = null);
 
 public sealed record DiagSnapshotDto(
     string AppName,

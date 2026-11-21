@@ -135,11 +135,77 @@ export async function policyParity() {
   return { section: "Checks", name: "Policy parity (ONNX Runtime Web vs Python)", ...r };
 }
 
+// Voice (#11), robustness explorer (#19), walk sandbox (#20): browser speech capability, the local-AI model files
+// they download, and live calls to the API endpoints (all read-only: interpret only suggests, nothing starts).
+const HF = "https://huggingface.co/";
+async function json(url, init) {
+  const r = await fetch(url, { cache: "no-store", ...init });
+  if (!r.ok) {
+    let d = `HTTP ${r.status}`;
+    try {
+      d = (await r.json()).detail ?? d;
+    } catch {
+      /* not problem+json */
+    }
+    throw new Error(d);
+  }
+  return r.json();
+}
+
+export async function sandbox() {
+  const row = async (name, fn) => ({ section: "Sandbox", name, ...(await timed(fn)) });
+  const SR = globalThis.SpeechRecognition ?? globalThis.webkitSpeechRecognition;
+  return Promise.all([
+    row("Speech recognition (Web Speech API)", async () => {
+      if (!SR) throw new Error("not in this browser: voice uses Whisper tiny.en locally instead");
+      return "available";
+    }),
+    row("Microphone recorder (Whisper fallback)", async () => {
+      if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) throw new Error("getUserMedia / MediaRecorder missing");
+      return "MediaRecorder + getUserMedia";
+    }),
+    row("Speech synthesis (spoken replies)", async () => {
+      if (!("speechSynthesis" in globalThis)) throw new Error("speechSynthesis missing");
+      const n = speechSynthesis.getVoices().length;
+      return n ? `${n} voices` : "available (voices load on first use)";
+    }),
+    row("Whisper tiny.en model (Hugging Face)", async () => {
+      const c = await json(HF + "Xenova/whisper-tiny.en/resolve/main/config.json");
+      return c.model_type ?? "config ok";
+    }),
+    row("MiniLM model (Hugging Face)", async () => {
+      const c = await json(HF + "Xenova/all-MiniLM-L6-v2/resolve/main/config.json");
+      return c.model_type ?? "config ok";
+    }),
+    row("Voice intent endpoint (service matcher, used by Unreal)", async () => {
+      const r = await json("/api/robot/assistant/interpret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "nod the head twenty degrees", arm_unlocked: false, walk_active: false }),
+      });
+      if (!r.kind) throw new Error("no kind in reply");
+      return `"nod the head twenty degrees" → ${r.kind}${r.id ? " " + r.id : ""}${r.amplitude ? " " + r.amplitude + "°" : ""}`;
+    }),
+    row("Robustness report endpoint", async () => {
+      const r = await json("/api/robot/robustness");
+      if (!r.available) return "reachable · no sweep yet";
+      const s = r.summary ?? {};
+      return `${r.quick ? "quick" : "full"} sweep ${r.created_at ?? ""} · ${s.pass ?? 0} pass / ${s.warn ?? 0} warn / ${s.fail ?? 0} fail`;
+    }),
+    row("Walk sandbox state endpoint", async () => {
+      const r = await json("/api/robot/walk/state");
+      const pol = r.policy_available ? "Level 2 policy validated" : `no Level 2 policy (${r.policy_reason ?? "none"})`;
+      return `${r.running ? `running (${r.mode})` : "stopped"} · ${pol}`;
+    }),
+  ]);
+}
+
 // JSON-string entry points for Blazor
 export const capabilitiesJson = async () => JSON.stringify(await capabilities());
 export const filesJson = async () => JSON.stringify(await files());
 export const modulesJson = async () => JSON.stringify(await modules());
 export const selfTestsJson = async () => JSON.stringify(await selfTests());
+export const sandboxJson = async () => JSON.stringify(await sandbox());
 export async function policyParityJson() {
   const row = await policyParity();
   if (row.ok && row.detail && typeof row.detail === "object") {

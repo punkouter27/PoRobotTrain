@@ -1,5 +1,8 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using System.Reflection
+@inject UiState Ui
+@inject NavigationManager Nav
 
 <RadzenComponents />
 
@@ -9,16 +12,32 @@
             <span class="po-logo">R1</span>
             <div>
                 <div class="po-title">PoRobotTrain</div>
-                <div class="po-subtitle">Unitree R1 Stand Explore · Blazor WASM + .NET API</div>
+                <div class="po-subtitle">Unitree R1 on its stand · twin first, robot second</div>
             </div>
         </div>
-        <nav class="po-nav">
-            <NavLink href="/" Match="NavLinkMatch.All" class="po-nav__link">Control &amp; 26-DOF</NavLink>
-            <NavLink href="/diag" class="po-nav__link">Diagnostics</NavLink>
-            <a href="/scalar" target="_blank" class="po-nav__link">OpenAPI</a>
+        @* Five places only; Robustness and Diagnostics live under Health, OpenAPI in Help (simplification #5). *@
+        <nav class="po-nav" aria-label="Main">
+            <NavLink href="/" Match="NavLinkMatch.All" class="po-nav__link">Control</NavLink>
+            <NavLink href="/motions" class="po-nav__link">Motions</NavLink>
+            <NavLink href="/walk" class="po-nav__link">Walk</NavLink>
+            <NavLink href="/robot-health" class="@HealthLinkClass">Health</NavLink>
+            <NavLink href="/setup" class="po-nav__link">Setup</NavLink>
+            <HelpDrawer />
         </nav>
-        <span class="po-stamp">v@(BuildStamp)</span>
+        <div class="po-header__right">
+            <RobotBadge />
+            <label class="adv-toggle" title="Show expert tools: modes, limits, calibration, network, versions, the 26-joint matrix and raw logs">
+                <input type="checkbox" checked="@Ui.Advanced" @onchange="e => Ui.SetAdvancedAsync((bool)e.Value!)" /> Advanced
+            </label>
+            <EstopButton />
+            <span class="po-stamp">v@(BuildStamp)</span>
+        </div>
     </header>
+
+    @if (!IsControlPage)
+    {
+        <AskBar />
+    }
 
     <main class="po-main">
         <ErrorBoundary @ref="_errorBoundary">
@@ -36,6 +55,8 @@
     </main>
 </div>
 
+<FirstRunTour />
+
 @code {
     private ErrorBoundary? _errorBoundary;
 
@@ -43,7 +64,28 @@
         .GetCustomAttributes<AssemblyMetadataAttribute>()
         .FirstOrDefault(a => a.Key == "BuildVersion")?.Value ?? "dev";
 
+    private string Page => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+    private bool IsControlPage => Page.Length == 0;
+    private string HealthLinkClass => Page is "robustness" or "diag" ? "po-nav__link active" : "po-nav__link";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Ui.Changed += OnChanged;
+        Nav.LocationChanged += OnLocation;
+        await Ui.InitAsync();
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnLocation(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+
     protected override void OnParametersSet() => _errorBoundary?.Recover();
 
     private void Recover() => _errorBoundary?.Recover();
+
+    public void Dispose()
+    {
+        Ui.Changed -= OnChanged;
+        Nav.LocationChanged -= OnLocation;
+    }
 }

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unreal Operator Console</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--blue:#2a6bd9;--orange:#d9730d}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.pair figure{margin:0}
+code{font:13px ui-monospace,Consolas,monospace}
+</style></head><body><main>
+<h1>Unreal twin: operator console (Health, Motions, Setup, Help, E-STOP)</h1>
+<p>2026-11-21 · UE 5.8.4 standalone game, level R1_Stand, captured unattended with
+<code>-PanelCapture=&lt;dir&gt; -R1Service=http://127.0.0.1:8766 -ShowcaseIdle=600</code> against a live behaviour service
+started with <code>--port 8766 --no-mirror</code> (<code>docs/service_api.md</code> sections 4-7), at 1600×900 and 450×800.
+Before the run the service was seeded through its API: a practice snapshot, two pre-flight ticks, walk speed scale 0.5, and a calibration capture from the practice twin.</p>
+
+<h2>Before</h2>
+<div class="pair">
+<figure><img src="unreal_tabs_before_1600x900.png" alt="Panel before the console, 1600 by 900"><figcaption>1600×900: one page, behaviours only (before the tab strip).</figcaption></figure>
+<figure><img src="unreal_tabs_before_450x800.png" alt="Panel before the console, 450 by 800"><figcaption>450×800 before.</figcaption></figure>
+</div>
+
+<h2>After</h2>
+<ul>
+<li>The tab strip has a second row: <b>Health</b>, <b>Motions</b>, <b>Setup</b> and <b>Help</b>. The first row (Behaviours, Robustness, Walk) and the five HUD anchors on the Behaviours tab are unchanged. STOP, the remote e-stop note, Joints and Details stay at the bottom of every tab.</li>
+<li><b>E-STOP</b> in the title row on every tab, also bound to the <kbd>End</kbd> key (Esc stays "quit"). It posts <code>/estop</code>, which stops every job, the walk sandbox, the twin player and any recording. The toast repeats that the remote (L2+B, hold 5 s) is the real emergency stop. Against an older service without <code>/estop</code>, it falls back to <code>/stop</code>.</li>
+<li>Voice goes to <code>POST /assistant/chat</code> (session <code>unreal</code>). It falls back to <code>/assistant/interpret</code> on an older service. Status questions are answered and spoken. A pose suggestion shows a <b>Preview pose</b> button and is never started without a click.</li>
+<li>Poses, motions and modes are only ever sent with <code>"target": "urlab"</code>. The panel has no control that offers the real robot for them.</li>
+</ul>
+
+<h2>Behaviours tab (unchanged anchors)</h2>
+<figure><img src="unreal_console_after_behaviours_1600x900.png" alt="Behaviours tab with the second tab row and E-STOP"><figcaption>Injected phrase "nod the head twenty degrees", now through <code>/assistant/chat</code>: Neck Nod at 20° is selected and nothing starts. The five anchors (virtual robot, Check/Monitor, Move REAL robot, STOP, Details) are where they were.</figcaption></figure>
+
+<h2>Health</h2>
+<figure><img src="unreal_console_after_health_1600x900.png" alt="Health tab"><figcaption>
+<ul>
+<li><code>/health</code> rows show OK, OFF (optional) or FAIL as a word as well as a colour. Robot SSH and the state stream are OFF because no robot is connected.</li>
+<li>The head camera is the twin's <code>head_rgbd</code> PNG, about 4 Hz, decoded into a transient texture.</li>
+<li>The IMU check reads <code>no_data</code> (no stream was running).</li>
+<li>Versions show the Level 0 policy gate and sha.</li>
+<li>The battery figure is labelled "estimate" with its assumption.</li>
+<li>Events come with All / Warn+ / Critical filters.</li>
+</ul>
+</figcaption></figure>
+<div class="pair">
+<figure><img src="unreal_console_after_chat_answer_1600x900.png" alt="Assistant answering a temperature question"><figcaption>"how hot are the motors?" answered from the live service state (shown and spoken; nothing changes).</figcaption></figure>
+<figure><img src="unreal_console_after_chat_pose_1600x900.png" alt="Assistant offering a pose preview button"><figcaption>"go to the arms out pose": a <b>Preview pose: Arms out (twin only)</b> button is offered; nothing starts until it is clicked.</figcaption></figure>
+</div>
+
+<h2>Motions</h2>
+<div class="pair">
+<figure><img src="unreal_console_after_motions_1600x900.png" alt="Motions tab idle"><figcaption>
+<ul>
+<li>Eight poses and three built-in motions, each with Play and Export. Export writes the store package to <code>Saved/MotionStore/&lt;name&gt;.json</code>, and Import reads that folder back.</li>
+<li>Teach mode can record from practice, virtual or real (read-only).</li>
+<li>Modes (Damp, Hold, Zero torque, Off) apply to the one joint you pick.</li>
+<li>Session limits have −/+ steppers. Walk scale 0.5 is shown tightened (amber), and + is only enabled below the built-in maximum.</li>
+</ul>
+</figcaption></figure>
+<figure><img src="unreal_console_after_motions_pose_1600x900.png" alt="Motions tab during a pose preview"><figcaption>During <code>POST /poses/preview {"name":"look_left","target":"urlab"}</code> the Play/pose buttons lock and the player line shows "Playing pose_look_left on the twin".</figcaption></figure>
+</div>
+
+<h2>Setup</h2>
+<figure><img src="unreal_console_after_setup_1600x900.png" alt="Setup tab"><figcaption>
+<ul>
+<li><b>Pre-flight:</b> two manual items are ticked (from the seed), and each shows how long ago it was ticked. The automatic items come from the service, with robot reachable, fresh state and temperatures marked NO. The header says Move REAL robot stays locked.</li>
+<li><b>Calibration:</b> source and reference chips, then Read pose (a 0 % power snapshot), Capture, and Store, which needs a second confirming click and is never applied.</li>
+<li><b>Connection profiles:</b> the profiles, with a Test button each.</li>
+</ul>
+</figcaption></figure>
+
+<h2>Help</h2>
+<figure><img src="unreal_console_after_help_1600x900.png" alt="Help tab"><figcaption>The <code>docs/*.md</code> list, with <code>service_api</code> open as wrapped plain text: headings in the accent colour and code in cyan. It scrolls with the mouse wheel, PgUp/PgDn or the Page buttons.</figcaption></figure>
+
+<h2>450×800 (scaled panel)</h2>
+<div class="pair">
+<figure><img src="unreal_console_after_health_450x800.png" alt="Health tab at 450 by 800"><figcaption>Health</figcaption></figure>
+<figure><img src="unreal_console_after_motions_450x800.png" alt="Motions tab at 450 by 800"><figcaption>Motions</figcaption></figure>
+<figure><img src="unreal_console_after_setup_450x800.png" alt="Setup tab at 450 by 800"><figcaption>Setup</figcaption></figure>
+<figure><img src="unreal_console_after_help_450x800.png" alt="Help tab at 450 by 800"><figcaption>Help</figcaption></figure>
+<figure><img src="unreal_console_after_behaviours_450x800.png" alt="Behaviours tab at 450 by 800"><figcaption>Behaviours after "wave hello"</figcaption></figure>
+<figure><img src="unreal_console_after_chat_pose_450x800.png" alt="Pose offer at 450 by 800"><figcaption>Pose offer</figcaption></figure>
+</div>
+<p>At 450×800 the whole panel is drawn scaled down so every control is present. The smallest text (health row details, version lines) is hard to read at this size.</p>
+
+<h2>Not verified</h2>
+<ul>
+<li>The twin moving during a pose, motion or mode. The capture service ran with <code>--no-mirror</code> (as instructed, to stay off the Unreal port other work used), so the player simulated headless: the Motions shot shows "Playing pose_look_left on the twin" while the Unreal robot stays still. With the mirror enabled, the same path pushes poses through URLab puppet mode, the way the walk sandbox does. This run did not check it.</li>
+<li>Clicks on the new buttons. The unattended capture drives tabs, a pose preview and the assistant through code, not mouse clicks. The click paths reuse the existing hit-test and <code>HandleClick</code> dispatch, but nobody clicked them in this run: E-STOP, the End key, motion Play/Export/Import, record, modes, limit steppers, pre-flight ticks, calibration store, network Test, the doc chips and scrolling.</li>
+<li>The real robot. No robot was connected. Robot SSH, the state stream and the robot pre-flight items show OFF/NO, and the head camera is the twin's <code>head_rgbd</code> view (the robot camera is not streamed).</li>
+<li>A real microphone. The phrases were injected as heard speech, and spoken replies are muted in capture runs.</li>
+</ul>
+</main></body></html>

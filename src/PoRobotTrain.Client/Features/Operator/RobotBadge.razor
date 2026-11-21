@@ -1,0 +1,25 @@
+@implements IDisposable
+@inject UiState Ui
+
+@* Simplification #10: one always-visible answer to "can a click move hardware right now?" *@
+<span class="robot-badge @Cls" role="status" title="@Title">
+    <span class="robot-badge__dot" aria-hidden="true"></span>@Text
+</span>
+
+@code {
+    private string Cls => !Ui.Online ? "off" : Ui.RealConnected ? "real" : "twin";
+
+    private string Text => !Ui.Online ? "SERVICE OFFLINE" : Ui.RealConnected ? "REAL ROBOT CONNECTED" : "TWIN ONLY";
+
+    private string Title => !Ui.Online
+        ? "The behaviour service is not reachable: start python -m robotcontrol.behaviours.service"
+        : Ui.RealConnected
+            ? "The physical R1 is streaming state. Real-robot steps still need preview, check, pre-flight and confirmation."
+            : "No physical robot connected: every action runs on the twin (nothing physical moves).";
+
+    protected override void OnInitialized() => Ui.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Ui.Changed -= OnChanged;
+}

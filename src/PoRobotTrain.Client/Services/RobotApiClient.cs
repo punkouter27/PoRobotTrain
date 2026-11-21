@@ -33,6 +33,65 @@ public sealed class RobotApiClient(HttpClient http)
     public Task<CommandResultDto> StopAsync(CancellationToken ct = default) =>
         PostAsync("/api/robot/stop", new EmptyBody(), RobotJsonContext.Default.EmptyBody, ct);
 
+    // ---- voice intent, robustness explorer, walk sandbox (docs/service_api.md)
+    public async Task<AssistantInterpretResponse?> InterpretAsync(AssistantInterpretRequest req, CancellationToken ct = default)
+    {
+        using var resp = await http.PostAsJsonAsync("/api/robot/assistant/interpret", req, RobotJsonContext.Default.AssistantInterpretRequest, ct);
+        return resp.IsSuccessStatusCode
+            ? await resp.Content.ReadFromJsonAsync(RobotJsonContext.Default.AssistantInterpretResponse, ct)
+            : null;
+    }
+
+    /// <summary>Latest sweep report, or null when the API/service is unreachable (HTTP error).</summary>
+    public async Task<(RobustnessReportDto? Report, string? Error)> GetRobustnessAsync(CancellationToken ct = default)
+    {
+        using var resp = await http.GetAsync("/api/robot/robustness", ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            return (null, await ProblemTextAsync(resp, ct));
+        }
+        return (await resp.Content.ReadFromJsonAsync(RobotJsonContext.Default.RobustnessReportDto, ct), null);
+    }
+
+    public Task<CommandResultDto> RunRobustnessAsync(bool quick, CancellationToken ct = default) =>
+        PostAsync("/api/robot/robustness/run", new RobustnessRunRequest(quick), RobotJsonContext.Default.RobustnessRunRequest, ct);
+
+    public async Task<(WalkStateDto? State, string? Error)> GetWalkStateAsync(CancellationToken ct = default)
+    {
+        using var resp = await http.GetAsync("/api/robot/walk/state", ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            return (null, await ProblemTextAsync(resp, ct));
+        }
+        return (await resp.Content.ReadFromJsonAsync(RobotJsonContext.Default.WalkStateDto, ct), null);
+    }
+
+    public Task<CommandResultDto> WalkStartAsync(WalkStartRequest req, CancellationToken ct = default) =>
+        PostAsync("/api/robot/walk/start", req, RobotJsonContext.Default.WalkStartRequest, ct);
+
+    public Task<CommandResultDto> WalkResetAsync(CancellationToken ct = default) =>
+        PostAsync("/api/robot/walk/reset", new EmptyBody(), RobotJsonContext.Default.EmptyBody, ct);
+
+    public Task<CommandResultDto> WalkStopAsync(CancellationToken ct = default) =>
+        PostAsync("/api/robot/walk/stop", new EmptyBody(), RobotJsonContext.Default.EmptyBody, ct);
+
+    private static async Task<string> ProblemTextAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (doc.RootElement.TryGetProperty("detail", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return d.GetString()!;
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // not problem+json
+        }
+        return $"HTTP {(int)resp.StatusCode} ({resp.ReasonPhrase})";
+    }
+
     private async Task<CommandResultDto> PostAsync<T>(string url, T body, JsonTypeInfo<T> jsonType, CancellationToken ct)
     {
         using var resp = await http.PostAsJsonAsync(url, body, jsonType, ct);

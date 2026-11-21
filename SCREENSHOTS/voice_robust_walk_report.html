@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice, Robustness, Walk Report</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--blue:#2a6bd9;--orange:#d9730d;--ok:#1f8a4c;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038;--ok:#52d984;--bad:#ff7b72}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.b{color:var(--blue);font-weight:600}.o{color:var(--orange);font-weight:600}.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.row{grid-template-columns:1fr}}
+.narrow{max-width:460px}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-top:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+code{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>Blazor control UI: voice, robustness explorer, Level 2 walk sandbox</h1>
+<p>2026-11-21 · Blazor WASM control UI (<code>src/PoRobotTrain.Client</code>) + .NET API proxy · headless Microsoft Edge (Playwright) · contract: <code>docs/service_api.md</code>. Ideas #11, #19 and #20. The Unreal twin implements the same features against the same service endpoints.</p>
+<p><b>Test data.</b> Every screenshot was taken against the real behaviour service (<code>python -m robotcontrol.behaviours.service --no-mirror</code>, port 8766) through the real .NET API, except <code>walk_after_driving_1600x900.png</code>. No Level 2 walking policy exists yet (training is still running), so that screenshot and the drive / walk-voice tests used a test browser that answered <code>/api/robot/walk/state</code> with a synthetic <em>running policy</em> state and recorded the <code>/api/robot/walk/command</code> POSTs locally. None of those POSTs reached the service. No robot was connected, and nothing in these features can reach it.</p>
+
+<h2>Before</h2>
+<div class="row">
+<figure><img src="voice_robust_walk_before_1600x900.png" alt="Before: dashboard at 1600 by 900"><figcaption>Before, 1600 × 900: typed assistant only, no walk or robustness pages.</figcaption></figure>
+<figure class="narrow"><img src="voice_robust_walk_before_450x800.png" alt="Before: dashboard at 450 by 800"><figcaption>Before, 450 × 800.</figcaption></figure>
+</div>
+
+<h2>After: voice (#11)</h2>
+<p>All five HUD anchors are retained: <span class="b">1. VIRTUAL ROBOT</span>, <span class="o">2. PHYSICAL / PRACTICE ROBOT</span> (Read Pose / Live Mirror / Pre-Run Check), <span class="o">Move Physical R1</span> (still gated by Steps 1 + 2 and the confirm dialog), <b>STOP</b>, and the details log. The new <b>Speak</b> button and <b>Replies</b> toggle sit under the assistant box. Speech goes to text through the Web Speech API, or through Whisper tiny.en locally when the browser has no Web Speech API (or with <code>?whisper</code>). The text goes through the same MiniLM matcher. A spoken request is applied like the matching click (select the behaviour and size, or show a joint slider), and the reply is spoken with <code>speechSynthesis</code>.</p>
+<figure><img src="voice_after_whisper_dash.png" alt="Voice selected Neck Turn 20 degrees"><figcaption>A Windows TTS recording of "Turn the head twenty degrees." fed in as the microphone, forced through Whisper. Whisper heard "Turn the head 20 degrees.", the assistant <b>selected</b> Neck Turn + 20° and spoke "Neck Turn, twenty degrees, selected. Run it on the virtual robot first." The test recorded <b>zero</b> POSTs to <code>/api/robot/*</code>: voice never starts, checks or runs anything.</figcaption></figure>
+<div class="row">
+<figure><img src="voice_robust_walk_after_dash_1600x900.png" alt="After: dashboard at 1600 by 900"><figcaption>1600 × 900 with the new nav entries (Walk sandbox, Robustness).</figcaption></figure>
+<figure class="narrow"><img src="voice_robust_walk_after_dash_450x800.png" alt="After: dashboard at 450 by 800"><figcaption>450 × 800: no horizontal scroll (scrollWidth 450).</figcaption></figure>
+</div>
+
+<h2>After: robustness explorer (#19)</h2>
+<p>The <code>/robustness</code> page starts sweeps (quick / full), shows live progress from <code>/status.progress</code>, and reads <code>logs/robustness/latest.json</code> through the API. Every cell shows its verdict as icon + word (never colour alone), the metrics, and <em>why</em> it failed. A banner names the dominant failure. In the current calibrated twin almost every cell, nominal included, fails on head-yaw acceleration (~290 rad/s², limit 80). This is expected: the shipped Level 0 policy chatters on head yaw after the sim calibration. Status colours come from the validated status palette, and a text table view is available.</p>
+<figure><img src="robustness_after_1600x900.png" alt="Robustness explorer heatmaps"><figcaption>Full sweep: one-factor-at-a-time rows (mass, joint friction + damping, gains, latency, sensor noise, torque limit) and the gain × latency grid. Nominal cells are outlined. The blue bar is mean tracking error against the 3° limit. 2 pass / 0 warn / 89 fail: only 10 ms latency × gain 0.6–0.7 pass.</figcaption></figure>
+<div class="row">
+<figure><img src="robustness_after_progress.png" alt="Sweep in progress"><figcaption>A full sweep started from the page: live progress (e.g. 176 / 400 rollouts) from <code>/status</code>. The report refreshed by itself when the job ended.</figcaption></figure>
+<figure><img src="robustness_after_detail.png" alt="Cell details"><figcaption>Clicking a cell scrolls to its details: mean and max error, peak acceleration and the joint it was on, action jitter, trips, and whether the state stayed finite.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="robustness_after_table.png" alt="Table view"><figcaption>Table view of every cell, the accessible alternative to the grids.</figcaption></figure>
+<figure class="narrow"><img src="robustness_after_450x800.png" alt="Robustness at 450 by 800"><figcaption>450 × 800: the grids scroll sideways inside their card. The page itself does not scroll sideways.</figcaption></figure>
+</div>
+
+<h2>After: Level 2 walk sandbox (#20), simulation only</h2>
+<p>The <code>/walk</code> page offers Start (walking policy or hold pose), Reset, Stop and a course choice (loop / flat). You drive with WASD / arrows / Q E (Shift = full speed), a gamepad (left stick walks, right stick turns, 0.15 deadzone), a hold-to-drive on-screen pad, or voice ("walk forward", "turn left", "faster", "stop"; a spoken command is held until stop or a key). Commands are POSTed at 20 Hz while held, and zeros are sent twice on release. The three.js twin runs in a new <em>walk mode</em>: no stand, the floating base follows the MuJoCo pelvis pose, the course boxes and checkpoint rings are built from <code>geometry</code>, the next checkpoint has a beacon, and a follow camera tracks the robot. The HUD shows the command, speed, checkpoint, lap current / last / best, laps, falls, whether the Unreal twin is receiving poses, and sim time.</p>
+<div class="row">
+<figure><img src="walk_after_idle_1600x900.png" alt="Walk sandbox without a policy"><figcaption>Real service: no validated Level 2 policy yet, so Start (policy) is disabled and the reason from <code>policy_reason</code> is shown. The course is drawn before Start.</figcaption></figure>
+<figure><img src="walk_after_hold_1600x900.png" alt="Hold pose running"><figcaption>Real service, hold mode: the robot stands on the start ring (pelvis 0.73 m), labelled "Hold pose: no walking policy (held by a virtual harness)". Drive is locked because the service ignores commands in hold mode.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="walk_after_driving_1600x900.png" alt="Driving against a synthetic running state"><figcaption><b>Synthetic state</b> (see Test data): a faked running policy state moving along the course, with the HUD filled and drive active. Measured with that fake: holding W for 1 s sent 20 commands at vx 0.6 and then 2 zeros. Shift+W+Q gave vx 1.0, wz 1.0. The pad's sidestep right gave vy −0.3. Whisper "Walk forward." held vx 0.5 at 20 Hz and spoke "Walking forward." A key tap cleared the voice hold and sent zeros.</figcaption></figure>
+<figure class="narrow"><img src="walk_after_idle_450x800.png" alt="Walk sandbox at 450 by 800"><figcaption>450 × 800: the HUD moves under the 3D view. No horizontal scroll.</figcaption></figure>
+</div>
+
+<h2>/diag</h2>
+<figure><img src="voice_robust_walk_after_diag.png" alt="Diagnostics with sandbox probes"><figcaption>New live section: Web Speech API (optional, Whisper fallback), microphone recorder, speech synthesis, the Whisper and MiniLM model files on Hugging Face, the service voice-intent endpoint (the matcher Unreal uses), the robustness report and walk-state endpoints. All OK against the running service.</figcaption></figure>
+
+<h2>Fixed along the way</h2>
+<p><b>API → service POST bodies were empty.</b> <code>RobotControlHttpClient</code> used <code>PostAsJsonAsync</code>, which streams with <code>Transfer-Encoding: chunked</code> and no <code>Content-Length</code>. The Python service (<code>BaseHTTPRequestHandler</code>) reads exactly <code>Content-Length</code> bytes, so it received <code>{}</code> for every POST from the Blazor UI: behaviour parameters fell back to defaults, and <code>confirm</code> was dropped. Bodies are now buffered with a <code>Content-Length</code>. A unit test drives the real client through a recording handler: it fails on the old code (expected 97 bytes, got null) and passes now. A long unbreakable log line no longer widens the dashboard at phone width (<code>.po-log</code> wraps anywhere).</p>
+
+<h2>Verification</h2>
+<table>
+<tr><th>check</th><th>result</th></tr>
+<tr><td><code>dotnet test</code> PoRobotTrain.Unit (12, 6 new: DTOs vs service payloads, request field names, Content-Length regression)</td><td class="ok">pass</td></tr>
+<tr><td><code>dotnet test</code> PoRobotTrain.Integration (3, 1 new: assistant / robustness / walk routes, 400 + policy_reason, 501 old service, 503 offline)</td><td class="ok">pass</td></tr>
+<tr><td>Build (Api + Client, trim analysis on)</td><td class="ok">0 warnings, 0 errors</td></tr>
+<tr><td>Voice end to end, Whisper path (fake microphone from a TTS WAV)</td><td class="ok">selects Neck Turn 20°, speaks the reply, no POSTs</td></tr>
+<tr><td>Voice through the Web Speech API</td><td>not testable headless (it needs a live microphone and the browser's online recogniser)</td></tr>
+<tr><td>Walk drive with keyboard / pad / voice</td><td class="ok">pass against a <b>synthetic</b> running state</td></tr>
+<tr><td>Walk drive with a real policy and a gamepad</td><td>not run: no validated Level 2 policy yet, and no gamepad on the test machine</td></tr>
+<tr><td>Robustness: full sweep started from the UI against the real service</td><td class="ok">progress shown, report refreshed</td></tr>
+<tr><td>No horizontal scroll at 450 px (dashboard, walk, robustness)</td><td class="ok">scrollWidth = 450</td></tr>
+<tr><td>Unreal / URLab, device and hardware gates</td><td>not run by this stream (browser + API only; the Unreal side is a separate stream)</td></tr>
+</table>
+</main>
+</body>
+</html>

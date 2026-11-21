@@ -2,6 +2,9 @@
 // three.js WebGPURenderer (falls back to WebGL2 automatically) + TSL node materials, Draco glTF exported from the
 // compiled MuJoCo model, Rapier pose checks, WebGPU-compute reach clouds, three-nebula particles, Tone.js cues.
 // It only *displays* poses that MuJoCo / the robot produced (and checks proposed ones); it never simulates.
+// Walk mode (opts.mode = "walk", Level 2 sandbox, docs/service_api.md §3): no stand, the floating base follows the
+// pelvis pose the service's headless MuJoCo reports, the course (boxes, checkpoint rings) is drawn from its geometry
+// and the camera follows the robot.
 import * as THREE from "three/webgpu";
 import { abs, color, dot, float, mix, normalView, positionViewDirection, pow, sin, time, uniform } from "three/tsl";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -12,7 +15,8 @@ import * as fk from "./fk.js";
 const DRACO_PATH = "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/libs/draco/gltf/";
 const LOOKAT_MJ = [-0.08, 0.0, 0.78];
 // same presets as the server PNG renderer (RobotControl/behaviours/robot_view.py): azimuth, elevation, distance
-const CAMERA_PRESETS = { iso: [136, -14, 2.35], front: [180, -10, 2.25], side: [90, -10, 2.3], back: [25, -14, 2.35] };
+const CAMERA_PRESETS = { iso: [136, -14, 2.35], front: [180, -10, 2.25], side: [90, -10, 2.3], back: [25, -14, 2.35], chase: [-30, -24, 5.2] };
+const WALK_IDLE_PELVIS = [0, 0, 0.73]; // standing pelvis height on the ground scene, shown until the sandbox reports a pose
 // Head behaviours: the envelope that matters is where the robot can *look*, so the tip is a gaze point 0.3 m in
 // front of the face (+x is forward in the R1 head frame). Arm behaviours use the wrist collider's far end.
 const GAZE_TIP = [0.3, 0, 0];
@@ -49,6 +53,8 @@ class Twin {
   constructor(canvas, opts) {
     this.canvas = canvas;
     this.base = opts.base ?? "twin/";
+    this.mode = opts.mode === "walk" ? "walk" : "stand";
+    this.walk = null; // walk mode: { rootPos, rootQuat, angles target, geometry key, ... }
     this.state = {};
     this.angles = null; // displayed (smoothed) angles
     this.target = null;
@@ -71,7 +77,7 @@ class Twin {
 
     const scene = (this.scene = new THREE.Scene());
     scene.background = new THREE.Color("#0b0f17");
-    scene.fog = new THREE.Fog("#0b0f17", 6, 14);
+    scene.fog = this.mode === "walk" ? new THREE.Fog("#0b0f17", 12, 34) : new THREE.Fog("#0b0f17", 6, 14);
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.02, 50);
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
@@ -84,11 +90,14 @@ class Twin {
     sun.shadow.mapSize.set(1024, 1024);
     Object.assign(sun.shadow.camera, { left: -1.5, right: 1.5, top: 2.5, bottom: -0.5, near: 0.5, far: 10 });
     scene.add(sun);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardNodeMaterial({ color: "#151c2b", roughness: 0.95 }));
+    scene.add(sun.target);
+    this.sun = sun;
+    const floorSize = this.mode === "walk" ? 80 : 30;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(floorSize, floorSize), new THREE.MeshStandardNodeMaterial({ color: "#151c2b", roughness: 0.95 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
-    const grid = new THREE.GridHelper(12, 48, "#2c3954", "#1d2638");
+    const grid = this.mode === "walk" ? new THREE.GridHelper(40, 80, "#2c3954", "#1d2638") : new THREE.GridHelper(12, 48, "#2c3954", "#1d2638");
     grid.position.y = 0.001;
     scene.add(grid);
 
@@ -117,7 +126,10 @@ class Twin {
 
     this.angles = this.joints.map((j) => j.defaultDeg);
     this._applyPose(this.robot, this.angles);
-    this.setCamera("iso");
+    if (this.mode === "walk") {
+      this.robot.bodies.get("pelvis")?.node.position.set(...WALK_IDLE_PELVIS);
+      this.setCamera("chase");
+    } else this.setCamera("iso");
 
     this._resize = new ResizeObserver(() => this._fit());
     this._resize.observe(this.canvas.parentElement ?? this.canvas);
@@ -208,6 +220,9 @@ class Twin {
   }
 
   _buildStand(stand) {
+    this.standGroup = new THREE.Group();
+    this.standGroup.visible = this.mode !== "walk";
+    this.zUp.add(this.standGroup);
     const mat = new THREE.MeshStandardNodeMaterial({ color: "#5b6273", metalness: 0.6, roughness: 0.4 });
     for (const s of stand) {
       let g = null;
@@ -220,7 +235,7 @@ class Twin {
       mesh.position.set(...s.pos);
       mesh.quaternion.set(...s.quat);
       mesh.castShadow = true;
-      this.zUp.add(mesh);
+      this.standGroup.add(mesh);
     }
   }
 
@@ -268,7 +283,9 @@ class Twin {
 
   _frame() {
     const dt = Math.min(0.1, this.clock.getDelta());
-    if (this.target) {
+    if (this.walk) {
+      this._walkFrame(dt);
+    } else if (this.target) {
       const k = 1 - Math.exp(-dt / 0.12); // poll is ~350 ms; ease so motion reads as continuous
       this.angles = this.angles.map((a, i) => (this.target[i] == null ? a : a + (this.target[i] - a) * k));
       this._applyPose(this.robot, this.angles);
@@ -280,6 +297,115 @@ class Twin {
       this.audio.setListener(this.camera.position, fwd, this.camera.up);
     }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // ------------------------------------------------------------------ walk mode (Level 2 sandbox)
+  _walkFrame(dt) {
+    const w = this.walk;
+    const k = 1 - Math.exp(-dt / 0.05); // state arrives at ~20 Hz; short ease hides the poll steps
+    if (w.target) {
+      this.angles = this.angles.map((a, i) => (w.target[i] == null ? a : a + (w.target[i] - a) * k));
+      this._applyPose(this.robot, this.angles);
+    }
+    const pelvis = this.robot.bodies.get("pelvis")?.node;
+    if (pelvis && w.rootPos) {
+      if (!w.shown) {
+        pelvis.position.copy(w.rootPos);
+        pelvis.quaternion.copy(w.rootQuat);
+        w.shown = true;
+      } else {
+        pelvis.position.lerp(w.rootPos, k);
+        pelvis.quaternion.slerp(w.rootQuat, k);
+      }
+      // follow camera: keep the user's orbit offset, move the target with the pelvis (in three.js y-up world)
+      const p = this.zUp.localToWorld(pelvis.position.clone());
+      p.y = Math.max(0.6, p.y - 0.1);
+      const delta = p.clone().sub(this.controls.target);
+      this.controls.target.add(delta);
+      this.camera.position.add(delta);
+      this.sun.position.set(p.x + 2.5, 4, p.z + 2);
+      this.sun.target.position.copy(p);
+    }
+    if (this.course) {
+      const t = performance.now() / 1000;
+      this.course.rings.forEach((r, i) => {
+        const next = i === w.nextIndex;
+        r.material.opacity = next ? 0.75 + 0.25 * Math.sin(t * 5) : i < w.nextIndex && w.running ? 0.25 : 0.45;
+        r.scale.setScalar(next ? 1 + 0.06 * Math.sin(t * 5) : 1);
+        r.userData.beacon.visible = next;
+      });
+    }
+  }
+
+  _buildCourse(geometry) {
+    if (this.course) {
+      this.zUp.remove(this.course.group);
+      this.course.group.traverse((o) => {
+        o.geometry?.dispose();
+        o.material?.dispose?.();
+      });
+      this.course = null;
+    }
+    if (!geometry) return;
+    const group = new THREE.Group();
+    for (const b of geometry.boxes ?? []) {
+      const [r, g, bl] = b.rgba ?? [0.4, 0.45, 0.55, 1];
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(2 * b.size[0], 2 * b.size[1], 2 * b.size[2]),
+        new THREE.MeshStandardNodeMaterial({ color: new THREE.Color(r, g, bl), roughness: 0.8, metalness: 0.1 })
+      );
+      mesh.position.set(...b.pos);
+      if (b.quat) mesh.quaternion.set(b.quat[1], b.quat[2], b.quat[3], b.quat[0]); // MuJoCo wxyz -> three xyzw
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.name = b.name ?? "box";
+      group.add(mesh);
+    }
+    const radius = geometry.checkpoint_radius ?? 0.5;
+    const rings = (geometry.checkpoints ?? []).map((c) => {
+      // torus lies in its local XY plane, which is the MuJoCo ground plane inside the z-up group
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(radius, 0.035, 8, 48),
+        new THREE.MeshBasicNodeMaterial({ color: "#6366f1", transparent: true, opacity: 0.45, depthWrite: false })
+      );
+      ring.position.set(c[0], c[1], (c[2] ?? 0) + 0.03);
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.02, 0.02, 1.6, 8).rotateX(Math.PI / 2),
+        new THREE.MeshBasicNodeMaterial({ color: "#ffe066", transparent: true, opacity: 0.8 })
+      );
+      beacon.position.set(c[0], c[1], (c[2] ?? 0) + 0.8);
+      beacon.visible = false;
+      ring.userData.beacon = beacon;
+      group.add(ring, beacon);
+      return ring;
+    });
+    this.zUp.add(group);
+    this.course = { group, rings };
+  }
+
+  /**
+   * Walk sandbox state from GET /walk/state: base {pos, quat (wxyz)}, q (26 rad, joint-map order), geometry,
+   * checkpoint {index, total}. Display only.
+   */
+  setWalk(state) {
+    if (this.mode !== "walk" || !state) return;
+    const w = (this.walk ??= { shown: false, nextIndex: -1, geoKey: null });
+    const geoKey = state.geometry ? JSON.stringify(state.geometry) : null;
+    if (geoKey !== w.geoKey) {
+      w.geoKey = geoKey;
+      this._buildCourse(state.geometry);
+    }
+    if (Array.isArray(state.q) && state.q.length >= this.joints.length) w.target = state.q.map((v) => v / fk.DEG);
+    if (state.base?.pos && state.base?.quat) {
+      const [qw, qx, qy, qz] = state.base.quat;
+      w.rootPos = new THREE.Vector3(...state.base.pos);
+      w.rootQuat = new THREE.Quaternion(qx, qy, qz, qw).normalize();
+    }
+    w.nextIndex = state.checkpoint ? state.checkpoint.index : -1;
+    w.running = !!state.running;
+  }
+
+  walkJson(json) {
+    this.setWalk(JSON.parse(json));
   }
 
   // ------------------------------------------------------------------ API used from Blazor

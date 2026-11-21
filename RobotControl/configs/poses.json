@@ -1,0 +1,13 @@
+{
+  "_comment": "Named upper-body poses (deg, joint-map names). Previewed on the simulated stand twin / Unreal only (POST /poses/preview). 'home' with no angles = the joint map's default pose for the waist, arms and head.",
+  "poses": [
+    {"name": "home", "label": "Home", "say": "Home pose, ready to preview.", "words": ["rest", "neutral", "default pose"], "q_deg": {}},
+    {"name": "look_left", "label": "Look left", "words": [], "q_deg": {"head_yaw_joint": 30.0, "head_pitch_joint": 0.0}},
+    {"name": "look_right", "label": "Look right", "words": [], "q_deg": {"head_yaw_joint": -30.0, "head_pitch_joint": 0.0}},
+    {"name": "look_up", "label": "Look up", "words": [], "q_deg": {"head_yaw_joint": 0.0, "head_pitch_joint": -15.0}},
+    {"name": "look_down", "label": "Look down", "words": [], "q_deg": {"head_yaw_joint": 0.0, "head_pitch_joint": 15.0}},
+    {"name": "arms_forward", "label": "Arms forward", "words": ["arms up", "reach forward"], "q_deg": {"left_shoulder_pitch_joint": -45.0, "right_shoulder_pitch_joint": -45.0, "left_elbow_joint": 30.0, "right_elbow_joint": 30.0}},
+    {"name": "arms_out", "label": "Arms out", "words": ["t pose", "arms wide"], "q_deg": {"left_shoulder_roll_joint": 70.0, "right_shoulder_roll_joint": -70.0, "left_elbow_joint": 10.0, "right_elbow_joint": 10.0}},
+    {"name": "wave_ready", "label": "Wave ready", "words": ["hand up"], "q_deg": {"right_shoulder_pitch_joint": -20.0, "right_shoulder_roll_joint": -60.0, "right_elbow_joint": 90.0}}
+  ]
+}

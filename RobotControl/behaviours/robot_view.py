@@ -20,6 +20,7 @@ CAMERA_PRESETS = {
     "side": (90.0, -10.0, 2.30),
     "back": (25.0, -14.0, 2.35),
 }
+HEAD_CAMERA = "head_rgbd"  # cam_name "head": what the R1 head camera would see on the twin
 
 
 def _rgb_to_png(rgb: np.ndarray) -> bytes:
@@ -86,8 +87,11 @@ class _GlRenderWorker:
                 if q_key:
                     d.qpos[qadr] = [math.radians(v) for v in q_key]
                 mujoco.mj_forward(m, d)
-                cam.distance, cam.azimuth, cam.elevation = dist, az, el
-                renderer.update_scene(d, camera=cam)
+                if az is None:  # the robot's own head camera (head_rgbd in the MJCF)
+                    renderer.update_scene(d, camera=HEAD_CAMERA)
+                else:
+                    cam.distance, cam.azimuth, cam.elevation = dist, az, el
+                    renderer.update_scene(d, camera=cam)
                 png = _rgb_to_png(renderer.render())
                 with self._cache_lock:
                     self._last_key = cache_key
@@ -127,6 +131,6 @@ class StandRenderer:
         self.height = height
 
     def render_png(self, q_deg: Optional[Sequence[float]] = None, cam_name: str = "iso") -> bytes:
-        az, el, dist = CAMERA_PRESETS.get(cam_name, CAMERA_PRESETS["iso"])
+        az, el, dist = (None, 0.0, 0.0) if cam_name == "head" else CAMERA_PRESETS.get(cam_name, CAMERA_PRESETS["iso"])
         q_key = tuple(round(float(v), 1) for v in q_deg) if q_deg and len(q_deg) == self.jm.num_joints else ()
         return _WORKER.render(q_key, az, el, dist)

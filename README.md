@@ -26,7 +26,7 @@ robotcontrol.main_runner --target sim | urlab | real     (identical code; only t
 |---|---|---|---|
 | 0 | Head yaw sweep, right arm raise/lower | 7 joints, 23-dim obs | hanging on the stand, legs passive, waist + left arm held at default |
 | 1 | Voice-triggered poses with spoken confirmation | arms, waist, head | standing (stand controller) |
-| 2 | Omnidirectional walking (Unitree mjlab velocity policy) | 24 joints, 83-dim obs | ground |
+| 2 | Omnidirectional walking (Unitree mjlab velocity policy) | 24 joints, 83-dim obs | ground; for now only in the simulated **walk sandbox** (`docs/level2_walk.md`) |
 | 3 | Camera-driven following | Level 2 + perception commands | ground |
 | 4 | Ball search, approach, align, kick, recover | walk + kick policies with alpha-blend | ground |
 
@@ -127,6 +127,41 @@ and it reclaims them when the client finishes. The follow camera frames the stan
 The control UI shows a live three.js / WebGPU twin with limit, error and temperature tints, a Rapier check of
 slider-preview poses, reach clouds and browser-side policy parity on `/diag`. Build its assets with
 `scriptsuild_web_twin.py --compress`; details and the library-by-library map are in `docs/web_twin.md`.
+
+## Voice, robustness explorer, walk sandbox
+
+Three features available in both the Blazor control UI and the Unreal twin panel, served by the behaviour service
+(`python -m robotcontrol.behaviours.service`; API contract `docs/service_api.md`):
+
+- **Voice commands** (`docs/voice.md`): speak a request and the panel answers out loud. Voice only *suggests* a
+  selection; the gates are unchanged.
+- **Robustness explorer** (`docs/robustness.md`): `python -m robotcontrol.tools.robustness_sweep [--quick]` runs the
+  deployed Level 0 policy on 91 perturbed twins (mass, friction, gains, latency, noise, torque limit).
+- **Walk sandbox** (`docs/level2_walk.md`): drive the R1 around a course with WASD, a gamepad or your voice. It runs
+  the Level 2 velocity policy in headless MuJoCo, and Unreal shows it in puppet mode. Simulation only: the robot
+  kit excludes it, and a policy loads only after `python -m robotcontrol.training.validate_level2 --promote` passed.
+
+## Operator console
+
+The Blazor UI opens on a short "What do you want to do?" chooser (try a motion on the twin, check the real robot, run on
+the real robot, walk). Running on the robot shows its four gates as a progress bar; expert tools stay behind the
+**Advanced** switch, and a header badge always says TWIN ONLY or REAL ROBOT CONNECTED.
+
+The behaviour service also provides 20 features modelled on the Unitree Explore app. The Blazor UI shows them on
+the **Motions**, **Health** and **Setup** pages, behind a **? Help** drawer and an **E-STOP** button (`Esc`) on
+every page. The Unreal panel has matching Health, Motions, Setup and Help tabs, with E-STOP on `End`.
+The contract is in `docs/service_api.md` sections 4-7 and the code is in `RobotControl/behaviours/console.py`.
+
+| Area | Features |
+|---|---|
+| Monitoring (read-only) | Health summary, alarm and fault log (CSV export), battery estimate, motor temperature trends, head camera (twin view), versions and policy gates, IMU check |
+| Control (simulation only) | Modes (damp / hold / zero torque), named poses, record and replay (teach mode), timeline editor, local motion store (checksummed import/export), session limits that can only tighten, touch thumbsticks for the walk sandbox |
+| Setup | Pre-flight checklist (an extra gate before any real-robot run), joint zero-offset wizard (stored, never applied), network and connection profiles |
+| Help | `docs/*.md` per page, and a local chat assistant with memory that answers status questions and stays suggest-only |
+
+Poses, motions and modes power several joints at once, so they run only on the simulated stand twin (practice,
+headless or mirrored onto Unreal); the service refuses target `real`. The operator's motions, profiles and offsets
+live in the git-ignored `RobotControl/user_data/`.
 
 ## Real robot (Level 0 on the stand)
 

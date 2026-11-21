@@ -20,6 +20,8 @@ def svc(monkeypatch):
         s.job = job
 
     monkeypatch.setattr(s, "_start", fake_start)
+    # the pre-flight checklist gate has its own tests (test_console.py); these tests cover the older gates
+    monkeypatch.setattr(s.console, "preflight_why_not", lambda: None)
     s.started = started
     return s
 
@@ -285,7 +287,9 @@ def test_offline_practice_mode_runs_all_workflow_steps(svc):
 
     # Practice monitor streams live simulated state and stops cleanly
     assert svc.monitor(practice=True) == {"ok": True}
-    time.sleep(0.25)
+    deadline = time.time() + 5.0  # the first MuJoCo load in a cold process takes ~0.5 s
+    while svc.mirror_samples < 1 and time.time() < deadline:
+        time.sleep(0.05)
     assert svc.stop() == {"ok": True}
     deadline = time.time() + 3.0
     while svc.status()["job"] is not None and time.time() < deadline:

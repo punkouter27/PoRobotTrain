@@ -1,0 +1,146 @@
+@using System.Text.Json
+@using PoRobotTrain.Client.Features.Dashboard.Twin
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Mic button + spoken replies (wwwroot/js/twin/voice.js). Web Speech API when the browser has it, else Whisper tiny.en
+   locally through Transformers.js. It only produces text; the parent decides what the text may do. *@
+<div class="voice">
+    <button type="button" class="po-chip voice-mic @(Listening ? "voice-mic--on" : string.Empty)"
+            disabled="@(Disabled || _engine == "none")" aria-pressed="@Listening"
+            title="@(_engine == "none" ? "No speech input in this browser" : Listening ? "Stop listening" : $"Speak a command ({EngineLabel})")"
+            @onclick="ToggleAsync">
+        <span class="voice-dot" aria-hidden="true"></span>@(Listening ? "Listening…" : _state == "transcribing" ? "Transcribing…" : _state == "loading" ? "Loading…" : "Speak")
+    </button>
+    <button type="button" class="po-chip @(_muted ? string.Empty : "active")" aria-pressed="@(!_muted)"
+            disabled="@(!_synthesis)" title="@(_synthesis ? "Spoken replies on/off" : "No speech synthesis in this browser")" @onclick="ToggleMuteAsync">
+        @(_muted ? "Replies muted" : "Replies on")
+    </button>
+    <span class="voice-status @(_state == "error" ? "warn" : string.Empty)" aria-live="polite">@StatusText</span>
+</div>
+
+@code {
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>What voice does on this page (shown while idle).</summary>
+    [Parameter] public string IdleHint { get; set; } = "Voice only selects; it never starts a run.";
+    /// <summary>Running transcript while speaking (Web Speech API only).</summary>
+    [Parameter] public EventCallback<string> OnPartial { get; set; }
+    /// <summary>Final recognised utterance.</summary>
+    [Parameter] public EventCallback<string> OnFinal { get; set; }
+
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<VoiceInput>? _self;
+    private string _engine = "webspeech";
+    private bool _synthesis = true;
+    private bool _muted;
+    private string _state = "idle";
+    private string? _detail;
+
+    private bool Listening => _state == "listening";
+    private string EngineLabel => _engine == "whisper" ? "Whisper, local" : "Web Speech API";
+
+    private string StatusText => _state switch
+    {
+        "listening" or "loading" or "transcribing" => _detail ?? string.Empty,
+        "error" => _detail ?? "Voice error.",
+        _ => _engine == "none" ? "No speech input in this browser." : $"Voice: {EngineLabel}. {IdleHint}",
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/twin/voice.js");
+            _engine = await _module.InvokeAsync<string>("engine", false);
+            var a = JsonSerializer.Deserialize(await _module.InvokeAsync<string>("availabilityJson"), TwinInteropJsonContext.Default.VoiceAvailability);
+            _synthesis = a?.Synthesis ?? false;
+            StateHasChanged();
+        }
+        catch (JSException ex)
+        {
+            _engine = "none";
+            _state = "error";
+            _detail = ex.Message.Split('\n')[0];
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (_module is null)
+        {
+            return;
+        }
+        if (Listening)
+        {
+            await _module.InvokeVoidAsync("stopListening");
+            return;
+        }
+        _self ??= DotNetObjectReference.Create(this);
+        _engine = await _module.InvokeAsync<string>("startListening", _self, false);
+    }
+
+    private async Task ToggleMuteAsync()
+    {
+        if (_module is not null)
+        {
+            _muted = await _module.InvokeAsync<bool>("setMuted", !_muted);
+        }
+    }
+
+    /// <summary>Speak a reply (no-op when muted or unsupported).</summary>
+    public async Task SpeakAsync(string? text)
+    {
+        if (_module is not null && !string.IsNullOrWhiteSpace(text))
+        {
+            await _module.InvokeAsync<bool>("speak", text);
+        }
+    }
+
+    [JSInvokable]
+    public Task OnVoiceState(string state, string? detail)
+    {
+        _state = state;
+        _detail = string.IsNullOrEmpty(detail) ? null : detail;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnVoicePartial(string text)
+    {
+        if (OnPartial.HasDelegate)
+        {
+            await OnPartial.InvokeAsync(text);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnVoiceFinal(string text)
+    {
+        if (OnFinal.HasDelegate)
+        {
+            await OnFinal.InvokeAsync(text);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("stopListening");
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+        _self?.Dispose();
+    }
+}

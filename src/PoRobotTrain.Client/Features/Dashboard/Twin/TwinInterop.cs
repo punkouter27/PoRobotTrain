@@ -54,7 +54,12 @@ public sealed record AssistantSuggestion(
     double? Deg,
     double? Score,
     bool Blocked,
-    string? Note);
+    string? Note,
+    string? Say = null,
+    AssistantWalk? Walk = null);
+
+/// <summary>Walk sandbox intent (docs/service_api.md §1): a velocity command or stop.</summary>
+public sealed record AssistantWalk(double? Vx, double? Vy, double? Wz, bool? Stop);
 
 public sealed record AssistantBehaviour(string Id, string Label, string Desc, double MaxDeg);
 
@@ -65,7 +70,13 @@ public sealed record AssistantRequest(
     IReadOnlyList<AssistantBehaviour> Behaviours,
     IReadOnlyList<AssistantJoint> Joints,
     IReadOnlyList<double> Sizes,
-    bool ArmUnlocked);
+    bool ArmUnlocked,
+    bool WalkActive = false);
+
+public sealed record VoiceAvailability(bool Recognition, bool Synthesis, bool Recorder);
+
+/// <summary>What wwwroot/js/twin/walk.js is currently sending (walk sandbox HUD).</summary>
+public sealed record WalkDriveInput(double Vx, double Vy, double Wz, string Source, string? Gamepad);
 
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
@@ -78,4 +89,7 @@ public sealed record AssistantRequest(
 [JsonSerializable(typeof(TwinProbeRow))]
 [JsonSerializable(typeof(AssistantSuggestion))]
 [JsonSerializable(typeof(AssistantRequest))]
+[JsonSerializable(typeof(VoiceAvailability))]
+[JsonSerializable(typeof(WalkDriveInput))]
+[JsonSerializable(typeof(AssistantWalk))]
 internal sealed partial class TwinInteropJsonContext : JsonSerializerContext;

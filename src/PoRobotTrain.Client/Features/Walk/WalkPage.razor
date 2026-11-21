@@ -1,0 +1,347 @@
+@page "/walk"
+@using System.Globalization
+@using System.Text.Json
+@using PoRobotTrain.Client.Features.Dashboard.Twin
+@implements IAsyncDisposable
+@inject RobotApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Walk sandbox — PoRobotTrain</PageTitle>
+
+@* Level 2 walk sandbox (idea #20, docs/service_api.md §3). Simulation only: the service steps a headless MuJoCo
+   ground scene with the validated Level 2 velocity policy; this page sends velocity commands and draws the state.
+   Nothing here can reach the real robot. *@
+<div class="walk-grid">
+    <section class="po-card walk-controls">
+        <div class="ctrl-top">
+            <div>
+                <h1 class="dash-h1">LEVEL 2 WALK SANDBOX</h1>
+                <span class="po-muted">Simulation only · headless MuJoCo · 5 ms physics, 50 Hz policy</span>
+            </div>
+            <span class="po-pill @StatePillClass">@StatePill</span>
+        </div>
+
+        @if (_state is { PolicyAvailable: false } && !(_state.Running && _state.Mode == "hold"))
+        {
+            <div class="walk-note walk-note--warn" role="status">
+                <b>No validated Level 2 policy yet.</b>
+                <span>@(_state.PolicyReason ?? "The sandbox loads a policy only after validate_level2.py passed.")</span>
+                <span>Hold mode still works: it stands the robot on the course, held by a virtual harness, with every joint at its default pose.</span>
+            </div>
+        }
+        @if (_state is { Running: true, Mode: "hold" })
+        {
+            <div class="walk-note" role="status"><b>Hold pose: no walking policy (held by a virtual harness).</b> Velocity commands are ignored.</div>
+        }
+
+        <div class="ctrl-row">
+            <span class="ctrl-label">Mode</span>
+            <div class="size-row">
+                <button type="button" class="po-chip @(_mode == "policy" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_mode == "policy")" @onclick='() => _mode = "policy"'>Walking policy</button>
+                <button type="button" class="po-chip @(_mode == "hold" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_mode == "hold")" @onclick='() => _mode = "hold"'>Hold pose (test)</button>
+            </div>
+        </div>
+        <div class="ctrl-row">
+            <span class="ctrl-label">Course</span>
+            <div class="size-row">
+                <button type="button" class="po-chip @(_course == "loop" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_course == "loop")" @onclick='() => _course = "loop"'>Loop (checkpoints + obstacles)</button>
+                <button type="button" class="po-chip @(_course == "flat" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_course == "flat")" @onclick='() => _course = "flat"'>Flat</button>
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button type="button" class="po-btn po-btn--blue" style="flex:1" disabled="@(!_online || Running || _busy || (_mode == "policy" && _state is { PolicyAvailable: false }))" @onclick="StartAsync">
+                @(_mode == "hold" ? "Start (hold pose)" : "Start walking sandbox")
+            </button>
+            <button type="button" class="po-btn" disabled="@(!Running || _busy)" @onclick="ResetAsync">Reset</button>
+            <button type="button" class="po-btn po-btn--danger" disabled="@(!Running || _busy)" @onclick="StopAsync">Stop</button>
+        </div>
+
+        <div class="sub-section sub-section--virtual">
+            <div class="sec-hdr">
+                <span class="sub-title sub-title--virtual">DRIVE</span>
+                <span class="po-pill @(DriveEnabled ? "po-pill--blue" : string.Empty)">@(DriveEnabled ? "ACTIVE" : "LOCKED")</span>
+            </div>
+            @if (!DriveEnabled)
+            {
+                <div class="why">@(Running ? "Hold pose doesn't walk: stop it and start the walking policy to drive." : "Driving unlocks once the walking sandbox is started (Start above).")</div>
+            }
+            <div class="walk-pad" role="group" aria-label="On-screen drive pad (hold a button)">
+                @foreach (var (dir, label, title) in Pad)
+                {
+                    if (dir is null)
+                    {
+                        <span></span>
+                        continue;
+                    }
+                    <button type="button" class="po-chip walk-pad__btn" disabled="@(!DriveEnabled)" title="@title" aria-label="@title"
+                            @onpointerdown="() => PadAsync(dir, true)" @onpointerup="() => PadAsync(dir, false)"
+                            @onpointerleave="() => PadAsync(dir, false)" @onpointercancel="() => PadAsync(dir, false)">@label</button>
+                }
+            </div>
+            <div class="sticks" aria-label="On-screen thumbsticks: drag to drive, release to stop">
+                <div class="stick @(DriveEnabled ? string.Empty : "off")" @ref="_stickL" role="application" aria-label="Left stick: walk and sidestep">
+                    <div class="stick__knob"></div><span class="stick__lbl">walk</span>
+                </div>
+                <div class="stick @(DriveEnabled ? string.Empty : "off")" @ref="_stickR" role="application" aria-label="Right stick: turn">
+                    <div class="stick__knob"></div><span class="stick__lbl">turn</span>
+                </div>
+            </div>
+            <div class="po-muted">
+                Keys: <kbd>W</kbd>/<kbd>S</kbd> or <kbd>↑</kbd>/<kbd>↓</kbd> forward/back · <kbd>A</kbd>/<kbd>D</kbd> sidestep ·
+                <kbd>Q</kbd>/<kbd>E</kbd> or <kbd>←</kbd>/<kbd>→</kbd> turn · hold <kbd>Shift</kbd> for full speed.
+                Gamepad: left stick walks, right stick turns.
+            </div>
+            <div class="po-muted">Gamepad: @(_input?.Gamepad ?? "none connected (press a button to wake it)")</div>
+            <div class="walk-cmdline">
+                Sending <b>@Fmt(_input?.Vx) m/s</b> · <b>@Fmt(_input?.Vy) m/s</b> · <b>@Fmt(_input?.Wz) rad/s</b>
+                <span class="po-muted">(@(_input?.Source ?? "none"))</span>
+            </div>
+            <div class="po-muted">Release everything and the command returns to zero. The service also zeroes it 0.5 s after the last command.</div>
+        </div>
+
+        <div class="ctrl-row">
+            <span class="ctrl-label">Voice</span>
+            <VoiceInput @ref="_voice" Disabled="@(!DriveEnabled)" OnPartial="t => _heard = t" OnFinal="OnVoiceAsync"
+                        IdleHint="Say: walk forward, turn left, faster, stop. A spoken command is held until stop or a key." />
+            @if (!string.IsNullOrEmpty(_heard))
+            {
+                <div class="assist-out"><span>Heard "@_heard"@(_voiceNote is null ? string.Empty : $" → {_voiceNote}")</span></div>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_toast))
+        {
+            <div class="po-toast">@_toast</div>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="status-msg bad">@_error</div>
+        }
+        <div class="po-muted">Walking never targets the real robot: the sandbox has no real backend, and the robot kit does not ship Level 2.</div>
+    </section>
+
+    <section class="po-card walk-stage-card">
+        <div class="walk-stage">
+            <canvas @ref="_canvas" class="twin-canvas" aria-label="3D walk sandbox: the R1 on the course"></canvas>
+            @if (_twinError is not null)
+            {
+                <div class="twin-note">3D view unavailable (@_twinError). The HUD and the drive controls still work.</div>
+            }
+            <div class="walk-hud" aria-live="off">
+                <div class="walk-hud__row"><span>Mode</span><b>@ModeText</b></div>
+                <div class="walk-hud__row"><span>Command</span><b>@Fmt(Cmd(0)) · @Fmt(Cmd(1)) · @Fmt(Cmd(2))</b></div>
+                <div class="walk-hud__row"><span>Speed</span><b>@SpeedText</b></div>
+                <div class="walk-hud__row"><span>Checkpoint</span><b>@CheckpointText</b></div>
+                <div class="walk-hud__row"><span>Lap</span><b>@LapText(_state?.Lap?.CurrentS)</b></div>
+                <div class="walk-hud__row"><span>Last / best</span><b>@LapText(_state?.Lap?.LastS) / @LapText(_state?.Lap?.BestS)</b></div>
+                <div class="walk-hud__row"><span>Laps · falls</span><b>@(_state?.Lap?.Laps ?? 0) · @(_state?.Falls ?? 0)</b></div>
+                <div class="walk-hud__row"><span>Unreal twin</span><b>@(_state?.Puppet?.Connected == true ? "receiving poses" : "not connected")</b></div>
+                <div class="walk-hud__row"><span>Sim time</span><b>@(_state?.T is double t ? $"{t:0.0} s" : "—")</b></div>
+            </div>
+            @if (_state?.Fallen == true)
+            {
+                <div class="walk-banner" role="alert">Fell: resetting at the start</div>
+            }
+        </div>
+        <div class="twin-legend">
+            <span><i style="background:#6366f1"></i>checkpoint</span>
+            <span><i style="background:#ffe066"></i>next checkpoint</span>
+            <span><i style="background:#66738c"></i>obstacle</span>
+        </div>
+    </section>
+</div>
+
+@code {
+    private static readonly (string? Dir, string Label, string Title)[] Pad =
+    [
+        ("wz+", "⟲", "Turn left (hold)"), ("vx+", "▲", "Forward (hold)"), ("wz-", "⟳", "Turn right (hold)"),
+        ("vy+", "◀", "Sidestep left (hold)"), ("vx-", "▼", "Back (hold)"), ("vy-", "▶", "Sidestep right (hold)"),
+    ];
+
+    private ElementReference _canvas;
+    private IJSObjectReference? _module;
+    private ElementReference _stickL, _stickR;
+    private IJSObjectReference? _driver;
+    private IJSObjectReference? _assistant;
+    private DotNetObjectReference<WalkPage>? _self;
+    private VoiceInput? _voice;
+    private WalkStateDto? _state;
+    private WalkDriveInput? _input;
+    private bool _online;
+    private bool _busy;
+    private bool _driveEnabled;
+    private string _mode = "policy";
+    private string _course = "loop";
+    private string? _toast;
+    private string? _error;
+    private string? _twinError;
+    private string? _heard;
+    private string? _voiceNote;
+
+    private bool Running => _state?.Running ?? false;
+    private bool DriveEnabled => Running && _state?.Mode != "hold";
+
+    private string StatePill => !_online ? "OFFLINE"
+        : Running ? (_state!.Mode == "hold" ? "HOLD POSE" : "WALKING")
+        : _state is { PolicyAvailable: false } ? "NO POLICY" : "IDLE";
+
+    private string StatePillClass => !_online ? "po-pill--bad" : Running ? "po-pill--ok" : string.Empty;
+
+    private string ModeText => _state is null ? "—"
+        : !Running ? "stopped"
+        : _state.Mode == "hold" ? "Hold pose: no walking policy (held by a virtual harness)"
+        : $"policy · {_state.Course ?? _course}";
+
+    private double? Cmd(int i) => _state?.Cmd is { Length: 3 } c ? c[i] : null;
+
+    private string SpeedText => _state?.Base?.LinVel is { Length: >= 2 } v
+        ? $"{Math.Sqrt(v[0] * v[0] + v[1] * v[1]):0.00} m/s"
+        : "—";
+
+    private string CheckpointText => _state?.Checkpoint is { } c && c.Total > 0 ? $"{Math.Min(c.Index + 1, c.Total)} / {c.Total}" : "—";
+
+    private static string LapText(double? s) => s is double v ? TimeSpan.FromSeconds(v).ToString(v >= 60 ? @"m\:ss\.f" : @"s\.f", CultureInfo.InvariantCulture) + " s" : "—";
+
+    private static string Fmt(double? v) => v is double d ? d.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture) : "—";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/twin/walk.js");
+            _driver = await _module.InvokeAsync<IJSObjectReference>("createDriver", _canvas, _self);
+            await _driver.InvokeVoidAsync("attachSticks", _stickL, _stickR);
+            var twinErr = await _driver.InvokeAsync<string>("twinStatus");
+            _twinError = string.IsNullOrEmpty(twinErr) ? null : twinErr;
+        }
+        catch (JSException ex)
+        {
+            _twinError = ex.Message.Split('\n')[0];
+            // without the JS driver there is no polling; fall back to one C# read so the page still says why
+            var (state, err) = await Api.GetWalkStateAsync();
+            _state = state;
+            _online = state is not null;
+            _error = err;
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnWalkFrame(string stateJson, string inputJson, string error)
+    {
+        _state = string.IsNullOrEmpty(stateJson) ? null : JsonSerializer.Deserialize(stateJson, RobotJsonContext.Default.WalkStateDto);
+        _input = JsonSerializer.Deserialize(inputJson, TwinInteropJsonContext.Default.WalkDriveInput);
+        _online = _state is not null;
+        _error = string.IsNullOrEmpty(error) ? null : error;
+        if (_driver is not null && DriveEnabled != _driveEnabled)
+        {
+            _driveEnabled = DriveEnabled;
+            await _driver.InvokeVoidAsync("setDriveEnabled", _driveEnabled);
+        }
+        StateHasChanged();
+    }
+
+    private async Task StartAsync()
+    {
+        _busy = true;
+        try
+        {
+            var res = await Api.WalkStartAsync(new WalkStartRequest(_course, _mode));
+            _toast = res.Ok
+                ? (_mode == "hold" ? "Started hold pose on the course (no walking policy)." : $"Walking sandbox started on the {_course} course. Drive with WASD, the pad, a gamepad or voice.")
+                : res.PolicyReason is { } why ? $"{res.Error}: {why}" : res.Error;
+            await RefreshAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        var res = await Api.WalkResetAsync();
+        _toast = res.Ok ? "Reset to the start; lap timer cleared." : res.Error;
+        await RefreshAsync();
+    }
+
+    private async Task StopAsync()
+    {
+        _busy = true;
+        try
+        {
+            var res = await Api.WalkStopAsync();
+            _toast = res.Ok ? "Sandbox stopped." : res.Error;
+            await RefreshAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_driver is not null)
+        {
+            await _driver.InvokeVoidAsync("refresh");
+        }
+    }
+
+    private async Task PadAsync(string dir, bool down)
+    {
+        if (_driver is not null)
+        {
+            await _driver.InvokeVoidAsync("setPad", dir, down);
+        }
+    }
+
+    // Voice in the sandbox: walk phrases set (and hold) the velocity command; anything else gets a hint.
+    private async Task OnVoiceAsync(string text)
+    {
+        _heard = text;
+        _assistant ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/twin/assistant.js");
+        var json = await _assistant.InvokeAsync<string>("interpretWalkJson", text);
+        var s = JsonSerializer.Deserialize(json, TwinInteropJsonContext.Default.AssistantSuggestion);
+        _voiceNote = s?.Note;
+        if (s is { Kind: "walk", Walk: { } w } && _driver is not null)
+        {
+            await _driver.InvokeVoidAsync("setVoice", JsonSerializer.Serialize(w, TwinInteropJsonContext.Default.AssistantWalk));
+        }
+        if (_voice is not null)
+        {
+            await _voice.SpeakAsync(s?.Say);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_driver is not null)
+            {
+                await _driver.InvokeVoidAsync("dispose");
+                await _driver.DisposeAsync();
+            }
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+            if (_assistant is not null)
+            {
+                await _assistant.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+        _self?.Dispose();
+    }
+}

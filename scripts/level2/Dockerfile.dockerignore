@@ -1,0 +1,10 @@
+# Build context is the repo root; send only what the trainer image needs.
+*
+!external/unitree_rl_mjlab/
+external/unitree_rl_mjlab/.git
+external/unitree_rl_mjlab/logs
+external/unitree_rl_mjlab/deploy
+external/unitree_rl_mjlab/simulate
+external/unitree_rl_mjlab/doc
+!scripts/level2/export_level2.py
+!scripts/level2/train_entry.sh

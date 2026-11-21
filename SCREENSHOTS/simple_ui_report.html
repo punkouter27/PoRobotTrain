@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simplified UI Report</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--ok:#1f8a4c;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038;--ok:#52d984;--bad:#ff7b72}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.row{grid-template-columns:1fr}}
+.narrow{max-width:460px} table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-top:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+</style>
+</head>
+<body>
+<main>
+<h1>Blazor control UI: simplified for new users</h1>
+<p>2026-11-21 · Release build on port 5081 against the behaviour service on 8767, no physical robot. Captured with headless Chrome through the DevTools protocol. Ten simplifications; the safety gates are unchanged (preview, read-only check, pre-flight, confirmation). The Unreal panel was not changed by this pass.</p>
+
+<table>
+<tr><th>#</th><th>Change</th><th>Where</th></tr>
+<tr><td>1</td><td>"What do you want to do?" chooser; each task shows only what it needs</td><td>Control</td></tr>
+<tr><td>2</td><td>Four-step real-robot progress bar with the missing step and a button for it</td><td>Control → Run on the real robot</td></tr>
+<tr><td>3</td><td>One name per target: <b>Twin</b> (engine: Built-in / Unreal) and <b>Real robot</b>; blue = twin, orange = real</td><td>everywhere</td></tr>
+<tr><td>4</td><td>Advanced switch hides modes, limits, calibration, network, versions, the 26-joint list, history heatmap and raw log</td><td>header</td></tr>
+<tr><td>5</td><td>Nav cut to Control · Motions · Walk · Health · Setup (+ Help); Robustness and Diagnostics linked from Health, OpenAPI in Help</td><td>header</td></tr>
+<tr><td>6</td><td>Health opens with a one-sentence verdict; the probe table is behind Show details; optional checks read "not in use" in grey</td><td>Health</td></tr>
+<tr><td>7</td><td>Ask box with example chips on every page (Control keeps the full assistant with voice); "Is the robot ready?" gets a direct answer</td><td>all pages</td></tr>
+<tr><td>8</td><td>A one-line reason under disabled controls (arm lock, busy, store offsets, mode off, walk lock, run step)</td><td>Control, Motions, Setup, Walk</td></tr>
+<tr><td>9</td><td>Motions: library cards with ▶ Play on twin first, then quick poses; recording moved into the editor; modes and limits under Advanced</td><td>Motions</td></tr>
+<tr><td>10</td><td>First-run 4-step tour (reopen from Help) and a header badge: TWIN ONLY / REAL ROBOT CONNECTED / SERVICE OFFLINE</td><td>header</td></tr>
+</table>
+
+<h2>Before</h2>
+<div class="row">
+<figure><img src="console_after_control_1600x900.png" alt="Control before simplification: many panels at once"><figcaption>Control before: behaviours, sweep, assistant, steps 1-3, practice tools, 26 sliders and the twin all at once.</figcaption></figure>
+<figure><img src="console_after_health_full_1600.png" alt="Health before: probe table first"><figcaption>Health before: 15-row probe table first, amber OFF for optional checks.</figcaption></figure>
+</div>
+<figure><img src="console_after_motions_full_1600.png" alt="Motions before: poses, teach mode, modes, limits, library, editor"><figcaption>Motions before: every tool on one page.</figcaption></figure>
+
+<h2>After</h2>
+<div class="row">
+<figure><img src="simple_after_tour_1600x900.png" alt="First-run tour step 1"><figcaption>#10 first-run tour (step 1 of 4). E-STOP stays reachable above it.</figcaption></figure>
+<figure><img src="simple_after_home_1600x900.png" alt="Task chooser with four cards"><figcaption>#1 task chooser; #5 five-item nav; #10 TWIN ONLY badge; #4 Advanced switch.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="simple_after_try_1600x900.png" alt="Try a motion on the twin"><figcaption>Try a motion: assistant with example chips (#7), the arm-lock reason (#8), one "Run on the twin" button with the engine choice (#3); the joint list is folded away (#4).</figcaption></figure>
+<figure><img src="simple_after_run_stepper_1600x900.png" alt="Run on the real robot with the four-step progress bar"><figcaption>#2 the four steps: step 1 done, step 2 offers "Run check", step 3 not needed on the twin, step 4 says why it is locked.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="simple_after_health_1600x900.png" alt="Health with a one-sentence verdict"><figcaption>#6 Health verdict in one sentence; details on request; Robustness and Diagnostics linked here.</figcaption></figure>
+<figure><img src="simple_after_ask_1600x900.png" alt="Motions page with library cards and the ask bar answer"><figcaption>#9 Motions library cards first, quick poses below; #7 the ask bar answered "Is the robot ready?".</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="simple_after_setup_1600x900.png" alt="Setup with checklist and maintenance tools hidden"><figcaption>Setup: the checklist only; calibration and network wait behind Advanced.</figcaption></figure>
+<figure><img src="simple_after_motions_advanced_1600.png" alt="Motions with Advanced on: modes and limits"><figcaption>Advanced on: modes and session limits appear, with reasons under disabled buttons.</figcaption></figure>
+</div>
+<div class="row">
+<figure class="narrow"><img src="simple_after_home_450x800.png" alt="Task chooser at 450 by 800"><figcaption>450×800: badge, Advanced and E-STOP on one row, five nav items, stacked task cards.</figcaption></figure>
+<figure class="narrow"><img src="simple_after_run_stepper_450x800.png" alt="Run steps at 450 by 800"><figcaption>450×800 run steps.</figcaption></figure>
+</div>
+
+<h2>Checks</h2>
+<table>
+<tr><td><code>pytest</code> (incl. new tests for the pre-flight summary and the "ready" answer)</td><td class="ok">passed</td></tr>
+<tr><td><code>dotnet test</code> Integration / Unit</td><td class="ok">27 / 12 passed</td></tr>
+<tr><td><code>ruff check</code> / <code>ruff format --check</code></td><td class="bad">not run (ruff not installed)</td></tr>
+</table>
+<h2>Not verified</h2>
+<ul>
+<li>No physical robot: the REAL ROBOT CONNECTED badge and the real-robot wording of the steps were not seen live.</li>
+<li>Pointer drags, voice input and keyboard shortcuts were not driven; clicks were scripted.</li>
+<li>The Unreal panel keeps its previous layout (this pass changed the Blazor UI only).</li>
+</ul>
+</main>
+</body>
+</html>

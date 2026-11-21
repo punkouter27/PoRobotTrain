@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PoRobotTrain Feature Ideas</title>
+<meta name="description" content="20 feature upgrades for PoRobotTrain, ranked by value vs. effort.">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0f17;
+    --surface: #121826;
+    --surface-2: #182033;
+    --line: #243049;
+    --text: #e6e9f2;
+    --muted: #9aa3b5;
+    --accent: #6366f1;
+    --accent-soft: rgba(99, 102, 241, .14);
+    --grid: #1f2840;
+    --axis: #3a4560;
+    /* categorical slots 1-3, validated all-pairs on #121826 (dark) */
+    --cat-play: #3987e5;
+    --cat-build: #d95926;
+    --cat-level: #199e70;
+    --good: #0ca30c;
+    --warn: #fab219;
+    --radius: 10px;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text); line-height: 1.5; font-size: 15px; }
+  a { color: #a5a8f8; }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .86em;
+         background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: #cfd4e6; }
+
+  .bar { position: sticky; top: 0; z-index: 10; height: 44px; display: flex; align-items: center;
+         justify-content: space-between; padding: 0 16px; background: var(--surface);
+         border-bottom: 1px solid var(--line); }
+  .bar__title { font-weight: 650; letter-spacing: .01em; }
+  .bar__nav { display: flex; gap: 16px; font-size: 14px; }
+  .bar__nav a { color: var(--muted); text-decoration: none; }
+  .bar__nav a:hover { color: var(--text); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 48px; }
+  h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -.01em; }
+  h2 { font-size: 20px; margin: 44px 0 6px; }
+  .lede { color: var(--muted); max-width: 760px; margin: 0; font-size: 16px; }
+  .section-note { color: var(--muted); margin: 0 0 16px; max-width: 800px; }
+
+  .safety { margin: 22px 0 0; padding: 12px 14px; border: 1px solid #2f3b58; border-left: 3px solid var(--warn);
+            background: var(--surface); border-radius: var(--radius); font-size: 14px; color: #d4d8e4; }
+  .safety strong { color: var(--text); }
+
+  /* start-here strip */
+  .picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .pick { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .pick__k { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .pick__t { font-weight: 650; margin: 4px 0 4px; }
+  .pick p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  /* chart */
+  .viz { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; position: relative; }
+  .viz__head { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .viz__title { font-weight: 650; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend svg { flex: none; }
+  #chart { width: 100%; height: auto; display: block; }
+  #chart text { font-family: inherit; }
+  .dot { cursor: pointer; }
+  .dot .mark { stroke: var(--surface); stroke-width: 2; transition: opacity .15s; }
+  .dot text { fill: #fff; font-size: 12px; font-weight: 700; pointer-events: none; }
+  .dot:hover .mark, .dot:focus .mark { stroke: var(--text); }
+  .dot.dim { opacity: .18; }
+  .dot:focus { outline: none; }
+  .tip { position: absolute; pointer-events: none; background: #0e1320; border: 1px solid var(--axis);
+         border-radius: 8px; padding: 8px 10px; font-size: 13px; max-width: 260px; opacity: 0;
+         transition: opacity .1s; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+  .tip.on { opacity: 1; }
+  .tip b { display: block; margin-bottom: 2px; }
+  .tip span { color: var(--muted); }
+
+  /* filters */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+  .chip { font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line);
+          border-radius: 999px; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; }
+  .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .chip:focus-visible, .dot:focus-visible .mark { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 16px 14px;
+          display: flex; flex-direction: column; gap: 10px; scroll-margin-top: 60px; }
+  .card.flash { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .card[hidden] { display: none; }
+  .card__top { display: flex; gap: 12px; align-items: flex-start; }
+  .rank { flex: none; width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center;
+          font-weight: 750; font-size: 15px; background: var(--surface-2); border: 1px solid var(--line); }
+  .card h3 { margin: 0; font-size: 17px; line-height: 1.3; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 12px; }
+  .tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2);
+         color: #cfd4e6; border: 1px solid var(--line); }
+  .tag i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .pitch { margin: 0; color: #d4d8e4; }
+  .card dl { margin: 0; display: grid; gap: 8px; font-size: 14px; }
+  .card dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .card dd { margin: 2px 0 0; color: #cfd4e6; }
+  .meters { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: auto;
+            padding-top: 10px; border-top: 1px solid var(--line); }
+  .meter { display: inline-flex; align-items: center; gap: 6px; }
+  .pips { display: inline-flex; gap: 3px; }
+  .pips b { width: 10px; height: 6px; border-radius: 2px; background: var(--grid); display: block; }
+  .pips.v b.on { background: var(--accent); }
+  .pips.e b.on { background: #9aa3b5; }
+  .score { margin-left: auto; color: var(--text); font-weight: 650; }
+
+  /* table */
+  .tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 640px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  .foundation { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .foundation p { margin: 0 0 8px; color: #d4d8e4; }
+  .foundation p:last-child { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .foot { height: 20px; display: flex; justify-content: flex-end; align-items: center; padding: 0 16px;
+          font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: var(--surface); }
+
+  @media (max-width: 520px) {
+    .cards { grid-template-columns: 1fr; }
+    .bar__nav { gap: 12px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<header class="bar">
+  <span class="bar__title">PoRobotTrain</span>
+  <nav class="bar__nav" aria-label="Page">
+    <a href="#matrix">Matrix</a>
+    <a href="#ideas">Ideas</a>
+    <a href="#table">Table</a>
+  </nav>
+</header>
+
+<main>
+  <h1>20 feature ideas, ranked by value vs. effort</h1>
+  <p class="lede">Upgrades that make the R1 twin more fun to play with, more useful to build with, and that push it toward
+  Levels 1–4. Each one builds on code already in the repo: the browser twin, the Unreal twin, the behaviour runner,
+  the showcase site and <code>/diag</code>. Each card names the free libraries, assets or external APIs it would use.</p>
+
+  <div class="safety"><strong>Safety rule for every idea:</strong> new input methods (gamepad, webcam, voice, music,
+  LLM) drive the <em>virtual</em> twin or produce a <em>suggestion</em>. Anything that reaches the real R1 becomes a
+  normal behaviour. It powers only the joints it names and goes through sim → urlab → real read-only → real
+  <code>--go</code> with the existing confirm dialog. The remote (L2+B) stays the emergency stop.</div>
+
+  <h2>Start here</h2>
+  <p class="section-note">Ranking by score alone favours small polish items. These five give the best mix of fun and usefulness for the work involved.</p>
+  <div class="picks">
+    <div class="pick"><div class="pick__k">Quickest fun</div><div class="pick__t">#1 Gamepad pilot</div><p>About a day of work. Steering the arm with real sticks feels like a game right away.</p></div>
+    <div class="pick"><div class="pick__k">Best dev win</div><div class="pick__t">#2 Rerun flight recorder</div><p>Puts sim and real runs on one timeline. It makes every later sim-to-real problem cheaper to debug.</p></div>
+    <div class="pick"><div class="pick__k">Wow factor</div><div class="pick__t">#6 Mirror Me</div><p>The twin copies your head and arm from the webcam. It's the best demo for the showcase site.</p></div>
+    <div class="pick"><div class="pick__k">Most useful AI</div><div class="pick__t">#9 Claude behaviour author</div><p>Describe a move in plain words and get a checked behaviour spec to preview on the twin.</p></div>
+    <div class="pick"><div class="pick__k">Biggest step up</div><div class="pick__t">#8 Look at me</div><p>A head-only gaze behaviour. It's the safe first step toward Level 3 camera following.</p></div>
+  </div>
+
+  <h2 id="matrix">Value vs. effort</h2>
+  <p class="section-note">Up and to the left is better. Hover over a dot for its name, or click it to jump to the card.
+  Value is 1–5. Effort is S (≈1–2 days), M (≈3–5 days), L (1–2 weeks) or XL (weeks or more). Score = value ÷ effort.</p>
+  <div class="filters" role="group" aria-label="Filter by category">
+    <button class="chip" data-cat="all" aria-pressed="true">All 20</button>
+    <button class="chip" data-cat="play" aria-pressed="false"><svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="var(--cat-play)"/></svg>Play &amp; showcase</button>
+    <button class="chip" data-cat="build" aria-pressed="false"><svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="var(--cat-build)"/></svg>Builder tools</button>
+    <button class="chip" data-cat="level" aria-pressed="false"><svg width="10" height="10" aria-hidden="true"><path d="M5 0L10 5L5 10L0 5Z" fill="var(--cat-level)"/></svg>Level-up</button>
+  </div>
+  <div class="viz">
+    <div class="viz__head">
+      <div class="viz__title">Feature ideas by value and effort</div>
+      <div class="legend" aria-hidden="true">
+        <span><svg width="12" height="12"><circle cx="6" cy="6" r="6" fill="var(--cat-play)"/></svg>Play &amp; showcase</span>
+        <span><svg width="12" height="12"><rect width="12" height="12" rx="2" fill="var(--cat-build)"/></svg>Builder tools</span>
+        <span><svg width="12" height="12"><path d="M6 0L12 6L6 12L0 6Z" fill="var(--cat-level)"/></svg>Level-up</span>
+      </div>
+    </div>
+    <svg id="chart" viewBox="0 0 900 430" role="img" aria-label="Scatter of 20 ideas by effort (x) and value (y). The same data is in the table below."></svg>
+    <div class="tip" id="tip" role="status" aria-live="polite"></div>
+  </div>
+
+  <h2 id="ideas">The 20 ideas</h2>
+  <p class="section-note">Ranked by score. Ties are broken by value. Each card says why the idea matters, how it fits the current code, and what free tools it uses.</p>
+  <div class="cards" id="cards"></div>
+
+  <h2>One shared piece that unlocks half the list</h2>
+  <div class="foundation">
+    <p><strong>A "ghost command bus" in the browser twin.</strong> One small JS module in <code>wwwroot/js/twin/</code> takes a
+    target pose from any source: gamepad, webcam, gaze, voice, beat, game, timeline or LLM. It clamps the pose to 0.9 of the
+    joint range from <code>twin_manifest.json</code>, runs the Rapier contact check in <code>collide.js</code>, and draws it as
+    the ghost. It never writes to the robot.</p>
+    <p>Ideas #1, #6, #8, #9, #11, #12, #13 and #14 become thin adapters on top of it. Build it once with #1 and each later
+    input costs about half as much.</p>
+  </div>
+
+  <h2 id="table">Table view</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>Idea</th><th>Category</th><th>Value</th><th>Effort</th><th>Score</th><th>Key free tech / API</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<footer class="foot"><span>v261121</span></footer>
+
+<script>
+const CATS = {
+  play:  { name: "Play & showcase", color: "var(--cat-play)",  shape: "circle" },
+  build: { name: "Builder tools",   color: "var(--cat-build)", shape: "square" },
+  level: { name: "Level-up",        color: "var(--cat-level)", shape: "diamond" },
+};
+const EFFORT = { 1: "S", 2: "M", 3: "L", 4: "XL" };
+
+const IDEAS = [
+  { id: 1, cat: "play", v: 4, e: 1, title: "Gamepad pilot",
+    pitch: "Plug in any controller and fly the head and right arm. Sticks set the Level 0 command vector, and the controller rumbles as a joint nears its limit.",
+    how: "Gamepad API in the Blazor UI. Enhanced Input in Unreal, beside the existing <code>C</code> command-mode toggle. The sticks write <code>[head_yaw_target, right_shoulder_pitch_target]</code>, the same input as <code>--command-mode keyboard</code>.",
+    tech: "Gamepad API + vibration, Unreal Enhanced Input (built in, free)",
+    note: "Drives sim / urlab only. The policy still does the control, so this also exercises the trained policy across the whole command range." },
+  { id: 2, cat: "build", v: 4, e: 1, title: "Rerun flight recorder",
+    pitch: "Every run (sim, Unreal, real) is recorded as one time-synced 3D + plot timeline: 26 joints, commands, actions, IMU, motor temps and safety trips.",
+    how: "A few <code>rr.log()</code> calls in <code>main_runner.py</code> and <code>behaviours/runner.py</code>. <code>.rrd</code> files go to <code>logs/</code>. Open a sim and a real recording side by side to complement <code>sim_real_diff.py</code>.",
+    tech: "Rerun (rerun-sdk, MIT/Apache-2.0), embeddable @rerun-io/web-viewer",
+    note: "Free and open source. The embedded viewer could also show sample runs on the showcase site." },
+  { id: 3, cat: "build", v: 3, e: 1, title: "Run alerts on your phone",
+    pitch: "Get a push notification when training finishes (with final tracking error), when the validation gate passes or fails, or when a real run aborts or a motor reaches 55 °C.",
+    how: "One small <code>notify()</code> helper that POSTs to ntfy, called from <code>train_level0.py</code>, <code>validate_level0.py</code> and the behaviour service. The topic name lives in an env var, not in git.",
+    tech: "ntfy.sh (free, open source, self-hostable) or a Discord / Teams webhook",
+    note: "For information only. A notification is never an emergency stop." },
+  { id: 4, cat: "play", v: 3, e: 1, title: "Photo mode & clip recorder",
+    pitch: "One button saves a clean PNG, a WebM clip or a GIF of the twin, so every good run becomes something you can share.",
+    how: "three.js <code>canvas.captureStream()</code> + MediaRecorder, gif.js for GIFs. In Unreal, a Movie Render Queue preset uses the existing Front / ThreeQuarter / Side showcase cameras. Clips feed a gallery on the showcase site.",
+    tech: "MediaRecorder / WebCodecs, gif.js (MIT), Unreal Movie Render Queue",
+    note: "Can capture the last 10 s automatically after a clean run." },
+  { id: 5, cat: "play", v: 3, e: 1, title: "Level map & achievements",
+    pitch: "A map of Levels 0–4 where each real gate unlocks a badge: validation passed, clean virtual move, read-only check, first powered run at 0.3, then full amplitude.",
+    how: "A Blazor page that reads <code>logs/level0_validation/report.md</code> and the behaviour run logs. Badges come only from real evidence. Locked levels show the checks they still need.",
+    tech: "Plain Blazor + SVG, no new dependencies",
+    note: "It makes the safety checklist feel like progress instead of red tape." },
+  { id: 6, cat: "play", v: 5, e: 2, title: "Mirror Me (webcam puppeteer)",
+    pitch: "Stand in front of the webcam and the twin copies your head turn and right-arm lift live. It's the best demo for the showcase site.",
+    how: "MediaPipe Pose Landmarker gives face and shoulder landmarks (head yaw) and shoulder-elbow angle (shoulder pitch). Retarget, clamp to 0.9 of the limits in <code>twin_manifest.json</code>, check contacts with <code>collide.js</code>, then draw as the ghost pose.",
+    tech: "MediaPipe Tasks Vision (Apache-2.0, runs in the browser on the GPU)",
+    note: "Video never leaves the browser. Virtual only. A real mirror mode would need its own gated behaviour." },
+  { id: 7, cat: "play", v: 5, e: 2, title: "Replay theatre + shareable links",
+    pitch: "Scrub through any past run with the sim ghost overlaid on the real robot. Markers show safety trips and near-limit moments. Publish a run and share a link.",
+    how: "Turn the 26-joint run logs into a timeline scrubber in <code>Twin3DView.razor</code>. Published runs go to an Azure Blob container in <code>PoShared</code> and play at <code>/replay/&lt;id&gt;</code> on the showcase site.",
+    tech: "Azure Blob Storage (existing PoShared group), three.js",
+    note: "<code>/diag</code> must live-probe the blob container, per the Po standard." },
+  { id: 8, cat: "level", v: 5, e: 2, title: "Look at me (gaze tracking)",
+    pitch: "The R1 turns its head to follow your face. A head-only behaviour that makes the robot feel alive. It's the safe first step toward Level 3.",
+    how: "MediaPipe Face Detector sets a <code>head_yaw</code> target, first on the ghost. Then a new <code>look_at</code> behaviour that powers only <code>head_yaw_joint</code> with the <code>neck_turn</code> torque cap and rate limits, through the normal gates. It can later read the R1 head camera.",
+    tech: "MediaPipe Face Detector (Apache-2.0)",
+    note: "Powers one joint only. Every other joint stays at zero torque." },
+  { id: 9, cat: "build", v: 5, e: 2, title: "Claude behaviour author",
+    pitch: "Type \"nod twice slowly, then a small wave\" and get a checked behaviour spec previewed on the twin. You can also ask it to explain a validation report or a safety trip.",
+    how: "The .NET API calls the Claude API with a tool / JSON schema that only accepts known joints, amplitudes, frequencies and durations. C# checks the result against <code>r1_joint_map.yaml</code> and the stand-safe caps. It upgrades the MiniLM assistant, which stays as the offline fallback.",
+    tech: "Claude API (e.g. claude-sonnet-5-5), API key kept server-side in <code>PoRobotTrain.Api</code>",
+    note: "Suggest-only, like today's assistant: it never starts anything. <code>/diag</code> probes the endpoint." },
+  { id: 10, cat: "build", v: 4, e: 2, title: "Live training dashboard + checkpoint ghosts",
+    pitch: "Watch it learn: live reward, tracking-error and curriculum-stage curves, plus a button that replays iteration 0, 300, 800 and 1500 side by side as ghosts.",
+    how: "Tail <code>train_log.csv</code> into uPlot charts. Have <code>train_level0.py</code> export an ONNX every N iterations to <code>logs/</code>. The browser twin already runs ONNX Runtime Web (<code>policy.js</code>) to play them back.",
+    tech: "uPlot (MIT, ~50 KB) or TensorBoard / W&B free tier",
+    note: "Snapshots stay in <code>logs/</code>. Only the gated policy is ever promoted." },
+  { id: 11, cat: "level", v: 4, e: 2, title: "Voice commands + spoken replies",
+    pitch: "Say \"wave hello\" and the twin suggests the behaviour, then confirms out loud. This is the start of Level 1.",
+    how: "Whisper tiny.en (or the Web Speech API) turns speech into text. The existing MiniLM intent matcher picks a behaviour. A spoken reply comes from Kokoro in the browser, or later Piper on the Jetson speaker.",
+    tech: "Transformers.js Whisper (local), kokoro-js (Apache-2.0), Piper TTS (MIT)",
+    note: "Speech fills in the suggestion card. A click and the existing gates still start any run." },
+  { id: 12, cat: "play", v: 4, e: 2, title: "Beat the Policy (mini-game + leaderboard)",
+    pitch: "Targets light up inside the reach cloud. You steer to them while the trained policy does the same. Your score uses the same reward function the robot was trained on.",
+    how: "Score = tracking error + action-rate penalty from <code>reward_config.json</code>, so players learn what the reward means. Use the reach cloud from <code>reach.js</code> for target placement. A small SWA function writes scores to Azure Table Storage.",
+    tech: "Azure Table Storage + SWA managed functions (PoShared)",
+    note: "Works with #1 (gamepad) and #6 (webcam) as controllers. <code>/diag</code> probes the leaderboard." },
+  { id: 13, cat: "play", v: 4, e: 2, title: "Dance to the beat",
+    pitch: "Drop in a song and the twin nods and waves in time with it, with light pulses in the Unreal showcase.",
+    how: "web-audio-beat-detector finds the tempo and offset. The phase of <code>neck_nod</code> / <code>hand_wave</code> locks to the beat, with amplitudes inside the stand-safe caps. Niagara pulses the lab lights on each beat in demo mode.",
+    tech: "web-audio-beat-detector (MIT), Pixabay Music / Free Music Archive CC tracks, Niagara",
+    note: "A real-robot version is just the existing behaviours with a tempo parameter, through the same gates." },
+  { id: 14, cat: "build", v: 5, e: 3, title: "Choreography timeline editor",
+    pitch: "Keyframe the stand-safe joints on a timeline, scrub it, and export a new behaviour without writing Python.",
+    how: "A Theatre.js-style timeline with spline curves. Velocity and acceleration limits show live, with a Rapier contact check on every frame. Export generates a behaviour class whose powered joints are exactly the keyed joints, then it goes through sim → urlab → real read-only → <code>--go</code>.",
+    tech: "Theatre.js (Apache-2.0) or a custom SVG timeline",
+    note: "Adding a behaviour stops being a Python task, but the safety gates stay the same." },
+  { id: 15, cat: "play", v: 5, e: 3, title: "MuJoCo-in-the-browser playground",
+    pitch: "Visitors to the showcase site drag and poke the arm and watch the trained policy recover, with real physics and nothing to install.",
+    how: "MuJoCo's WebAssembly build steps <code>scene_stand.xml</code> at 5 ms. ONNX Runtime Web runs the policy at 50 Hz. <code>/diag</code> adds a parity check against the Python rollout, as <code>policy_golden.json</code> already does for the policy alone.",
+    tech: "MuJoCo WASM (official JS bindings or zalo/mujoco_wasm), ONNX Runtime Web",
+    note: "MuJoCo still owns the physics, so the project contract holds." },
+  { id: 16, cat: "play", v: 3, e: 2, title: "Lab environment glow-up + live sky",
+    pitch: "Put the robot in a proper lab set with good lighting. In demo mode the sky matches the visitor's real local weather and time of day.",
+    how: "Poly Haven HDRIs and ambientCG PBR textures for the Unreal set and as a PMREM environment map in three.js. Open-Meteo sets sun angle and cloud cover in the showcase demo mode.",
+    tech: "Poly Haven (CC0), ambientCG (CC0), Open-Meteo (free, no key)",
+    note: "<code>/diag</code> probes Open-Meteo. Fall back to a fixed sky when it's offline." },
+  { id: 17, cat: "build", v: 3, e: 2, title: "Policy X-ray",
+    pitch: "See what the network pays attention to: live bars for the 23 observations and 7 actions, plus a heatmap of which inputs move which outputs.",
+    how: "Perturbation saliency in ONNX Runtime Web: nudge each obs and measure the change in action. Add a what-if slider for sensor noise and latency so you can watch the ghost react. It would also catch observation-order bugs early.",
+    tech: "ONNX Runtime Web (already loaded), SkiaSharp heatmap (already in the UI)",
+    note: "Useful for learning, and a quick check on the deployment contract." },
+  { id: 18, cat: "build", v: 3, e: 2, title: "Hugging Face Hub + LeRobot datasets",
+    pitch: "Publish validated policies with real model cards, and recorded sim and real episodes as open datasets that others can train on.",
+    how: "The model card includes the validation report, the obs/action contract and <code>deploy.yaml</code>. Episodes are exported in LeRobot dataset format. Only policies that passed the gate get pushed. A Hugging Face Space can host the #15 playground.",
+    tech: "Hugging Face Hub (free), LeRobot dataset format (Apache-2.0)",
+    note: "Upload is opt-in. Never publish logs that contain the robot's network details." },
+  { id: 19, cat: "level", v: 4, e: 3, title: "Robustness explorer (domain-randomisation sweep)",
+    pitch: "Before a real run, see how the policy does when mass, friction, gains, latency and sensor noise are wrong, shown as a red/green grid.",
+    how: "Batch headless MuJoCo runs over ±mass, friction, kp/kd ±20 %, 0–40 ms action latency and obs noise. A heatmap shows tracking error and safety trips. The results feed <code>sim_calibration.yaml</code>, and red cells call for retraining with randomisation.",
+    tech: "Existing MuJoCo + PyTorch stack, Optuna (MIT) for the sweep",
+    note: "Pure simulation. It cuts sim-to-real surprises before Levels 1–2." },
+  { id: 20, cat: "level", v: 5, e: 4, title: "Level 2 walking sandbox",
+    pitch: "Take the twin off the stand: drive Unitree's velocity policy with WASD or a gamepad over flat ground, slopes and stairs, with checkpoints and lap times.",
+    how: "A ground scene from <code>build_mjcf.py</code>. Unitree's mjlab velocity policy (24 joints, 83-dim obs) behind the same ONNX contract, in Unreal first and later in the #15 browser playground.",
+    tech: "unitree_rl_mjlab policy, URLab ground scene, procedural terrain",
+    note: "Sim only until Level 2 has its own validation gate. This is the largest expansion on the list." },
+];
+
+const score = d => d.v / d.e;
+IDEAS.sort((a, b) => score(b) - score(a) || b.v - a.v || a.id - b.id);
+
+const pips = (n, cls) => `<span class="pips ${cls}" aria-hidden="true">${[1,2,3,4,5].slice(0, cls === "e" ? 4 : 5).map(i => `<b class="${i <= n ? "on" : ""}"></b>`).join("")}</span>`;
+
+// cards
+const cardsEl = document.getElementById("cards");
+cardsEl.innerHTML = IDEAS.map(d => `
+  <article class="card" id="idea-${d.id}" data-cat="${d.cat}">
+    <div class="card__top">
+      <div class="rank">${d.id}</div>
+      <div>
+        <h3>${d.title}</h3>
+        <div class="tags"><span class="tag"><i style="background:${CATS[d.cat].color}"></i>${CATS[d.cat].name}</span></div>
+      </div>
+    </div>
+    <p class="pitch">${d.pitch}</p>
+    <dl>
+      <div><dt>How it plugs in</dt><dd>${d.how}</dd></div>
+      <div><dt>Free tech / API</dt><dd>${d.tech}</dd></div>
+      <div><dt>Note</dt><dd>${d.note}</dd></div>
+    </dl>
+    <div class="meters">
+      <span class="meter">Value ${pips(d.v, "v")} ${d.v}/5</span>
+      <span class="meter">Effort ${pips(d.e, "e")} ${EFFORT[d.e]}</span>
+      <span class="score">Score ${score(d).toFixed(1)}</span>
+    </div>
+  </article>`).join("");
+
+// table
+document.getElementById("tbody").innerHTML = IDEAS.map(d => `
+  <tr><td class="num">${d.id}</td><td><a href="#idea-${d.id}">${d.title}</a></td><td>${CATS[d.cat].name}</td>
+  <td class="num">${d.v}</td><td>${EFFORT[d.e]}</td><td class="num">${score(d).toFixed(1)}</td><td>${d.tech}</td></tr>`).join("");
+
+// chart: redrawn to fit its container so labels stay readable at phone width
+const svg = document.getElementById("chart");
+const tip = document.getElementById("tip");
+const vizBox = svg.parentElement;
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, parent = svg) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); parent.appendChild(n); return n; };
+const cells = {};
+IDEAS.forEach(d => (cells[`${d.e}-${d.v}`] ||= []).push(d));
+let activeCat = "all";
+
+function draw() {
+  const W = Math.round(Math.max(340, Math.min(900, svg.clientWidth || 900)));
+  const narrow = W < 600;
+  const H = narrow ? 380 : 430, M = { l: narrow ? 44 : 70, r: narrow ? 6 : 20, t: 18, b: 56 };
+  const cellW = (W - M.l - M.r) / 4;
+  const R = narrow ? 12 : 15, GAP = Math.min(38, (cellW - 2 * R - 4) / 2);
+  const xs = e => M.l + (e - 0.5) * cellW;
+  const ys = v => H - M.b - (v - 2.5) * ((H - M.t - M.b) / 3);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.replaceChildren();
+  tip.classList.remove("on");
+
+  // quick-win zone: high value, low effort
+  el("rect", { x: xs(0.5), y: ys(5.5), width: xs(2.5) - xs(0.5), height: ys(3.5) - ys(5.5), fill: "rgba(99,102,241,0.07)", rx: 6 });
+  el("text", { x: xs(0.5) + 8, y: ys(5.5) + 16, fill: "#9aa3b5", "font-size": 12 }).textContent = "Quick-win zone";
+
+  for (let v = 3; v <= 5; v++) {
+    el("line", { x1: M.l, x2: W - M.r, y1: ys(v + 0.5), y2: ys(v + 0.5), stroke: "var(--grid)", "stroke-width": 1 });
+    el("text", { x: M.l - 10, y: ys(v) + 4, "text-anchor": "end", fill: "#9aa3b5", "font-size": 13 }).textContent = v;
+  }
+  for (let e = 1; e <= 4; e++) {
+    if (e > 1) el("line", { x1: xs(e - 0.5), x2: xs(e - 0.5), y1: M.t, y2: H - M.b, stroke: "var(--grid)", "stroke-width": 1 });
+    el("text", { x: xs(e), y: H - M.b + 22, "text-anchor": "middle", fill: "#9aa3b5", "font-size": 13 }).textContent = EFFORT[e];
+  }
+  el("line", { x1: M.l, x2: W - M.r, y1: H - M.b, y2: H - M.b, stroke: "var(--axis)", "stroke-width": 1 });
+  el("text", { x: (M.l + W - M.r) / 2, y: H - 10, "text-anchor": "middle", fill: "#9aa3b5", "font-size": 13 }).textContent = "Effort →";
+  const ax = narrow ? 12 : 18;
+  el("text", { x: ax, y: (M.t + H - M.b) / 2, "text-anchor": "middle", fill: "#9aa3b5", "font-size": 13,
+               transform: `rotate(-90 ${ax} ${(M.t + H - M.b) / 2})` }).textContent = "Value →";
+
+  // place dots in a small grid inside each cell
+  Object.values(cells).forEach(list => {
+    const cols = Math.min(list.length, 3), rows = Math.ceil(list.length / cols);
+    list.forEach((d, i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      const cx = xs(d.e) + (c - (cols - 1) / 2) * GAP;
+      const cy = ys(d.v) + (r - (rows - 1) / 2) * GAP;
+      const g = el("g", { class: "dot", tabindex: 0, role: "button", "data-cat": d.cat,
+                          "aria-label": `#${d.id} ${d.title}, ${CATS[d.cat].name}, value ${d.v}, effort ${EFFORT[d.e]}` });
+      if (!(activeCat === "all" || activeCat === d.cat)) g.classList.add("dim");
+      const col = CATS[d.cat].color;
+      if (CATS[d.cat].shape === "circle") el("circle", { class: "mark", cx, cy, r: R, fill: col }, g);
+      else if (CATS[d.cat].shape === "square") el("rect", { class: "mark", x: cx - R + 1, y: cy - R + 1, width: 2 * R - 2, height: 2 * R - 2, rx: 4, fill: col }, g);
+      else el("path", { class: "mark", d: `M${cx} ${cy - R - 2}L${cx + R + 2} ${cy}L${cx} ${cy + R + 2}L${cx - R - 2} ${cy}Z`, fill: col }, g);
+      el("text", { x: cx, y: cy + 4, "text-anchor": "middle" }, g).textContent = d.id;
+      el("circle", { cx, cy, r: R + 6, fill: "transparent" }, g); // larger hit target
+
+      const show = () => {
+        tip.innerHTML = `<b>#${d.id} ${d.title}</b><span>${CATS[d.cat].name} · value ${d.v} · effort ${EFFORT[d.e]} · score ${score(d).toFixed(1)}</span>`;
+        const sb = svg.getBoundingClientRect(), vb = vizBox.getBoundingClientRect(), k = sb.width / W;
+        let left = sb.left - vb.left + cx * k + 18, top = sb.top - vb.top + cy * k - 20;
+        tip.classList.add("on");
+        if (left + tip.offsetWidth > vb.width - 8) left = sb.left - vb.left + cx * k - tip.offsetWidth - 18;
+        tip.style.left = Math.max(8, left) + "px"; tip.style.top = Math.max(8, top) + "px";
+      };
+      const hide = () => tip.classList.remove("on");
+      const go = () => {
+        const card = document.getElementById(`idea-${d.id}`);
+        if (card.hidden) setFilter("all");
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1400);
+      };
+      g.addEventListener("mouseenter", show); g.addEventListener("mouseleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      g.addEventListener("click", go);
+      g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(); } });
+    });
+  });
+}
+draw();
+let lastW = svg.clientWidth;
+new ResizeObserver(() => { if (Math.abs(svg.clientWidth - lastW) > 4) { lastW = svg.clientWidth; draw(); } }).observe(svg);
+
+// filters
+const chips = document.querySelectorAll(".chip");
+function setFilter(cat) {
+  activeCat = cat;
+  chips.forEach(c => c.setAttribute("aria-pressed", String(c.dataset.cat === cat)));
+  document.querySelectorAll(".card").forEach(c => c.hidden = !(cat === "all" || c.dataset.cat === cat));
+  document.querySelectorAll(".dot").forEach(g => g.classList.toggle("dim", !(cat === "all" || g.dataset.cat === cat)));
+}
+chips.forEach(c => c.addEventListener("click", () => setFilter(c.dataset.cat)));
+</script>
+</body>
+</html>

@@ -27,7 +27,8 @@ from typing import List, Optional
 from .. import PACKAGE_DIR, PROJECT_ROOT
 from .deploy_pack import verify_bundle
 
-EXCLUDE_DIRS = {"__pycache__", "training", "models", "tests", ".pytest_cache", "robot_kit_files"}
+# walk: the Level 2 walk sandbox is simulation only and must never reach the robot
+EXCLUDE_DIRS = {"__pycache__", "training", "models", "tests", ".pytest_cache", "robot_kit_files", "walk"}
 FILES_DIR = PACKAGE_DIR / "tools" / "robot_kit_files"
 
 

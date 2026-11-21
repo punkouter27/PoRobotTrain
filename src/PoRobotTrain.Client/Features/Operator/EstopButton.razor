@@ -1,0 +1,85 @@
+@implements IAsyncDisposable
+@inject ConsoleApiClient Console
+@inject IJSRuntime JS
+
+@* Feature #8: software E-STOP on every page (button + Esc). Stops the job, the simulation player, the walk sandbox and
+   any recording (POST /estop). The remote's L2+B (5 s) stays the real emergency stop. *@
+<div class="estop">
+    <button type="button" class="estop__btn" @onclick="StopAsync" title="Software stop of everything this app runs (Esc). Real emergency stop: remote L2+B for 5 s."
+            aria-label="Emergency stop: stop everything (Esc)">
+        <span aria-hidden="true">■</span> E-STOP <kbd>Esc</kbd>
+    </button>
+    @if (_msg is not null)
+    {
+        <div class="estop__toast @(_ok ? string.Empty : "bad")" role="status">@_msg</div>
+    }
+</div>
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<EstopButton>? _self;
+    private string? _msg;
+    private bool _ok = true;
+    private CancellationTokenSource? _hide;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/console/console.js");
+            _self = DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("bindEstop", _self);
+        }
+        catch (JSException)
+        {
+            // the button still works without the hotkey
+        }
+    }
+
+    [JSInvokable]
+    public Task EstopFromKey() => StopAsync();
+
+    private async Task StopAsync()
+    {
+        var (res, err) = await Console.EstopAsync();
+        _ok = res?.Ok == true;
+        _msg = _ok
+            ? (res!.Stopped is { Count: > 0 } s ? $"Stopped: {string.Join(", ", s)}." : "Nothing was running.") + " Real robot: remote L2+B is the emergency stop."
+            : $"E-STOP not delivered: {err ?? "no reply"}. Use the remote (L2+B).";
+        StateHasChanged();
+        _hide?.Cancel();
+        _hide = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(6000, _hide.Token);
+            _msg = null;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+            // a newer message replaced this one
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _hide?.Cancel();
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("unbindEstop");
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+        _self?.Dispose();
+    }
+}

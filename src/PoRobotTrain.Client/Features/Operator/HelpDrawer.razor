@@ -1,0 +1,128 @@
+@implements IAsyncDisposable
+@inject ConsoleApiClient Console
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject UiState Ui
+
+@* Feature #19: the repo's docs/*.md in a drawer, opened on the document for the current page. *@
+<button type="button" class="po-nav__link help-btn" @onclick="ToggleAsync" aria-expanded="@_open" aria-controls="help-drawer" title="Help for this page">? Help</button>
+
+@if (_open)
+{
+    <aside id="help-drawer" class="help-drawer" aria-label="Help">
+        <div class="help-drawer__bar">
+            <select class="assist-input" value="@_name" @onchange="PickAsync" aria-label="Document">
+                @foreach (var d in _docs)
+                {
+                    <option value="@d.Name">@d.Title</option>
+                }
+            </select>
+            <button type="button" class="po-chip" @onclick="ToggleAsync" aria-label="Close help">Close</button>
+        </div>
+        @if (_error is not null)
+        {
+            <div class="assist-out warn">@_error</div>
+        }
+        <div class="help-links">
+            <button type="button" class="po-chip" @onclick="TourAsync">Take the 4-step tour</button>
+            <a class="po-chip" href="/scalar" target="_blank" rel="noopener">API reference (OpenAPI)</a>
+        </div>
+        <article class="help-md" @ref="_body"></article>
+    </aside>
+}
+
+@code {
+    // which document answers "how do I use this page?"
+    private static readonly Dictionary<string, string> PageDocs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [""] = "behaviours",
+        ["walk"] = "level2_walk",
+        ["robustness"] = "robustness",
+        ["robot-health"] = "robot_connection_guide",
+        ["setup"] = "robot_connection_guide",
+        ["motions"] = "service_api",
+        ["diag"] = "web_twin",
+    };
+
+    private bool _open;
+    private string _name = "behaviours";
+    private string? _error;
+    private List<DocInfoDto> _docs = [];
+    private ElementReference _body;
+    private IJSObjectReference? _module;
+    private bool _renderPending;
+    private string? _markdown;
+
+    private async Task ToggleAsync()
+    {
+        _open = !_open;
+        if (!_open)
+        {
+            return;
+        }
+        if (_docs.Count == 0)
+        {
+            var (docs, err) = await Console.DocsAsync();
+            _docs = docs?.Docs ?? [];
+            _error = err;
+        }
+        var page = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+        var want = PageDocs.GetValueOrDefault(page, "behaviours");
+        _name = _docs.Any(d => d.Name == want) ? want : _docs.FirstOrDefault()?.Name ?? want;
+        await LoadAsync();
+    }
+
+    private void TourAsync()
+    {
+        _open = false;
+        Ui.OpenTour();
+    }
+
+    private async Task PickAsync(ChangeEventArgs e)
+    {
+        _name = e.Value?.ToString() ?? _name;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var (doc, err) = await Console.DocAsync(_name);
+        _error = err;
+        _markdown = doc?.Markdown ?? string.Empty;
+        _renderPending = true;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_renderPending || !_open)
+        {
+            return;
+        }
+        _renderPending = false;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/console/console.js");
+            await _module.InvokeVoidAsync("renderMarkdown", _body, _markdown);
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message.Split('\n')[0];
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+    }
+}

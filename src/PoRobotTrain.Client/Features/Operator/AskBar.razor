@@ -1,0 +1,72 @@
+@inject ConsoleApiClient Console
+@inject UiState Ui
+@inject NavigationManager Nav
+
+@* Simplification #7: one "Ask or tell the robot" box on every page (the Control page has the full assistant with
+   voice). It answers status questions and suggests motions; it never starts anything on its own. *@
+<div class="askbar">
+    <form class="askbar__row" @onsubmit="() => AskAsync(_text)" @onsubmit:preventDefault>
+        <input class="assist-input askbar__input" placeholder="Ask or tell the robot… e.g. is the robot ready?" @bind="_text" @bind:event="oninput"
+               aria-label="Ask or tell the robot" disabled="@_busy" />
+        <button type="submit" class="po-chip active" disabled="@(_busy || string.IsNullOrWhiteSpace(_text))">Ask</button>
+    </form>
+    <div class="askbar__chips">
+        @foreach (var ex in Examples)
+        {
+            <button type="button" class="po-chip askbar__chip" disabled="@_busy" @onclick="() => AskAsync(ex)">@ex</button>
+        }
+    </div>
+    @if (_reply is { } r)
+    {
+        <div class="assist-out @(r.Kind == "unknown" || r.Blocked ? "warn" : string.Empty)" role="status">
+            <span><b>R1:</b> @(r.Answer ?? r.Note)</span>
+            @switch (r.Kind)
+            {
+                case "pose" when r.Pose is not null:
+                    <button type="button" class="po-chip active" @onclick="() => PoseAsync(r.Pose)">Preview on twin</button>
+                    break;
+                case "behaviour" when r.Id is not null && !r.Blocked:
+                    <a class="po-chip active" href="@($"/?behaviour={Uri.EscapeDataString(r.Id)}&amp={r.Amplitude ?? 10:0}")">Open on Control</a>
+                    break;
+                case "joint" when r.Joint is not null:
+                    <a class="po-chip active" href="@($"/?joint={Uri.EscapeDataString(r.Joint)}")">Show the slider</a>
+                    break;
+                case "walk":
+                    <a class="po-chip active" href="/walk">Open Walk</a>
+                    break;
+            }
+        </div>
+    }
+    @if (_error is not null)
+    {
+        <div class="assist-out warn">Assistant unavailable: @_error</div>
+    }
+</div>
+
+@code {
+    private static readonly string[] Examples = ["Is the robot ready?", "What's the hottest motor?", "Nod the head 20 degrees", "Go to the arms out pose"];
+    private string _text = string.Empty;
+    private bool _busy;
+    private ChatResponseDto? _reply;
+    private string? _error;
+
+    private async Task AskAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+        _busy = true;
+        var (r, err) = await Console.ChatAsync(new ChatRequest(text, Ui.ChatSession));
+        _reply = r;
+        _error = r is null ? err : null;
+        _text = string.Empty;
+        _busy = false;
+    }
+
+    private async Task PoseAsync(string pose)
+    {
+        var (r, err) = await Console.PreviewPoseAsync(pose, Ui.PlayTarget);
+        _reply = _reply! with { Answer = r?.Ok == true ? $"Moving the twin to {pose.Replace('_', ' ')}." : $"Not started: {err}", Kind = "answer" };
+    }
+}

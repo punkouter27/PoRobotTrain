@@ -18,3 +18,6 @@ bin/
 obj/
 TestResults/
 MUJOCO_LOG.TXT
+
+# operator data from the console: recorded motions, connection profiles, zero offsets
+RobotControl/user_data/

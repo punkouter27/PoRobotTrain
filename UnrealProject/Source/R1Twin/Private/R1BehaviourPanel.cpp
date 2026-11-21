@@ -1,9 +1,18 @@
 #include "R1BehaviourPanel.h"
 #include "R1Twin.h"
 #include "R1ArticulationBridge.h"
+#include "R1VoiceSapi.h"
+#include "R1PanelStyle.h"
+#include "R1WalkCourse.h"
 #include "MjUeConvert.h"
 
 #include "Blueprint/UserWidget.h"
+#include "CanvasTypes.h"
+#include "Math/ScaleMatrix.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Engine/Canvas.h"
@@ -22,30 +31,21 @@
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #endif
 
+using namespace R1PanelStyle;
+
 namespace
 {
 	const FLinearColor PanelBg(0.03f, 0.03f, 0.04f, 0.88f);
-	const FLinearColor CardBg(0.07f, 0.08f, 0.10f, 0.92f);
 	const FLinearColor HeaderStripBg(0.05f, 0.06f, 0.08f, 0.96f);
-	const FLinearColor DividerCol(1.f, 1.f, 1.f, 0.08f);
-	const FLinearColor TextCol(0.95f, 0.95f, 0.96f, 1.f);
-	const FLinearColor DimCol(0.60f, 0.62f, 0.67f, 1.f);
-	const FLinearColor OkCol(0.32f, 0.85f, 0.52f, 1.f);
-	const FLinearColor WarnCol(1.f, 0.74f, 0.25f, 1.f);
-	const FLinearColor BadCol(1.f, 0.36f, 0.34f, 1.f);
-	const FLinearColor CyanCol(0.24f, 0.78f, 0.95f, 1.f);
 	// Virtual = blue, real robot = orange, everywhere (section stripe, heading, main button).
-	const FLinearColor VirtualCol(0.15f, 0.44f, 0.88f, 1.f);
 	const FLinearColor RealCol(0.88f, 0.45f, 0.08f, 1.f);
 	const FLinearColor RealSoftCol(0.5f, 0.3f, 0.1f, 1.f);
 	const FLinearColor MonitorCol(0.18f, 0.48f, 0.54f, 1.f);
-	const FLinearColor StopCol(0.78f, 0.1f, 0.08f, 1.f);
 	const FLinearColor OffCol(0.24f, 0.24f, 0.26f, 1.f);
-	const FLinearColor ChipCol(0.20f, 0.21f, 0.24f, 1.f);
-	const FLinearColor ChipOnCol(0.86f, 0.88f, 0.92f, 1.f);
 	const FName IdPreview(TEXT("preview")), IdCheck(TEXT("check")), IdMonitor(TEXT("monitor")), IdRun(TEXT("run")), IdStop(TEXT("stop"));
 	const FName IdConfirm(TEXT("confirm")), IdCancel(TEXT("cancel")), IdDetails(TEXT("details")), IdJoints(TEXT("joints"));
 	const FName IdAmp10(TEXT("amp10")), IdAmp20(TEXT("amp20")), IdAmp30(TEXT("amp30"));
+	const FName IdTabBeh(TEXT("tab_behaviours")), IdTabRob(TEXT("tab_robustness")), IdTabWalk(TEXT("tab_walk"));
 	const FName IdBehIds[] = {
 		FName(TEXT("beh_neck_turn")),
 		FName(TEXT("beh_neck_nod")),
@@ -68,15 +68,32 @@ namespace
 			}
 			return false;
 		}
+		virtual bool HandleMouseWheelOrGestureEvent(FSlateApplication&, const FPointerEvent& E, const FPointerEvent*) override
+		{
+			if (Panel.IsValid())
+			{
+				Panel->QueueWheel(E.GetWheelDelta());   // Help tab scrolling; the camera still zooms
+			}
+			return false;
+		}
 		virtual const TCHAR* GetDebugName() const override { return TEXT("R1BehaviourPanelClicks"); }
 	private:
 		TWeakObjectPtr<AR1BehaviourPanel> Panel;
 	};
 }
 
+AR1BehaviourPanel::AR1BehaviourPanel(FVTableHelper& Helper)
+	: Super(Helper)
+{
+}
+
+AR1BehaviourPanel::~AR1BehaviourPanel() = default;
+
 AR1BehaviourPanel::AR1BehaviourPanel()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bTickEvenWhenPaused = true;
+	PushToTalkKey = EKeys::V;
 	Behaviours = {
 		{TEXT("neck_turn"), TEXT("Neck Turn"), TEXT("Turns head left/right. Only neck yaw motor moves."), TEXT("HEAD YAW"), 30.f},
 		{TEXT("neck_nod"),  TEXT("Neck Nod"),  TEXT("Nods head up/down (max 20 deg). Only neck pitch moves."), TEXT("HEAD PITCH"), 20.f},
@@ -128,7 +145,32 @@ void AR1BehaviourPanel::BeginPlay()
 		FSlateApplication::Get().RegisterInputPreProcessor(ClickProcessor);
 	}
 	ResolveTwinJoints();
-	UE_LOG(LogR1Twin, Log, TEXT("R1BehaviourPanel: service %s, behaviour %s"), *ServiceUrl, *Behaviour);
+
+	FParse::Value(FCommandLine::Get(), TEXT("R1Service="), ServiceUrl);   // e.g. -R1Service=http://127.0.0.1:8766
+	FString TabArg;
+	if (FParse::Value(FCommandLine::Get(), TEXT("PanelTab="), TabArg))
+	{
+		auto Is = [&TabArg](const TCHAR* S) { return TabArg.Equals(S, ESearchCase::IgnoreCase); };
+		SetTab(Is(TEXT("robustness")) ? ER1PanelTab::Robustness : Is(TEXT("walk")) ? ER1PanelTab::Walk
+			: Is(TEXT("health")) ? ER1PanelTab::Health : Is(TEXT("motions")) ? ER1PanelTab::Motions
+			: Is(TEXT("setup")) ? ER1PanelTab::Setup : Is(TEXT("help")) ? ER1PanelTab::Help : ER1PanelTab::Behaviours);
+	}
+	FString Dir;
+	if (FParse::Value(FCommandLine::Get(), TEXT("PanelCapture="), Dir))
+	{
+		PanelCaptureDir = FPaths::ConvertRelativePathToFull(Dir);
+		FParse::Value(FCommandLine::Get(), TEXT("PanelCaptureTag="), PanelCaptureTag);
+		bSpeakReplies = false;   // unattended runs stay silent
+	}
+	if (FParse::Value(FCommandLine::Get(), TEXT("VoiceTest="), VoiceTestText))
+	{
+		VoiceTestText.ReplaceInline(TEXT("_"), TEXT(" "));   // -VoiceTest=nod_the_head_twenty_degrees
+	}
+
+	// Voice: one COM thread for SAPI recognition + speech; the microphone stays off until Mic / push-to-talk.
+	Voice = MakeUnique<FR1VoiceSapi>();
+	Voice->Start();
+	UE_LOG(LogR1Twin, Log, TEXT("R1BehaviourPanel: service %s, behaviour %s, push-to-talk %s"), *ServiceUrl, *Behaviour, *PushToTalkKey.ToString());
 }
 
 void AR1BehaviourPanel::EndPlay(const EEndPlayReason::Type Reason)
@@ -138,7 +180,230 @@ void AR1BehaviourPanel::EndPlay(const EEndPlayReason::Type Reason)
 		FSlateApplication::Get().UnregisterInputPreProcessor(ClickProcessor);
 	}
 	ClickProcessor.Reset();
+	if (Voice)
+	{
+		Voice->Shutdown();
+		Voice.Reset();
+	}
+	if (bWalkVisualsOn)
+	{
+		SetWalkRunningVisuals(false);
+	}
+	if (AR1WalkCourse* Course = CourseActor.Get())
+	{
+		Course->Destroy();
+	}
 	Super::EndPlay(Reason);
+}
+
+void AR1BehaviourPanel::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	const double Now = FPlatformTime::Seconds();
+	// Runs even while demo mode hides the HUD: the walk watchdog, voice and course need it.
+	TickVoice();
+	TickRobustness(Now);
+	TickWalk(Now);
+	TickConsole(Now);
+	TickPanelCapture(Now);
+}
+
+bool AR1BehaviourPanel::GetPanelMouse(float& OutX, float& OutY) const
+{
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC || !PC->GetMousePosition(OutX, OutY))
+	{
+		return false;
+	}
+	const float S = FMath::Max(PanelScale, 0.1f);
+	OutX /= S;
+	OutY /= S;
+	return true;
+}
+
+void AR1BehaviourPanel::SetTab(ER1PanelTab NewTab)
+{
+	Tab = NewTab;
+	SelKind = SelRow = SelCol = -1;
+	if (Tab == ER1PanelTab::Robustness)
+	{
+		NextRobustFetch = 0.0;   // refresh on entry
+	}
+	if (Tab == ER1PanelTab::Walk)
+	{
+		NextWalkPoll = 0.0;
+	}
+	ConsoleNextFetch.Reset();   // console tabs refresh on entry
+	bCalibConfirm = false;
+}
+
+void AR1BehaviourPanel::PostJson(const FString& Path, const FString& Body, TFunction<void(int32, TSharedPtr<FJsonObject>)> OnDone)
+{
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Req = FHttpModule::Get().CreateRequest();
+	Req->SetURL(ServiceUrl + Path);
+	Req->SetVerb(TEXT("POST"));
+	Req->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
+	Req->SetContentAsString(Body.IsEmpty() ? FString(TEXT("{}")) : Body);
+	Req->SetTimeout(5.f);
+	Req->OnProcessRequestComplete().BindWeakLambda(this, [OnDone = MoveTemp(OnDone)](FHttpRequestPtr, FHttpResponsePtr Resp, bool bOk)
+	{
+		const int32 Code = bOk && Resp.IsValid() ? Resp->GetResponseCode() : 0;
+		TSharedPtr<FJsonObject> J;
+		if (Code != 0)
+		{
+			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Resp->GetContentAsString()), J);
+		}
+		if (OnDone)
+		{
+			OnDone(Code, J);
+		}
+	});
+	Req->ProcessRequest();
+}
+
+void AR1BehaviourPanel::GetJson(const FString& Path, TFunction<void(int32, const FString&)> OnDone)
+{
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Req = FHttpModule::Get().CreateRequest();
+	Req->SetURL(ServiceUrl + Path);
+	Req->SetVerb(TEXT("GET"));
+	Req->SetTimeout(3.f);
+	Req->OnProcessRequestComplete().BindWeakLambda(this, [OnDone = MoveTemp(OnDone)](FHttpRequestPtr, FHttpResponsePtr Resp, bool bOk)
+	{
+		const int32 Code = bOk && Resp.IsValid() ? Resp->GetResponseCode() : 0;
+		OnDone(Code, Code != 0 ? Resp->GetContentAsString() : FString());
+	});
+	Req->ProcessRequest();
+}
+
+void AR1BehaviourPanel::DrawWrapped(const FString& Text, float X, float& Y, float MaxW, const FLinearColor& Color, float Scale)
+{
+	UFont* Font = GEngine->GetMediumFont();
+	TArray<FString> Words;
+	Text.ParseIntoArray(Words, TEXT(" "));
+	FString Line;
+	for (const FString& Word : Words)
+	{
+		const FString Try = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+		float W = 0.f, H = 0.f;
+		GetTextSize(Try, W, H, Font, Scale);
+		if (W > MaxW && !Line.IsEmpty())
+		{
+			DrawLine(Line, X, Y, Color, Scale);
+			Line = Word;
+		}
+		else
+		{
+			Line = Try;
+		}
+	}
+	if (!Line.IsEmpty())
+	{
+		DrawLine(Line, X, Y, Color, Scale);
+	}
+}
+
+void AR1BehaviourPanel::CaptureShot(const TCHAR* Name)
+{
+	const FString File = FPaths::Combine(PanelCaptureDir, FString::Printf(TEXT("%s%s.png"), Name, *PanelCaptureTag));
+	FScreenshotRequest::RequestScreenshot(File, /*bShowUI*/ true, /*bAddFilenameSuffix*/ false);
+	UE_LOG(LogR1Twin, Log, TEXT("R1BehaviourPanel: capture %s"), *File);
+}
+
+void AR1BehaviourPanel::TickPanelCapture(double Now)
+{
+	// Unattended screenshots of each tab (docs: SCREENSHOTS/), using whatever service is at ServiceUrl.
+	if (PanelCaptureDir.IsEmpty())
+	{
+		return;
+	}
+	if (CaptureStartAt < 0.0)
+	{
+		CaptureStartAt = Now;
+	}
+	const double T = Now - CaptureStartAt;
+	switch (CaptureStep)
+	{
+	case 0: if (T > 10.0)
+		{
+			SetTab(ER1PanelTab::Behaviours);
+			if (!VoiceTestText.IsEmpty())
+			{
+				// as if SAPI had heard it: exercises /assistant/interpret + ApplyIntent without a microphone
+				HeardText = VoiceTestText;
+				HeardAt = Now;
+				SendInterpret(VoiceTestText);
+			}
+			++CaptureStep;
+		}
+		break;
+	case 1: if (T > 12.0) { CaptureShot(TEXT("panel_behaviours")); ++CaptureStep; } break;
+	case 2: if (T > 13.0) { SetTab(ER1PanelTab::Robustness); ++CaptureStep; } break;
+	case 3: if (T > 16.0) { CaptureShot(TEXT("panel_robustness")); ++CaptureStep; } break;
+	case 4: if (T > 17.0)
+		{
+			// pick a failing interaction cell so the details line shows up
+			SelKind = Robust.Interaction.Num() > 0 ? 1 : -1;
+			SelRow = Robust.Interaction.Num() - 1;
+			SelCol = 0;
+			++CaptureStep;
+		}
+		break;
+	case 5: if (T > 18.0) { CaptureShot(TEXT("panel_robustness_cell")); ++CaptureStep; } break;
+	case 6: if (T > 19.0) { SetTab(ER1PanelTab::Walk); ++CaptureStep; } break;
+	case 7: if (T > 22.0) { CaptureShot(TEXT("panel_walk_idle")); ++CaptureStep; } break;
+	case 8: if (T > 23.0)
+		{
+			PostJson(TEXT("/walk/start"), FString::Printf(TEXT("{\"course\":\"%s\",\"mode\":\"hold\"}"), *WalkCourse));
+			++CaptureStep;
+		}
+		break;
+	case 9: if (T > 31.0) { CaptureShot(TEXT("panel_walk_hold")); ++CaptureStep; } break;
+	case 10: if (T > 32.0) { PostJson(TEXT("/walk/stop"), TEXT("{}")); ++CaptureStep; } break;
+	// operator console tabs (docs/service_api.md sections 4-7)
+	case 11: if (T > 34.0) { SetTab(ER1PanelTab::Health); ++CaptureStep; } break;
+	case 12: if (T > 40.0) { CaptureShot(TEXT("panel_health")); ++CaptureStep; } break;
+	case 13: if (T > 41.0) { SetTab(ER1PanelTab::Motions); ++CaptureStep; } break;
+	case 14: if (T > 44.0) { CaptureShot(TEXT("panel_motions")); ++CaptureStep; } break;
+	case 15: if (T > 45.0)
+		{
+			ConsolePost(TEXT("/poses/preview"), TEXT("{\"name\":\"look_left\",\"target\":\"urlab\"}"), TEXT("Pose preview started on the twin."));
+			++CaptureStep;
+		}
+		break;
+	case 16: if (T > 46.5) { CaptureShot(TEXT("panel_motions_pose")); ++CaptureStep; } break;
+	case 17: if (T > 50.0) { SetTab(ER1PanelTab::Setup); ++CaptureStep; } break;
+	case 18: if (T > 54.0) { CaptureShot(TEXT("panel_setup")); ++CaptureStep; } break;
+	case 19: if (T > 55.0) { SetTab(ER1PanelTab::Help); OpenDoc(TEXT("service_api")); ++CaptureStep; } break;
+	case 20: if (T > 58.0) { CaptureShot(TEXT("panel_help")); ++CaptureStep; } break;
+	case 21: if (T > 59.0)
+		{
+			// the assistant: a status question is answered from the live service state (nothing changes)
+			SetTab(ER1PanelTab::Health);
+			HeardText = TEXT("how hot are the motors?");
+			HeardAt = Now;
+			SendInterpret(HeardText);
+			++CaptureStep;
+		}
+		break;
+	case 22: if (T > 62.0) { CaptureShot(TEXT("panel_chat_answer")); ++CaptureStep; } break;
+	case 23: if (T > 63.0)
+		{
+			HeardText = TEXT("go to the arms out pose");
+			HeardAt = Now;
+			SendInterpret(HeardText);
+			++CaptureStep;
+		}
+		break;
+	case 24: if (T > 66.0) { CaptureShot(TEXT("panel_chat_pose")); ++CaptureStep; } break;
+	case 25: if (T > 67.0)
+		{
+			++CaptureStep;
+			UE_LOG(LogR1Twin, Log, TEXT("R1BehaviourPanel: capture done, exiting"));
+			FPlatformMisc::RequestExit(false, TEXT("PanelCapture"));
+		}
+		break;
+	default: break;
+	}
 }
 
 void AR1BehaviourPanel::ResolveTwinJoints()
@@ -445,6 +710,16 @@ void AR1BehaviourPanel::OnStatus(FHttpRequestPtr, FHttpResponsePtr Resp, bool bO
 	bServiceOnline = true;
 	Job.Reset();
 	J->TryGetStringField(TEXT("job"), Job);
+	// {"progress": {"job": "robustness", "done": k, "total": n}} while a sweep runs, else null
+	StatusProgressJob.Reset();
+	ProgressDone = ProgressTotal = 0;
+	const TSharedPtr<FJsonObject>* ProgObj = nullptr;
+	if (J->TryGetObjectField(TEXT("progress"), ProgObj) && ProgObj && ProgObj->IsValid())
+	{
+		(*ProgObj)->TryGetStringField(TEXT("job"), StatusProgressJob);
+		(*ProgObj)->TryGetNumberField(TEXT("done"), ProgressDone);
+		(*ProgObj)->TryGetNumberField(TEXT("total"), ProgressTotal);
+	}
 	LastResult.Reset();
 	J->TryGetStringField(TEXT("last_result"), LastResult);
 	WhyNotRun.Reset();
@@ -526,6 +801,10 @@ void AR1BehaviourPanel::OnStatus(FHttpRequestPtr, FHttpResponsePtr Resp, bool bO
 			Lines.Add(V->AsString());
 		}
 	}
+	if (ProgressTotal <= 0 && Job == TEXT("robustness"))
+	{
+		R1Panel::ParseProgress(Lines, ProgressDone, ProgressTotal);   // older service: "@progress k/n" lines
+	}
 }
 
 void AR1BehaviourPanel::Post(const FString& Path, bool bConfirm)
@@ -579,12 +858,37 @@ void AR1BehaviourPanel::HandleClick(FName BoxName)
 		ShowToast(FString::Printf(TEXT("\"%s\" is locked: %s"), Label ? **Label : *BoxName.ToString(), **Why), WarnCol);
 		return;
 	}
-	const bool bIdle = bServiceOnline && Job.IsEmpty();
+	const bool bIdle = bServiceOnline && Job.IsEmpty() && !WalkState.bRunning;
 	if (BoxName == IdStop)
 	{
 		bConfirmOpen = false;
 		Post(TEXT("/stop"));
+		VoiceWalkCmd = FVector::ZeroVector;
 		ShowToast(TEXT("STOP sent."), BadCol);
+	}
+	else if (BoxName == IdEStop)
+	{
+		bConfirmOpen = false;
+		SendEStop();
+	}
+	else if (!bConfirmOpen && (BoxName == IdTabBeh || BoxName == IdTabRob || BoxName == IdTabWalk || BoxName == IdTabHealth
+		|| BoxName == IdTabMotions || BoxName == IdTabSetup || BoxName == IdTabHelp))
+	{
+		SetTab(BoxName == IdTabRob ? ER1PanelTab::Robustness : BoxName == IdTabWalk ? ER1PanelTab::Walk
+			: BoxName == IdTabHealth ? ER1PanelTab::Health : BoxName == IdTabMotions ? ER1PanelTab::Motions
+			: BoxName == IdTabSetup ? ER1PanelTab::Setup : BoxName == IdTabHelp ? ER1PanelTab::Help : ER1PanelTab::Behaviours);
+	}
+	else if (!bConfirmOpen && HandleConsoleClick(BoxName))
+	{
+	}
+	else if (!bConfirmOpen && HandleVoiceClick(BoxName))
+	{
+	}
+	else if (!bConfirmOpen && Tab == ER1PanelTab::Robustness && HandleRobustClick(BoxName))
+	{
+	}
+	else if (!bConfirmOpen && Tab == ER1PanelTab::Walk && HandleWalkClick(BoxName))
+	{
 	}
 	else if (BoxName == IdDetails)
 	{
@@ -661,10 +965,9 @@ void AR1BehaviourPanel::DrawButton(const FButton& B)
 	const double Now = FPlatformTime::Seconds();
 	const float Flash = B.Id == PressedId ? FMath::Clamp(1.f - static_cast<float>(Now - PressedAt) / 0.5f, 0.f, 1.f) : 0.f;
 	bool bHover = false;
-	if (APlayerController* PC = GetOwningPlayerController())
 	{
 		float Mx = 0.f, My = 0.f;
-		if (PC->GetMousePosition(Mx, My))
+		if (GetPanelMouse(Mx, My))
 		{
 			bHover = Mx >= B.Pos.X && Mx <= B.Pos.X + B.Size.X && My >= B.Pos.Y && My <= B.Pos.Y + B.Size.Y;
 		}
@@ -711,12 +1014,23 @@ void AR1BehaviourPanel::DrawButton(const FButton& B)
 		{
 			Why = TEXT("the behaviour service is not running");
 		}
+		else if (WalkState.bRunning && Job.IsEmpty())
+		{
+			Why = TEXT("the walk sandbox is running (Stop walk on the Walk tab, or STOP)");
+		}
 		else if (!Job.IsEmpty())
 		{
 			Why = Job == TEXT("preview") ? TEXT("the virtual robot is still moving (STOP cancels it)")
 				: Job == TEXT("check") ? TEXT("the robot check is still running")
 				: Job == TEXT("monitor") ? TEXT("live monitor is running (STOP cancels it)")
-				: TEXT("the real robot is moving (STOP cancels it)");
+				: Job == TEXT("snapshot") ? TEXT("the start-up robot snapshot is running (a few seconds)")
+				: Job == TEXT("robustness") ? TEXT("a robustness sweep is running (STOP cancels it)")
+				: Job == TEXT("walk") ? TEXT("the walk sandbox is running (Stop walk on the Walk tab, or STOP)")
+				: Job == TEXT("run") ? TEXT("the real robot is moving (STOP cancels it)")
+				: Job == TEXT("motion") ? TEXT("a motion is playing on the twin (STOP cancels it)")
+				: Job == TEXT("pose") ? TEXT("a pose preview is running on the twin (STOP cancels it)")
+				: Job == TEXT("mode") ? TEXT("a mode is active on the twin (Off on the Motions tab, or STOP)")
+				: FString::Printf(TEXT("the service is busy (%s)"), *Job);
 		}
 		else if (B.Id == IdRun || B.Id == IdConfirm)
 		{
@@ -917,6 +1231,12 @@ void AR1BehaviourPanel::DrawJointMatrix(float X, float Y, float W)
 			const FJointMeta& Meta = JointMetas[Idx];
 			const float ValDeg = Tel.QDeg[Idx];
 			const float RY = CY + CardHdrH + i * RowH;
+			if (Meta.MjName == HighlightJoint && FPlatformTime::Seconds() - HighlightAt < 8.0)
+			{
+				// voice asked about this joint: point at its row
+				DrawRect(FLinearColor(0.39f, 0.40f, 0.95f, 0.35f), CX + 4.f, RY + 1.f, ColW - 8.f, RowH - 2.f);
+				DrawRect(FLinearColor(0.39f, 0.40f, 0.95f, 1.f), CX + 4.f, RY + 1.f, 3.f, RowH - 2.f);
+			}
 			if (i > 0)
 			{
 				DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.03f), CX + 8.f, RY, ColW - 14.f, 1.f);
@@ -999,6 +1319,56 @@ void AR1BehaviourPanel::DrawStep(bool bDone, const FString& Text, float X, float
 	DrawLine(Text, X + S + 8.f, Y, bDone ? TextCol : DimCol, 0.92f);
 }
 
+void AR1BehaviourPanel::DrawTabStrip(float X0, float X, float Inner, float PanelW, float& Y)
+{
+	// title + voice controls
+	DrawText(TEXT("R1 STAND EXPLORE"), TextCol, X, Y + 2.f, GEngine->GetMediumFont(), 1.4f);
+	const bool bRecoOk = Voice && Voice->IsRecognizerReady();
+	const bool bListening = Voice && Voice->IsListening();
+	const FString MicLabel = bListening ? TEXT("Listening...") : bMicOn ? TEXT("Mic: on") : TEXT("Mic: off");
+	const float MuteW = 92.f, MicW = 104.f, Gap = 6.f, EStopW = 96.f;
+	const float MuteX = X0 + PanelW - 18.f - MuteW;
+	DrawButton({IdMute, bSpeakReplies ? TEXT("Voice: on") : TEXT("Voice: muted"), {MuteX, Y}, {MuteW, 28.f}, true,
+		bSpeakReplies ? ChipCol : OffCol});
+	DrawButton({IdMic, MicLabel, {MuteX - Gap - MicW, Y}, {MicW, 28.f}, bRecoOk || !Voice,
+		bListening ? CyanCol * 0.8f : bMicOn ? ChipOnCol : ChipCol});
+	// E-STOP on every tab (End key): stops every job, the walk sandbox and the twin player
+	DrawEStop(MuteX - 2.f * Gap - MicW - EStopW, Y, EStopW, 28.f);
+	if (!bRecoOk)
+	{
+		DisabledWhy.Add(IdMic, Voice && !Voice->GetRecognizerError().IsEmpty() ? Voice->GetRecognizerError() : FString(TEXT("speech recogniser is starting")));
+	}
+	Y += 36.f;
+
+	// tabs
+	struct FTabDef { FName Id; const TCHAR* Label; ER1PanelTab T; };
+	const FTabDef Tabs[] = {
+		{IdTabBeh, TEXT("Behaviours"), ER1PanelTab::Behaviours},
+		{IdTabRob, TEXT("Robustness"), ER1PanelTab::Robustness},
+		{IdTabWalk, WalkState.bRunning ? TEXT("Walk (running)") : TEXT("Walk (sim)"), ER1PanelTab::Walk},
+		{IdTabHealth, TEXT("Health"), ER1PanelTab::Health},
+		{IdTabMotions, TEXT("Motions"), ER1PanelTab::Motions},
+		{IdTabSetup, TEXT("Setup"), ER1PanelTab::Setup},
+		{IdTabHelp, TEXT("Help"), ER1PanelTab::Help},
+	};
+	// two rows: the original three tabs, then the operator console tabs
+	const float TabW3 = (Inner - 2.f * Gap) / 3.f, TabW4 = (Inner - 3.f * Gap) / 4.f;
+	for (int32 i = 0; i < UE_ARRAY_COUNT(Tabs); ++i)
+	{
+		const bool bSel = Tab == Tabs[i].T;
+		const bool bRow2 = i >= 3;
+		const float TW = bRow2 ? TabW4 : TabW3;
+		const int32 Col = bRow2 ? i - 3 : i;
+		DrawButton({Tabs[i].Id, Tabs[i].Label, {X + Col * (TW + Gap), Y + (bRow2 ? 34.f : 0.f)}, {TW, bRow2 ? 28.f : 30.f}, true,
+			bSel ? ChipOnCol : ChipCol});
+	}
+	Y += 72.f;
+	DrawVoiceLine(X, Inner, Y);
+	DrawPendingPose(X, Inner, Y);
+	DrawRect(DividerCol, X0, Y + 2.f, PanelW, 1.f);
+	Y += 10.f;
+}
+
 void AR1BehaviourPanel::DrawHUD()
 {
 	Super::DrawHUD();
@@ -1014,13 +1384,25 @@ void AR1BehaviourPanel::DrawHUD()
 		Canvas->SetDrawColor(FColor(154, 163, 181));
 		Canvas->DrawText(GEngine->GetSmallFont(), Stamp, Canvas->ClipX - TW - 12.f, Canvas->ClipY - TH - 10.f);
 	}
+
+	// The panel is designed at 640 px wide; narrower or shorter windows (portrait 450x800) draw it scaled down.
+	const float Pad = 18.f, PanelW = 600.f;
+	const float X0 = 20.f, Y0 = 20.f;
+	PanelScale = FMath::Clamp(FMath::Min((Canvas->ClipX - 8.f) / (X0 + PanelW + 8.f), (Canvas->ClipY - 8.f) / (Y0 + LastPanelH + 30.f)), 0.4f, 1.f);
+	ViewW = Canvas->ClipX / PanelScale;
+	ViewH = Canvas->ClipY / PanelScale;
+	const bool bScaled = PanelScale < 0.999f && Canvas->Canvas;
+	if (bScaled)
+	{
+		Canvas->Canvas->PushRelativeTransform(FScaleMatrix(FVector(PanelScale, PanelScale, 1.f)));
+	}
+
 	const double Now = FPlatformTime::Seconds();
 	if (bClickQueued)
 	{
 		bClickQueued = false;
 		float Mx = 0.f, My = 0.f;
-		APlayerController* PC = GetOwningPlayerController();
-		if (PC && PC->GetMousePosition(Mx, My))
+		if (GetPanelMouse(Mx, My))
 		{
 			const FVector2D M(Mx, My);
 			for (int32 i = ButtonRects.Num() - 1; i >= 0; --i)
@@ -1061,7 +1443,7 @@ void AR1BehaviourPanel::DrawHUD()
 		bConfirmOpen = false;
 	}
 
-	const bool bIdle = bServiceOnline && Job.IsEmpty();
+	const bool bIdle = bServiceOnline && Job.IsEmpty() && !WalkState.bRunning;
 	const float Amp = AmplitudeDeg;
 	const FBehaviourInfo* Info = ActiveBehaviourInfo();
 	const float EffAmp = Info ? FMath::Min(Amp, Info->MaxDeg) : Amp;
@@ -1070,164 +1452,195 @@ void AR1BehaviourPanel::DrawHUD()
 		&& CheckedBehaviour == Behaviour && CheckAgeS >= 0.f && CheckAgeS < CheckValidS;
 	const bool bRobotReady = bIdle && bCanRunRobot && bPreviewedThis && bCheckedThis;
 
-	const float Pad = 18.f, PanelW = 600.f;
-	const float X0 = 20.f, Y0 = 20.f;
 	const float X = X0 + Pad, Inner = PanelW - 2.f * Pad;
-	const float PanelH = (bShowDetails ? 635.f : 494.f) + (FPlatformTime::Seconds() - ToastAt < 4.0 ? 32.f : 0.f);
-	DrawRect(PanelBg, X0, Y0, PanelW, PanelH);
+	DrawRect(PanelBg, X0, Y0, PanelW, LastPanelH);
 	float Y = Y0 + Pad - 4.f;
 
-	// ---------------------------------------------------------------- title + size chips
-	DrawText(TEXT("R1 STAND EXPLORE"), TextCol, X, Y + 2.f, GEngine->GetMediumFont(), 1.4f);
-	const float ChipW = 58.f, ChipH = 28.f, ChipX = X0 + PanelW - Pad - 3.f * (ChipW + 6.f) + 6.f;
-	DrawText(TEXT("Size"), DimCol, ChipX - 42.f, Y + 5.f, GEngine->GetMediumFont(), 0.9f);
-	for (int32 i = 0; i < 3; ++i)
-	{
-		const float A = 10.f * (i + 1);
-		const FName Id = i == 0 ? IdAmp10 : i == 1 ? IdAmp20 : IdAmp30;
-		const bool bSel = FMath::IsNearlyEqual(Amp, A);
-		DrawButton({Id, FString::Printf(TEXT("%.0f deg"), A), {ChipX + i * (ChipW + 6.f), Y}, {ChipW, ChipH},
-			bIdle || bSel, bSel ? ChipOnCol : ChipCol});
-	}
-	Y += 34.f;
+	DrawTabStrip(X0, X, Inner, PanelW, Y);
 
-	// Behaviour selector row
-	const int32 NumBeh = FMath::Min(Behaviours.Num(), static_cast<int32>(UE_ARRAY_COUNT(IdBehIds)));
-	const float BehGap = 6.f;
-	const float BehW = NumBeh > 0 ? (Inner - (NumBeh - 1) * BehGap) / NumBeh : Inner;
-	for (int32 i = 0; i < NumBeh; ++i)
+	if (Tab == ER1PanelTab::Behaviours)
 	{
-		const bool bSel = Behaviours[i].Id == Behaviour;
-		DrawButton({IdBehIds[i], Behaviours[i].Label, {X + i * (BehW + BehGap), Y}, {BehW, 28.f},
-			bIdle || bSel, bSel ? ChipOnCol : ChipCol});
-	}
-	Y += 34.f;
-	const FString Desc = Info ? Info->Desc : TEXT("Stand-safe upper-body behaviour.");
-	DrawLine(FString::Printf(TEXT("%s  (%.0f deg)"), *Desc, EffAmp), X, Y, DimCol, 0.88f);
-	Y += 8.f;
+		// ---------------------------------------------------------------- size chips + behaviour selector
+		const float ChipW = 58.f, ChipH = 28.f, ChipX = X0 + PanelW - Pad - 3.f * (ChipW + 6.f) + 6.f;
+		DrawText(TEXT("Behaviour"), DimCol, X, Y + 5.f, GEngine->GetMediumFont(), 0.9f);
+		DrawText(TEXT("Size"), DimCol, ChipX - 42.f, Y + 5.f, GEngine->GetMediumFont(), 0.9f);
+		for (int32 i = 0; i < 3; ++i)
+		{
+			const float A = 10.f * (i + 1);
+			const FName Id = i == 0 ? IdAmp10 : i == 1 ? IdAmp20 : IdAmp30;
+			const bool bSel = FMath::IsNearlyEqual(Amp, A);
+			DrawButton({Id, FString::Printf(TEXT("%.0f deg"), A), {ChipX + i * (ChipW + 6.f), Y}, {ChipW, ChipH},
+				bIdle || bSel, bSel ? ChipOnCol : ChipCol});
+		}
+		Y += 34.f;
 
-	// ---------------------------------------------------------------- 1. virtual robot (blue)
+		const int32 NumBeh = FMath::Min(Behaviours.Num(), static_cast<int32>(UE_ARRAY_COUNT(IdBehIds)));
+		const float BehGap = 6.f;
+		const float BehW = NumBeh > 0 ? (Inner - (NumBeh - 1) * BehGap) / NumBeh : Inner;
+		for (int32 i = 0; i < NumBeh; ++i)
+		{
+			const bool bSel = Behaviours[i].Id == Behaviour;
+			DrawButton({IdBehIds[i], Behaviours[i].Label, {X + i * (BehW + BehGap), Y}, {BehW, 28.f},
+				bIdle || bSel, bSel ? ChipOnCol : ChipCol});
+		}
+		Y += 34.f;
+		const FString Desc = Info ? Info->Desc : TEXT("Stand-safe upper-body behaviour.");
+		DrawLine(FString::Printf(TEXT("%s  (%.0f deg)"), *Desc, EffAmp), X, Y, DimCol, 0.88f);
+		Y += 8.f;
+
+		// ---------------------------------------------------------------- 1. virtual robot (blue)
+		{
+			const float SecY = Y;
+			DrawRect(VirtualCol, X0, SecY, 6.f, 134.f);
+			DrawLine(TEXT("VIRTUAL ROBOT  (on this screen)"), X, Y, VirtualCol * 1.35f, 1.05f);
+			Y += 4.f;
+			DrawButton({IdPreview, Job == TEXT("preview") ? TEXT("Moving the virtual robot...") : TEXT("Move VIRTUAL robot"),
+				{X, Y}, {Inner, 44.f}, bIdle, VirtualCol, true});
+			Y += 50.f;
+			FString S;
+			FLinearColor C = DimCol;
+			if (Job == TEXT("preview"))
+			{
+				S = TEXT("Moving the virtual robot...");
+				C = WarnCol;
+			}
+			else if (PreviewRes.bValid && !PreviewRes.bOk)
+			{
+				S = FString::Printf(TEXT("Stopped: %s"), *PreviewRes.Reason);
+				C = BadCol;
+			}
+			else if (bPreviewedThis)
+			{
+				S = FString::Printf(TEXT("Done - virtual %s ran cleanly (%.0f deg)."), Info ? *Info->Label : *Behaviour, EffAmp);
+				C = OkCol;
+			}
+			else
+			{
+				S = TEXT("Safe: nothing real moves. Watch the robot on screen.");
+			}
+			DrawLine(S, X, Y, C, 0.92f);
+			Y += 3.f;
+			DrawTelemetry(VirtualTel, Job == TEXT("preview") && VirtualTel.AgeS < 2.f,
+				TEXT("no reading yet - move the virtual robot"), VirtualCol * 1.35f, X, Inner, Y);
+			Y = SecY + 144.f;
+		}
+
+		// ---------------------------------------------------------------- 2. real robot (orange)
+		{
+			const float SecY = Y;
+			DrawRect(RealCol, X0, SecY, 6.f, 166.f);
+			DrawLine(TEXT("REAL ROBOT  (Unitree R1)"), X, Y, RealCol * 1.2f, 1.05f);
+			Y += 4.f;
+			const float CheckW = 144.f, MonW = 136.f, Gap = 8.f;
+			RunLockedWhy = !bPreviewedThis ? FString::Printf(TEXT("do step 1 first - preview %s at %.0f deg"), Info ? *Info->Label : *Behaviour, Amp)
+				: !bCheckedThis ? FString(TEXT("do step 2 first - Check connection"))
+				: FString(TEXT("not ready yet"));
+			DrawButton({IdCheck, Job == TEXT("check") ? TEXT("Checking...") : TEXT("Check connection"),
+				{X, Y}, {CheckW, 44.f}, bIdle, RealSoftCol});
+			DrawButton({IdMonitor, Job == TEXT("monitor") ? TEXT("Monitoring...") : TEXT("Monitor (Mirror)"),
+				{X + CheckW + Gap, Y}, {MonW, 44.f}, bIdle, MonitorCol});
+			DrawButton({IdRun, Job == TEXT("run") ? TEXT("REAL robot moving...") : TEXT("Move REAL robot"),
+				{X + CheckW + MonW + 2.f * Gap, Y}, {Inner - CheckW - MonW - 2.f * Gap, 44.f}, bRobotReady, RealCol, true});
+			Y += 52.f;
+			DrawStep(bPreviewedThis, FString::Printf(TEXT("Step 1: preview %s (%.0f deg) on virtual robot"), Info ? *Info->Label : *Behaviour, Amp), X, Y);
+			const FString CheckText = bCheckedThis
+				? FString::Printf(TEXT("Step 2: robot connected & ready (%.0f s ago)"), CheckAgeS)
+				: TEXT("Step 2: check connection (read-only, nothing moves)");
+			DrawStep(bCheckedThis, CheckText, X, Y);
+			Y += 2.f;
+			FString S;
+			FLinearColor C = DimCol;
+			if (Job == TEXT("check"))
+			{
+				S = TEXT("Checking the robot (read-only)...");
+				C = WarnCol;
+			}
+			else if (Job == TEXT("monitor"))
+			{
+				S = FString::Printf(TEXT("MONITOR (read-only) - live telemetry & twin mirror (%d samples)"), MirrorSamples);
+				C = OkCol;
+			}
+			else if (Job == TEXT("run"))
+			{
+				S = FString::Printf(TEXT("REAL ROBOT MOVING - screen mirrors the robot (%d samples)"), MirrorSamples);
+				C = RealCol * 1.2f;
+			}
+			else if (CheckRes.bValid && !CheckRes.bOk && !bCheckedThis)
+			{
+				S = FString::Printf(TEXT("Check failed: %s"), *CheckRes.Reason);
+				C = BadCol;
+			}
+			else if (MonitorRes.bValid && !MonitorRes.bOk && LastResult.StartsWith(TEXT("monitor")))
+			{
+				S = FString::Printf(TEXT("Monitor failed: %s"), *MonitorRes.Reason);
+				C = BadCol;
+			}
+			else if (RunRes.bValid && !RunRes.bOk)
+			{
+				S = FString::Printf(TEXT("Last robot run stopped: %s"), *RunRes.Reason);
+				C = BadCol;
+			}
+			else if (bRobotReady)
+			{
+				S = TEXT("Ready. Confirmation required before any motor moves.");
+				C = OkCol;
+			}
+			else if (RunRes.bValid && RunRes.bOk)
+			{
+				S = TEXT("Last robot run finished. Check again before the next one.");
+				C = OkCol;
+			}
+			else
+			{
+				S = TEXT("Locked until steps 1 and 2 are done (Monitor is always read-only).");
+			}
+			DrawLine(S, X, Y, C, 0.92f);
+			Y += 3.f;
+			DrawTelemetry(RealTel, (Job == TEXT("check") || Job == TEXT("run") || Job == TEXT("monitor")) && RealTel.AgeS < 2.f,
+				TEXT("no reading yet - Check or Monitor reads it (nothing moves)"), RealCol * 1.2f, X, Inner, Y);
+			Y = SecY + 176.f;
+		}
+	}
+	else if (Tab == ER1PanelTab::Robustness)
 	{
-		const float SecY = Y;
-		DrawRect(VirtualCol, X0, SecY, 6.f, 134.f);
-		DrawLine(TEXT("VIRTUAL ROBOT  (on this screen)"), X, Y, VirtualCol * 1.35f, 1.05f);
-		Y += 4.f;
-		DrawButton({IdPreview, Job == TEXT("preview") ? TEXT("Moving the virtual robot...") : TEXT("Move VIRTUAL robot"),
-			{X, Y}, {Inner, 44.f}, bIdle, VirtualCol, true});
-		Y += 50.f;
-		FString S;
-		FLinearColor C = DimCol;
-		if (Job == TEXT("preview"))
-		{
-			S = TEXT("Moving the virtual robot...");
-			C = WarnCol;
-		}
-		else if (PreviewRes.bValid && !PreviewRes.bOk)
-		{
-			S = FString::Printf(TEXT("Stopped: %s"), *PreviewRes.Reason);
-			C = BadCol;
-		}
-		else if (bPreviewedThis)
-		{
-			S = FString::Printf(TEXT("Done - virtual %s ran cleanly (%.0f deg)."), Info ? *Info->Label : *Behaviour, EffAmp);
-			C = OkCol;
-		}
-		else
-		{
-			S = TEXT("Safe: nothing real moves. Watch the robot on screen.");
-		}
-		DrawLine(S, X, Y, C, 0.92f);
-		Y += 3.f;
-		DrawTelemetry(VirtualTel, Job == TEXT("preview") && VirtualTel.AgeS < 2.f,
-			TEXT("no reading yet - move the virtual robot"), VirtualCol * 1.35f, X, Inner, Y);
-		Y = SecY + 144.f;
+		DrawRobustnessTab(X, Inner, Y);
 	}
-
-	// ---------------------------------------------------------------- 2. real robot (orange)
+	else if (Tab == ER1PanelTab::Health)
 	{
-		const float SecY = Y;
-		DrawRect(RealCol, X0, SecY, 6.f, 166.f);
-		DrawLine(TEXT("REAL ROBOT  (Unitree R1)"), X, Y, RealCol * 1.2f, 1.05f);
-		Y += 4.f;
-		const float CheckW = 144.f, MonW = 136.f, Gap = 8.f;
-		RunLockedWhy = !bPreviewedThis ? FString::Printf(TEXT("do step 1 first - preview %s at %.0f deg"), Info ? *Info->Label : *Behaviour, Amp)
-			: !bCheckedThis ? FString(TEXT("do step 2 first - Check connection"))
-			: FString(TEXT("not ready yet"));
-		DrawButton({IdCheck, Job == TEXT("check") ? TEXT("Checking...") : TEXT("Check connection"),
-			{X, Y}, {CheckW, 44.f}, bIdle, RealSoftCol});
-		DrawButton({IdMonitor, Job == TEXT("monitor") ? TEXT("Monitoring...") : TEXT("Monitor (Mirror)"),
-			{X + CheckW + Gap, Y}, {MonW, 44.f}, bIdle, MonitorCol});
-		DrawButton({IdRun, Job == TEXT("run") ? TEXT("REAL robot moving...") : TEXT("Move REAL robot"),
-			{X + CheckW + MonW + 2.f * Gap, Y}, {Inner - CheckW - MonW - 2.f * Gap, 44.f}, bRobotReady, RealCol, true});
-		Y += 52.f;
-		DrawStep(bPreviewedThis, FString::Printf(TEXT("Step 1: preview %s (%.0f deg) on virtual robot"), Info ? *Info->Label : *Behaviour, Amp), X, Y);
-		const FString CheckText = bCheckedThis
-			? FString::Printf(TEXT("Step 2: robot connected & ready (%.0f s ago)"), CheckAgeS)
-			: TEXT("Step 2: check connection (read-only, nothing moves)");
-		DrawStep(bCheckedThis, CheckText, X, Y);
-		Y += 2.f;
-		FString S;
-		FLinearColor C = DimCol;
-		if (Job == TEXT("check"))
-		{
-			S = TEXT("Checking the robot (read-only)...");
-			C = WarnCol;
-		}
-		else if (Job == TEXT("monitor"))
-		{
-			S = FString::Printf(TEXT("MONITOR (read-only) - live telemetry & twin mirror (%d samples)"), MirrorSamples);
-			C = OkCol;
-		}
-		else if (Job == TEXT("run"))
-		{
-			S = FString::Printf(TEXT("REAL ROBOT MOVING - screen mirrors the robot (%d samples)"), MirrorSamples);
-			C = RealCol * 1.2f;
-		}
-		else if (CheckRes.bValid && !CheckRes.bOk && !bCheckedThis)
-		{
-			S = FString::Printf(TEXT("Check failed: %s"), *CheckRes.Reason);
-			C = BadCol;
-		}
-		else if (MonitorRes.bValid && !MonitorRes.bOk && LastResult.StartsWith(TEXT("monitor")))
-		{
-			S = FString::Printf(TEXT("Monitor failed: %s"), *MonitorRes.Reason);
-			C = BadCol;
-		}
-		else if (RunRes.bValid && !RunRes.bOk)
-		{
-			S = FString::Printf(TEXT("Last robot run stopped: %s"), *RunRes.Reason);
-			C = BadCol;
-		}
-		else if (bRobotReady)
-		{
-			S = TEXT("Ready. Confirmation required before any motor moves.");
-			C = OkCol;
-		}
-		else if (RunRes.bValid && RunRes.bOk)
-		{
-			S = TEXT("Last robot run finished. Check again before the next one.");
-			C = OkCol;
-		}
-		else
-		{
-			S = TEXT("Locked until steps 1 and 2 are done (Monitor is always read-only).");
-		}
-		DrawLine(S, X, Y, C, 0.92f);
-		Y += 3.f;
-		DrawTelemetry(RealTel, (Job == TEXT("check") || Job == TEXT("run") || Job == TEXT("monitor")) && RealTel.AgeS < 2.f,
-			TEXT("no reading yet - Check or Monitor reads it (nothing moves)"), RealCol * 1.2f, X, Inner, Y);
-		Y = SecY + 176.f;
+		DrawHealthTab(X, Inner, Y);
+	}
+	else if (Tab == ER1PanelTab::Motions)
+	{
+		DrawMotionsTab(X, Inner, Y);
+	}
+	else if (Tab == ER1PanelTab::Setup)
+	{
+		DrawSetupTab(X, Inner, Y);
+	}
+	else if (Tab == ER1PanelTab::Help)
+	{
+		DrawHelpTab(X, Inner, Y);
+	}
+	else
+	{
+		DrawWalkTab(X, Inner, Y);
 	}
 
-	// ---------------------------------------------------------------- stop + service state
+	// ---------------------------------------------------------------- stop + service state (every tab)
+	Y += 4.f;
 	DrawButton({IdStop, TEXT("STOP"), {X, Y}, {108.f, 40.f}, bServiceOnline, StopCol, true});
 	{
 		float Ty = Y + 2.f;
 		DrawLine(TEXT("Emergency stop on robot:"), X + 118.f, Ty, WarnCol, 0.85f);
 		DrawLine(TEXT("remote L2 + B, hold 5 s"), X + 118.f, Ty, WarnCol, 0.85f);
 	}
+	const bool bRoomForJoints = ViewW >= X0 + PanelW + 20.f + 540.f;
 	DrawButton({IdJoints, bShowJoints ? TEXT("Hide joints") : TEXT("Joints (26)"), {X0 + PanelW - Pad - 220.f, Y}, {106.f, 40.f},
-		true, bShowJoints ? ChipOnCol : ChipCol});
+		bRoomForJoints, bShowJoints && bRoomForJoints ? ChipOnCol : ChipCol});
+	if (!bRoomForJoints)
+	{
+		DisabledWhy.Add(IdJoints, TEXT("the joint view needs a wider window"));
+	}
 	DrawButton({IdDetails, bShowDetails ? TEXT("Hide details") : TEXT("Details"), {X0 + PanelW - Pad - 106.f, Y}, {106.f, 40.f},
 		true, ChipCol});
 	Y += 50.f;
@@ -1238,25 +1651,26 @@ void AR1BehaviourPanel::DrawHUD()
 			const float Alpha = Age < 3.0 ? 1.f : static_cast<float>(4.0 - Age);
 			FLinearColor C = ToastColor;
 			C.A = Alpha;
-			DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.08f * Alpha), X - 6.f, Y - 4.f, Inner + 12.f, 30.f);
+			const float ToastY = Y;
 			float Ty = Y;
-			DrawLine(Toast, X, Ty, C, 1.f);
-			Y += 32.f;
+			DrawWrapped(Toast, X, Ty, Inner, C, 1.f);
+			DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.08f * Alpha), X - 6.f, ToastY - 4.f, Inner + 12.f, Ty - ToastY + 6.f);
+			Y = Ty + 4.f;
 		}
 	}
 	if (!bServiceOnline)
 	{
-		DrawLine(TEXT("Not connected. Start:  python -m robotcontrol.behaviours.service"), X, Y, BadCol, 0.9f);
+		DrawWrapped(FString::Printf(TEXT("Not connected (%s). Start:  python -m robotcontrol.behaviours.service"), *ServiceUrl), X, Y, Inner, BadCol, 0.9f);
 	}
 	else if (!LastError.IsEmpty())
 	{
-		DrawLine(FString::Printf(TEXT("Refused: %s"), *LastError), X, Y, BadCol, 0.9f);
+		DrawWrapped(FString::Printf(TEXT("Refused: %s"), *LastError), X, Y, Inner, BadCol, 0.9f);
 	}
 
-	if (bShowJoints)
+	if (bShowJoints && bRoomForJoints)
 	{
-		const float RightW = FMath::Clamp(Canvas->ClipX - (X0 + PanelW + 300.f), 540.f, 650.f);
-		const float RightX = FMath::Max(X0 + PanelW + 20.f, Canvas->ClipX - RightW - 20.f);
+		const float RightW = FMath::Clamp(ViewW - (X0 + PanelW + 300.f), 540.f, 650.f);
+		const float RightX = FMath::Max(X0 + PanelW + 20.f, ViewW - RightW - 20.f);
 		DrawJointMatrix(RightX, Y0, RightW);
 	}
 	if (bShowDetails)
@@ -1268,13 +1682,14 @@ void AR1BehaviourPanel::DrawHUD()
 			DrawLine(Lines[i].Left(92), X, Y, DimCol, 0.75f);
 		}
 	}
+	LastPanelH = FMath::Max(200.f, Y - Y0 + 8.f);
 
 	// ---------------------------------------------------------------- confirmation
 	if (bConfirmOpen)
 	{
 		const float CW = 600.f, CH = 210.f;
-		const float CX = (Canvas->ClipX - CW) * 0.5f, CY = (Canvas->ClipY - CH) * 0.5f;
-		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 0.f, 0.f, Canvas->ClipX, Canvas->ClipY);
+		const float CX = (ViewW - CW) * 0.5f, CY = (ViewH - CH) * 0.5f;
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 0.f, 0.f, ViewW, ViewH);
 		DrawRect(FLinearColor(0.07f, 0.04f, 0.02f, 0.98f), CX, CY, CW, CH);
 		DrawRect(RealCol, CX, CY, CW, 6.f);
 		float CYl = CY + 20.f;
@@ -1287,4 +1702,8 @@ void AR1BehaviourPanel::DrawHUD()
 		DrawButton({IdCancel, TEXT("Cancel"), {CX + 334.f, CY + CH - 58.f}, {120.f, 42.f}, true, ChipCol});
 	}
 	ButtonRects = MoveTemp(NextRects);
+	if (bScaled)
+	{
+		Canvas->Canvas->PopTransform();
+	}
 }

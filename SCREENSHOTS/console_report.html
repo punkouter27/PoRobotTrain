@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operator Console Report</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--blue:#2a6bd9;--orange:#d9730d;--ok:#1f8a4c;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038;--ok:#52d984;--bad:#ff7b72}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.row{grid-template-columns:1fr}}
+.narrow{max-width:460px}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-top:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+code{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>Blazor control UI: operator console (20 Explore-style features)</h1>
+<p>2026-11-21 · Blazor WASM control UI + .NET API proxy, Release build on port 5081 against the current behaviour service on port 8767 (<code>--no-mirror</code>). Captured with headless Chrome through the DevTools protocol. Contract: <code>docs/service_api.md</code> sections 4-7. The Unreal twin panel implements the same features; its report is <a href="unreal_console_report.html">unreal_console_report.html</a>.</p>
+<p><b>Test data.</b> No physical robot was connected. Telemetry comes from the practice stand twin: a practice snapshot, a 20 s practice monitor, the "wave ready" pose, two pre-flight ticks, a walk speed cap of 0.5x and a calibration capture against the home pose taken while the twin still held "wave ready" (so the right arm is correctly flagged "&gt;3° check").</p>
+
+<h2>Before</h2>
+<div class="row">
+<figure><img src="console_before_control_1600x900.png" alt="Control page before: nav has Control, Walk sandbox, Robustness, Diagnostics, OpenAPI"><figcaption>1600×900: no Motions, Health or Setup pages, no E-STOP in the page chrome, no help.</figcaption></figure>
+<figure class="narrow"><img src="console_before_control_450x800.png" alt="Control page before at 450 by 800"><figcaption>450×800 before.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="console_before_walk_1600x900.png" alt="Walk sandbox before"><figcaption>Walk sandbox before: keyboard, gamepad and a button pad only.</figcaption></figure>
+<figure><img src="console_before_diag_1600x900.png" alt="Diagnostics before"><figcaption>Diagnostics (unchanged).</figcaption></figure>
+</div>
+
+<h2>After</h2>
+<figure><img src="console_after_health_full_1600.png" alt="Health page: health rows, head camera, battery estimate with voltage chart, motor temperature small multiples, IMU check, versions, alarm log"><figcaption>Health (#1 health summary, #2 alarm and fault log with level and kind filters and CSV export, #3 battery estimate with the voltage chart, #4 temperature small multiples with a table view, #5 head camera from the twin, #6 versions and policy gates, #16 IMU check). OFF marks an optional check that is not running.</figcaption></figure>
+<div class="row">
+<figure><img src="console_after_health_1600x900.png" alt="Health page at 1600 by 900"><figcaption>Health at 1600×900. One critical event (E-STOP pressed during the earlier capture) shows as "1 FAILING" for 10 minutes, as designed.</figcaption></figure>
+<figure class="narrow"><img src="console_after_health_450x800.png" alt="Health page at 450 by 800"><figcaption>450×800: header wraps; E-STOP stays at the top.</figcaption></figure>
+</div>
+<figure><img src="console_after_motions_full_1600.png" alt="Motions page: poses, teach mode, modes, session limits, motion library and the timeline editor"><figcaption>Motions (#7 modes, #10 session limits, #11 poses, #12 teach mode and playback, #13 timeline editor with draggable keyframes, #14 local action store). Targets are practice, headless or Unreal twin only; a built-in motion opens as a copy.</figcaption></figure>
+<div class="row">
+<figure><img src="console_after_setup_full_1600.png" alt="Setup page: pre-flight checklist, calibration wizard, connection profiles"><figcaption>Setup (#18 pre-flight checklist: manual ticks plus automatic checks, #15 zero-offset wizard (stored, not applied), #17 connection profiles with Test).</figcaption></figure>
+<figure class="narrow"><img src="console_after_setup_450x800.png" alt="Setup at 450 by 800"><figcaption>Setup at 450×800.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="console_after_chat_1600x900.png" alt="Control page with chat transcript: temperature answer and a pose offer"><figcaption>#20 chat: "how hot are the motors?" is answered from live state; "go to the arms out pose" offers a preview on the practice twin (it never starts on its own).</figcaption></figure>
+<figure><img src="console_after_help_estop_1600x900.png" alt="Help drawer open on the Motions page with the E-STOP toast above it"><figcaption>#19 help drawer opened on this page's doc; #8 E-STOP pressed (toast names the remote L2+B as the real emergency stop). E-STOP stays above the drawer.</figcaption></figure>
+</div>
+<div class="row">
+<figure class="narrow"><img src="console_after_walk_sticks_450x800.png" alt="Walk sandbox drive panel with two on-screen thumbsticks"><figcaption>#9 touch thumbsticks (left: walk and sidestep, right: turn). Locked here because no Level 2 policy is running.</figcaption></figure>
+<figure class="narrow"><img src="console_after_control_450x800.png" alt="Control page after at 450 by 800"><figcaption>Control at 450×800 with the new nav entries and E-STOP.</figcaption></figure>
+</div>
+<figure><img src="console_after_control_1600x900.png" alt="Control page after at 1600 by 900"><figcaption>Control at 1600×900. The five HUD anchors are unchanged; the step 3 refusal now also names the pre-flight checklist when it is open.</figcaption></figure>
+
+<h2>Checks</h2>
+<table>
+<tr><th>Check</th><th>Result</th></tr>
+<tr><td><code>pytest</code> (repo root, includes 22 new console tests)</td><td class="ok">149 passed</td></tr>
+<tr><td><code>dotnet test tests/PoRobotTrain.Integration</code> (forwarding, status codes, old-service 501, 21 real service payloads through the client JSON context)</td><td class="ok">27 passed</td></tr>
+<tr><td><code>dotnet test tests/PoRobotTrain.Unit</code></td><td class="ok">12 passed</td></tr>
+<tr><td><code>python web/build.py</code></td><td class="ok">built</td></tr>
+<tr><td>R1TwinEditor build (Unreal panel parity)</td><td class="ok">succeeded (see the Unreal report)</td></tr>
+<tr><td><code>ruff check</code> / <code>ruff format --check</code></td><td class="bad">not run: ruff is not installed in .venv</td></tr>
+</table>
+
+<h2>Not verified</h2>
+<ul>
+<li>No physical R1: the real camera stream (not implemented: no streamer on the robot), real telemetry sources, robot reachability and the real pre-flight auto items were not exercised. The real-robot path for motions, poses and modes is refused by design.</li>
+<li>Unreal mirroring of motion playback (<code>target: urlab</code>) was not watched: the service ran with <code>--no-mirror</code>.</li>
+<li>Pointer drags (timeline keyframes, thumbsticks), the <code>Esc</code> hotkey, file import through the picker and CSV/package downloads were not driven by the capture. E-STOP and Help were clicked by script.</li>
+<li><code>ruff check</code> and <code>ruff format --check</code> were not run (see above).</li>
+</ul>
+</main>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unreal Panel Tabs</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--blue:#2a6bd9;--orange:#d9730d}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.pair figure{margin:0}
+code{font:13px ui-monospace,Consolas,monospace}
+</style></head><body><main>
+<h1>Unreal twin: voice, robustness explorer, walk sandbox</h1>
+<p>2026-11-21 · UE 5.8.4 standalone game, level R1_Stand, captured unattended with
+<code>-PanelCapture=&lt;dir&gt; -R1Service=http://127.0.0.1:8766</code> against the live behaviour service
+(<code>docs/service_api.md</code>), at 1600×900 and 450×800.</p>
+
+<h2>Before</h2>
+<div class="pair">
+<figure><img src="unreal_tabs_before_1600x900.png" alt="Old panel at 1600 by 900"><figcaption>1600×900: one page, behaviours only.</figcaption></figure>
+<figure><img src="unreal_tabs_before_450x800.png" alt="Old panel at 450 by 800, clipped"><figcaption>450×800: the 600 px panel is clipped on the right (Size chips, Move REAL robot, Details).</figcaption></figure>
+</div>
+
+<h2>After</h2>
+<ul>
+<li>A tab strip under the title: <b>Behaviours</b> (the five HUD anchors, unchanged), <b>Robustness</b>, <b>Walk (sim)</b>. STOP, the remote e-stop note, Joints and Details stay on every tab.</li>
+<li>Voice on every tab: <b>Mic</b> toggles listening, <b>V</b> is push-to-talk, <b>Voice: on/muted</b> toggles spoken replies. Windows SAPI recognises offline; the phrase goes to <code>POST /assistant/interpret</code>, and the suggestion fills in the selection like a click. It never starts anything. Walk phrases set the sandbox velocity.</li>
+<li>Narrow or short windows draw the whole panel scaled (the mouse is mapped back), so 450×800 shows every control. The joint view is disabled when there is no room for it.</li>
+</ul>
+
+<h3>Behaviours tab + voice</h3>
+<div class="pair">
+<figure><img src="unreal_tabs_after_behaviours_voice_1600x900.png" alt="Behaviours tab after the injected phrase"><figcaption>Injected phrase "nod the head twenty degrees": the service answered Neck Nod at 20°, the panel selected Neck Nod and the 20 deg chip (nothing started). The "Heard" line and the suggestion note stay under the tabs for 15 s.</figcaption></figure>
+<figure><img src="unreal_tabs_after_behaviours_voice_450x800.png" alt="Behaviours tab at 450 by 800"><figcaption>450×800: the same panel, scaled to fit, after "wave hello".</figcaption></figure>
+</div>
+
+<h3>Robustness tab</h3>
+<div class="pair">
+<figure><img src="unreal_tabs_after_robustness_1600x900.png" alt="Robustness heatmaps with a selected cell"><figcaption>Full sweep (91 twins): one-factor-at-a-time rows (white outline = nominal) and the gain × latency grid. Each cell carries a glyph and a word (o PASS / ! WARN / x FAIL), not only colour, plus the number behind the verdict. The "Main cause" line explains that 89 of 89 failures exceed 80 rad/s² on head yaw. The selected cell (cyan outline) shows its numbers and the acceleration joint.</figcaption></figure>
+<figure><img src="unreal_tabs_after_robustness_450x800.png" alt="Robustness tab at 450 by 800"><figcaption>450×800, scaled.</figcaption></figure>
+</div>
+
+<h3>Walk tab (simulation only)</h3>
+<div class="pair">
+<figure><img src="unreal_tabs_after_walk_idle_1600x900.png" alt="Walk tab before start"><figcaption>Before start: no validated Level 2 policy yet, so "Start walking" is locked with the service's reason. Hold pose is available. The course preview (from <code>/walk/state</code> geometry) is drawn around the stand.</figcaption></figure>
+<figure><img src="unreal_tabs_after_walk_hold_1600x900.png" alt="Walk tab in hold mode"><figcaption>Hold pose: the service steps MuJoCo and pushes the full pose (root + 26 joints) through URLab puppet mode. The stand is hidden, the camera follows the pelvis, and the panel shows "Unreal view: receiving poses". The labelled hold state appears with command bars, lap, checkpoint and falls.</figcaption></figure>
+<figure><img src="unreal_tabs_after_walk_hold_450x800.png" alt="Walk tab hold mode at 450 by 800"><figcaption>450×800, scaled.</figcaption></figure>
+</div>
+
+<h2>Not verified</h2>
+<ul>
+<li>A real microphone: SAPI initialised (log: <code>R1VoiceSapi: recogniser ready, voice ready</code>), but no one spoke. The phrase was injected with <code>-VoiceTest</code>, and spoken replies are muted in capture runs.</li>
+<li>Driving a walking policy (keys, gamepad, voice velocity): no validated Level 2 policy exists yet. Only hold mode ran, where commands are clamped to zero.</li>
+<li>A gamepad was not connected.</li>
+</ul>
+</main></body></html>

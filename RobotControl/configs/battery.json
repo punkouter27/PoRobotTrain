@@ -1,0 +1,4 @@
+{
+  "_comment": "Pack used for the state-of-charge ESTIMATE on the Power panel (bus voltage / series cells against a generic Li-ion curve). Assumed value: set series_cells from your R1 battery label.",
+  "series_cells": 13
+}

@@ -1,0 +1,344 @@
+@page "/setup"
+@inject ConsoleApiClient Console
+@inject RobotApiClient Api
+@inject UiState Ui
+@implements IDisposable
+
+@* Setup (docs/service_api.md section 6): pre-flight checklist (#18), joint zero-offset calibration wizard (#15),
+   network and connection profiles (#17). The checklist only adds a gate in front of real-robot runs. Calibration
+   reads angles with 0 % motor power and stores offsets for review; it never applies them to a controller. *@
+<PageTitle>Setup — PoRobotTrain</PageTitle>
+
+<div class="ops-grid">
+    <section class="po-card">
+        <div class="sec-hdr">
+            <h1 class="dash-h1">PRE-FLIGHT CHECKLIST</h1>
+            @if (_pf is not null)
+            {
+                <span class="po-pill @(_pf.Complete ? "po-pill--ok" : "po-pill--orange")">@(_pf.Complete ? $"✓ COMPLETE · {_pf.ValidForS / 60:0} MIN LEFT" : $"{_pf.Missing.Count} OPEN")</span>
+            }
+        </div>
+        <p class="po-muted">Needed before anything moves the real robot (step 3 on Control). Practising on the twin doesn't need it. Each tick lasts 30 minutes.</p>
+        @if (_pf is not null)
+        {
+            <h3 class="diag-sec">You confirm</h3>
+            @foreach (var i in _pf.Items.Where(i => i.Kind == "manual"))
+            {
+                <label class="check-item @(i.Ok ? "done" : string.Empty)">
+                    <input type="checkbox" checked="@i.Ok" @onchange="e => TickAsync(i.Id, (bool)e.Value!)" />
+                    <span>@i.Label <span class="po-muted">@i.Detail</span></span>
+                </label>
+            }
+            <h3 class="diag-sec">Checked automatically</h3>
+            <table class="diag-table">
+                @foreach (var i in _pf.Items.Where(i => i.Kind == "auto"))
+                {
+                    <tr><td class="@(i.Ok ? "ok" : "bad")">@(i.Ok ? "✓ OK" : "✕ NO")</td><td>@i.Label</td><td class="po-muted">@i.Detail</td></tr>
+                }
+            </table>
+            <div class="ctrl-row ops-row">
+                <button type="button" class="po-chip" @onclick="RefreshPreflightAsync">Re-check</button>
+                <button type="button" class="po-chip" @onclick="ResetPreflightAsync">Clear ticks</button>
+            </div>
+        }
+        else if (_pfError is not null)
+        {
+            <div class="assist-out warn">Checklist unavailable: @_pfError</div>
+        }
+    </section>
+
+    @if (!Ui.Advanced)
+    {
+        <section class="po-card">
+            <h2 class="tel-title">MAINTENANCE TOOLS</h2>
+            <p class="po-muted">The joint calibration wizard and the network / connection profiles are expert tools. Tick <b>Advanced</b> at the top to show them.</p>
+        </section>
+    }
+    else
+    {
+    <section class="po-card">
+        <div class="sec-hdr">
+            <h2 class="tel-title">CALIBRATION WIZARD (ZERO OFFSETS)</h2>
+            <span class="po-pill">0 % MOTOR POWER</span>
+        </div>
+        <ol class="wizard">
+            <li class="@(_step >= 1 ? "on" : string.Empty)">Pick the source and reference. <b>Zero</b>: put each joint on its zero mark. <b>Home</b>: the stand home pose.
+                <div class="ctrl-row ops-row">
+                    @foreach (var s in new[] { "real", "practice" })
+                    {
+                        <button type="button" class="po-chip @(_calSource == s ? "active" : string.Empty)" @onclick="() => _calSource = s">@(s == "real" ? "Real robot" : "Twin")</button>
+                    }
+                    @foreach (var r in new[] { "zero", "home" })
+                    {
+                        <button type="button" class="po-chip @(_calRef == r ? "active" : string.Empty)" @onclick="() => _calRef = r">@r</button>
+                    }
+                </div>
+            </li>
+            <li class="@(_step >= 2 ? "on" : string.Empty)">Read the current angles (Snapshot, read-only).
+                <div class="ctrl-row ops-row"><button type="button" class="po-btn po-btn--blue-soft" @onclick="SnapshotAsync">Read joint angles</button></div>
+            </li>
+            <li class="@(_step >= 3 ? "on" : string.Empty)">Capture offsets and review them against the twin's assumed offsets.
+                <div class="ctrl-row ops-row"><button type="button" class="po-btn po-btn--blue-soft" @onclick="CaptureAsync">Capture</button></div>
+            </li>
+            <li class="@(_step >= 4 ? "on" : string.Empty)">Store them. They are saved for review only; they are <b>not applied</b> to any controller.
+                <div class="ctrl-row ops-row">
+                    <label class="joint-pick"><input type="checkbox" @bind="_calConfirm" /> I checked every joint was on its reference</label>
+                    <button type="button" class="po-btn po-btn--teal" disabled="@(!_calConfirm || _capture?.Rows is null)" @onclick="SaveOffsetsAsync">Store offsets</button>
+                </div>
+                @if (_capture?.Rows is null)
+                {
+                    <div class="why">Store is off until you Capture (step 3).</div>
+                }
+                else if (!_calConfirm)
+                {
+                    <div class="why">Store is off until you tick the confirmation.</div>
+                }
+            </li>
+        </ol>
+        @if (_calMsg is not null)
+        {
+            <div class="assist-out @(_calOk ? string.Empty : "warn")">@_calMsg</div>
+        }
+        @if (_capture?.Rows is { } rows)
+        {
+            <table class="diag-table">
+                <tr><th>Joint</th><th>Measured °</th><th>Reference °</th><th>Offset °</th><th>Twin assumes °</th><th></th></tr>
+                @foreach (var r in rows)
+                {
+                    <tr>
+                        <td>@Short(r.Joint)</td><td class="num">@r.MeasuredDeg.ToString("0.0")</td><td class="num">@r.ReferenceDeg.ToString("0.0")</td>
+                        <td class="num"><b>@r.OffsetDeg.ToString("+0.00;-0.00;0.00")</b></td><td class="num">@(r.TwinOffsetDeg?.ToString("+0.00;-0.00;0.00") ?? "—")</td>
+                        <td class="@(r.Verdict == "ok" ? "ok" : r.Verdict == "warn" ? "warnc" : "bad")">@(r.Verdict == "ok" ? "✓ ok" : r.Verdict == "warn" ? "⚠ 1-3°" : "✕ >3° check")</td>
+                    </tr>
+                }
+            </table>
+        }
+        @if (_saved?.Saved is { } sv)
+        {
+            <p class="po-muted">Last stored @sv.SavedAt from @sv.Source (@sv.Reference), @(sv.OffsetsDeg?.Count ?? 0) joints, applied: @(sv.Applied ? "yes" : "no").</p>
+        }
+    </section>
+
+    <section class="po-card ops-span2">
+        <div class="sec-hdr">
+            <h2 class="tel-title">NETWORK & CONNECTION PROFILES</h2>
+            @if (_net?.Active is { } act)
+            {
+                <span class="po-pill po-pill--blue">ACTIVE: @act</span>
+            }
+        </div>
+        <p class="po-muted">A profile records which host and network interface to use (the interface goes to <code>--network</code> for real runs). Testing never changes the service's connection.</p>
+        @if (_net is { } n)
+        {
+            <table class="diag-table">
+                <tr><th>Profile</th><th>Target</th><th>Host : port</th><th>Interface</th><th>Test</th><th></th></tr>
+                @foreach (var p in n.Profiles)
+                {
+                    <tr>
+                        <td><b>@p.Name</b> <span class="po-muted">@p.Note</span></td>
+                        <td>@p.Target</td>
+                        <td class="mono">@p.Host:@p.Port</td>
+                        <td>@(string.IsNullOrEmpty(p.Interface) ? "—" : p.Interface)</td>
+                        <td>
+                            @if (_tests.TryGetValue(p.Name, out var t))
+                            {
+                                <span class="@(t.Reachable ? "ok-text" : "bad-text")">@(t.Reachable ? "✓ reachable" : "✕ unreachable")</span>
+                                <span class="po-muted">tcp @(t.TcpOk ? $"{t.TcpMs:0} ms" : "closed") · ping @(t.PingOk == true ? $"{t.PingMs:0} ms" : "no reply")</span>
+                            }
+                        </td>
+                        <td class="row-actions">
+                            <button type="button" class="po-chip" @onclick="() => TestAsync(p)">Test</button>
+                            <button type="button" class="po-chip @(n.Active == p.Name ? "active" : string.Empty)" @onclick="() => ActivateAsync(p.Name)">Use</button>
+                            <button type="button" class="po-chip" @onclick="() => EditProfile(p)">Edit</button>
+                            <button type="button" class="po-chip" @onclick="() => DeleteProfileAsync(p.Name)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </table>
+            <div class="editor-meta">
+                <label>Name <input class="assist-input" @bind="_pName" /></label>
+                <label>Target <select class="assist-input" @bind="_pTarget"><option>real</option><option>urlab</option><option>sim</option></select></label>
+                <label>Host <input class="assist-input" @bind="_pHost" /></label>
+                <label>Port <input class="assist-input" type="number" @bind="_pPort" /></label>
+                <label>Interface <select class="assist-input" @bind="_pIface">
+                    <option value="">—</option>
+                    @foreach (var i in n.Interfaces ?? [])
+                    {
+                        <option value="@i.Name">@i.Name @(i.Ipv4.Count > 0 ? $"({string.Join(", ", i.Ipv4)})" : string.Empty)</option>
+                    }
+                </select></label>
+                <button type="button" class="po-btn po-btn--blue-soft" @onclick="SaveProfileAsync">Save profile</button>
+            </div>
+        }
+        @if (_netMsg is not null)
+        {
+            <div class="assist-out @(_netOk ? string.Empty : "warn")">@_netMsg</div>
+        }
+    </section>
+    }
+</div>
+
+@code {
+    private static RobotJsonContext Ctx => RobotJsonContext.Default;
+    private PreflightDto? _pf;
+    private string? _pfError;
+    private string _calSource = "real", _calRef = "zero";
+    private int _step = 1;
+    private bool _calConfirm, _calOk = true;
+    private string? _calMsg;
+    private CalibrationCaptureDto? _capture;
+    private CalibrationOffsetsDto? _saved;
+    private NetworkDto? _net;
+    private readonly Dictionary<string, NetworkTestDto> _tests = [];
+    private string _pName = "lab", _pTarget = "real", _pHost = "192.168.123.164", _pIface = string.Empty;
+    private int _pPort = 22;
+    private string? _netMsg;
+    private bool _netOk = true;
+    private readonly CancellationTokenSource _cts = new();
+
+    private static string Short(string joint) => RobotJointCatalog.All.FirstOrDefault(j => j.Name == joint)?.DisplayLabel ?? joint;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Ui.Changed += OnUi;
+        await RefreshPreflightAsync();
+        _saved = (await Console.GetAsync("calibration/offsets", Ctx.CalibrationOffsetsDto)).Value;
+        _capture = _saved?.Pending;
+        _net = (await Console.GetAsync("network", Ctx.NetworkDto)).Value;
+        _ = LoopAsync(_cts.Token);
+    }
+
+    private async Task LoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await RefreshPreflightAsync();
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page closed
+        }
+    }
+
+    private async Task RefreshPreflightAsync()
+    {
+        var (pf, err) = await Console.GetAsync("preflight", Ctx.PreflightDto);
+        _pf = pf ?? _pf;
+        _pfError = pf is null ? err : null;
+    }
+
+    private async Task TickAsync(string id, bool on)
+    {
+        var (pf, err) = await Console.PostAsync("preflight", new PreflightTickRequest(id, on), Ctx.PreflightTickRequest, Ctx.PreflightDto);
+        _pf = pf ?? _pf;
+        _pfError = err;
+    }
+
+    private async Task ResetPreflightAsync() =>
+        _pf = (await Console.PostAsync("preflight/reset", new EmptyBody(), Ctx.EmptyBody, Ctx.PreflightDto)).Value ?? _pf;
+
+    // ---- calibration
+    private async Task SnapshotAsync()
+    {
+        var res = await Api.SnapshotAsync(practice: _calSource == "practice");
+        _calOk = res.Ok;
+        _calMsg = res.Ok ? "Reading joint angles (0 % motor power)…" : $"Snapshot refused: {res.Error}";
+        if (res.Ok)
+        {
+            _step = Math.Max(_step, 3);
+            await Task.Delay(_calSource == "real" ? 2500 : 300);
+            _calMsg = "Angles read. Capture next.";
+        }
+    }
+
+    private async Task CaptureAsync()
+    {
+        var (c, err) = await Console.PostAsync("calibration/capture", new CalibrationCaptureRequest(_calSource, _calRef), Ctx.CalibrationCaptureRequest, Ctx.CalibrationCaptureDto);
+        _calOk = c?.Ok == true;
+        if (_calOk)
+        {
+            _capture = c;
+            _step = 4;
+            var worst = c!.Rows!.MaxBy(r => Math.Abs(r.OffsetDeg));
+            _calMsg = $"Captured {c.Rows!.Count} joints. Largest offset: {Short(worst!.Joint)} {worst.OffsetDeg:+0.00;-0.00} °.";
+        }
+        else
+        {
+            _calMsg = $"Capture refused: {err}";
+        }
+    }
+
+    private async Task SaveOffsetsAsync()
+    {
+        var (s, err) = await Console.PostAsync("calibration/save", new CalibrationSaveRequest(true), Ctx.CalibrationSaveRequest, Ctx.CalibrationSavedDto);
+        _calOk = s?.Ok == true;
+        _calMsg = _calOk ? $"Stored {s!.OffsetsDeg?.Count} offsets (not applied: {s.Note})." : $"Not stored: {err}";
+        _saved = (await Console.GetAsync("calibration/offsets", Ctx.CalibrationOffsetsDto)).Value;
+        _calConfirm = false;
+    }
+
+    // ---- network
+    private async Task TestAsync(ConnectionProfileDto p)
+    {
+        _netMsg = $"Testing {p.Host}:{p.Port}…";
+        StateHasChanged();
+        var (t, err) = await Console.PostAsync("network/test", new NetworkTestRequest(p.Host, p.Port), Ctx.NetworkTestRequest, Ctx.NetworkTestDto);
+        if (t is { Ok: true })
+        {
+            _tests[p.Name] = t;
+            _netMsg = null;
+        }
+        else
+        {
+            _netOk = false;
+            _netMsg = $"Test failed: {err}";
+        }
+    }
+
+    private void EditProfile(ConnectionProfileDto p)
+    {
+        (_pName, _pTarget, _pHost, _pPort, _pIface) = (p.Name, p.Target, p.Host, p.Port, p.Interface ?? string.Empty);
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        var (n, err) = await Console.PostAsync("network/profiles", new ProfileRequest(new ConnectionProfileDto(_pName, _pTarget, _pHost, _pPort, _pIface)),
+            Ctx.ProfileRequest, Ctx.NetworkDto);
+        _netOk = n?.Ok == true;
+        _netMsg = _netOk ? $"Saved profile {_pName}." : $"Not saved: {err}";
+        await ReloadNetAsync(n);
+    }
+
+    private async Task DeleteProfileAsync(string name)
+    {
+        var (n, _) = await Console.PostAsync("network/profiles/delete", new NameRequest(name), Ctx.NameRequest, Ctx.NetworkDto);
+        await ReloadNetAsync(n);
+    }
+
+    private async Task ActivateAsync(string name)
+    {
+        var (n, err) = await Console.PostAsync("network/active", new NameRequest(name), Ctx.NameRequest, Ctx.NetworkDto);
+        _netOk = n?.Ok == true;
+        _netMsg = _netOk ? null : $"Not changed: {err}";
+        await ReloadNetAsync(n);
+    }
+
+    private async Task ReloadNetAsync(NetworkDto? fresh)
+    {
+        var ifaces = _net?.Interfaces;
+        _net = fresh is { Ok: true } ? fresh with { Interfaces = fresh.Interfaces ?? ifaces } : (await Console.GetAsync("network", Ctx.NetworkDto)).Value;
+    }
+
+    private void OnUi() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Ui.Changed -= OnUi;
+        _cts.Cancel();
+    }
+}

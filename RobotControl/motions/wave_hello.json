@@ -1,0 +1,18 @@
+{
+  "name": "wave_hello",
+  "title": "Wave hello",
+  "description": "Right arm up, three waves at the elbow, arm back down.",
+  "author": "PoRobotTrain",
+  "tags": ["arm", "builtin"],
+  "loop": false,
+  "keyframes": [
+    {"t": 0.0, "q_deg": {"right_shoulder_pitch_joint": -20.0, "right_shoulder_roll_joint": -60.0, "right_elbow_joint": 90.0}},
+    {"t": 0.6, "q_deg": {"right_elbow_joint": 60.0}},
+    {"t": 1.2, "q_deg": {"right_elbow_joint": 90.0}},
+    {"t": 1.8, "q_deg": {"right_elbow_joint": 60.0}},
+    {"t": 2.4, "q_deg": {"right_elbow_joint": 90.0}},
+    {"t": 3.0, "q_deg": {"right_elbow_joint": 60.0}},
+    {"t": 3.6, "q_deg": {"right_elbow_joint": 90.0}},
+    {"t": 5.0, "q_deg": {"right_shoulder_pitch_joint": 20.1, "right_shoulder_roll_joint": -10.3, "right_elbow_joint": 49.8}}
+  ]
+}

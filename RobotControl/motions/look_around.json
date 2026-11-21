@@ -1,0 +1,14 @@
+{
+  "name": "look_around",
+  "title": "Look around",
+  "description": "Head pans left, right and back to centre.",
+  "author": "PoRobotTrain",
+  "tags": ["head", "builtin"],
+  "loop": false,
+  "keyframes": [
+    {"t": 0.0, "q_deg": {"head_yaw_joint": 0.0, "head_pitch_joint": 0.0}},
+    {"t": 1.5, "q_deg": {"head_yaw_joint": 30.0}},
+    {"t": 4.0, "q_deg": {"head_yaw_joint": -30.0}},
+    {"t": 5.5, "q_deg": {"head_yaw_joint": 0.0}}
+  ]
+}

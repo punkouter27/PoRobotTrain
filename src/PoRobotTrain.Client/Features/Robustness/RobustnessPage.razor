@@ -1,0 +1,436 @@
+@page "/robustness"
+@using System.Globalization
+@implements IDisposable
+@inject RobotApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Robustness explorer — PoRobotTrain</PageTitle>
+
+@* Robustness explorer (idea #19, docs/service_api.md §2). The service runs the deployed Level 0 policy on many
+   perturbed copies of the headless MuJoCo stand twin; this page starts sweeps and reads the report.
+   Pure simulation: nothing here touches the robot. *@
+<div class="rb-page">
+    <section class="po-card">
+        <div class="ctrl-top">
+            <div>
+                <h1 class="dash-h1">ROBUSTNESS EXPLORER</h1>
+                <span class="po-muted">Level 0 policy on perturbed copies of the MuJoCo stand twin · simulation only</span>
+            </div>
+            <span class="po-pill @HeaderPillClass">@HeaderPill</span>
+        </div>
+        <p class="po-muted rb-intro">
+            Each cell changes one thing about the simulated robot (mass, joint friction, motor gains, action latency,
+            sensor noise, torque limit) and runs the validation sweep: head yaw ±30° at 0.25 Hz and a right-shoulder sweep.
+            A cell <b>fails</b> when mean tracking error &gt; @Thr.MeanErrDeg.ToString("0.#", Inv)°, any joint acceleration
+            &gt; @Thr.MaxAcc.ToString("0", Inv) rad/s², a safety trip, or a non-finite state. It is a <b>warning</b> above
+            @Thr.WarnMeanErrDeg.ToString("0.#", Inv)° or @Thr.WarnAcc.ToString("0", Inv) rad/s².
+        </p>
+        <div class="btn-row">
+            <button type="button" class="po-btn po-btn--blue" disabled="@(!CanRun)" @onclick="() => RunAsync(true)">Run quick sweep</button>
+            <button type="button" class="po-btn po-btn--blue-soft" disabled="@(!CanRun)" @onclick="() => RunAsync(false)">Run full sweep</button>
+            @if (!_online)
+            {
+                <span class="po-muted">RobotControl service offline: start <code>python -m robotcontrol.behaviours.service</code>.</span>
+            }
+            else if (!IsIdle && !Sweeping)
+            {
+                <span class="po-muted">Busy: @_status?.Job is running.</span>
+            }
+        </div>
+        @if (Sweeping)
+        {
+            var p = _status?.Progress;
+            var pct = p is { Total: > 0 } ? 100.0 * p.Done / p.Total : 0;
+            <div class="rb-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@pct.ToString("0", Inv)">
+                <div class="rb-progress__bar" style="width:@pct.ToString("0.#", Inv)%"></div>
+            </div>
+            <div class="po-muted">Sweeping: @(p is { Total: > 0 } ? $"{p.Done} / {p.Total} rollouts" : "starting…")</div>
+        }
+        @if (!string.IsNullOrEmpty(_toast))
+        {
+            <div class="po-toast">@_toast</div>
+        }
+    </section>
+
+    @if (_report is null)
+    {
+        <section class="po-card"><span class="po-muted">@(_loadError ?? "Loading report…")</span></section>
+    }
+    else if (!_report.Available)
+    {
+        <section class="po-card rb-empty">
+            <b>No sweep yet.</b>
+            <span class="po-muted">Run a quick sweep (about a minute) to see how the Level 0 policy copes with a robot that differs from the model.</span>
+        </section>
+    }
+    else
+    {
+        <section class="po-card">
+            <div class="rb-meta">
+                <span>@(_report.Quick ? "Quick" : "Full") sweep · @CreatedText · @(_report.DurationS is double d ? $"{d:0} s" : "—") · @(_report.RolloutS is double r ? $"{r:0} s rollouts" : string.Empty)</span>
+                <span class="po-muted" title="@_report.Policy">policy sha256 @Short(_report.PolicySha256)</span>
+            </div>
+            <div class="rb-tiles">
+                <div class="rb-tile"><span class="rb-icon rb-icon--pass" aria-hidden="true">✓</span><b>@(_report.Summary?.Pass ?? 0)</b><span>pass</span></div>
+                <div class="rb-tile"><span class="rb-icon rb-icon--warn" aria-hidden="true">!</span><b>@(_report.Summary?.Warn ?? 0)</b><span>warning</span></div>
+                <div class="rb-tile"><span class="rb-icon rb-icon--fail" aria-hidden="true">✕</span><b>@(_report.Summary?.Fail ?? 0)</b><span>fail</span></div>
+                @if (_report.Nominal is { } nom)
+                {
+                    <div class="rb-tile rb-tile--wide">
+                        <span class="rb-icon rb-icon--@Verdict(nom)" aria-hidden="true">@Icon(nom)</span>
+                        <span><b>Nominal twin: @VerdictWord(nom)</b> · @Metrics(nom)<br /><span class="po-muted">@Reason(nom)</span></span>
+                    </div>
+                }
+            </div>
+            @if (_report.Summary?.Worst is { } worst)
+            {
+                <div class="po-muted">Worst cell: @worst</div>
+            }
+            @if (DominantReason is { } dom)
+            {
+                <div class="walk-note walk-note--warn">@dom</div>
+            }
+        </section>
+
+        <section class="po-card">
+            <div class="sec-hdr">
+                <h2 class="tel-title">ONE FACTOR AT A TIME</h2>
+                <div class="size-row">
+                    <span class="rb-legend"><span class="rb-icon rb-icon--pass">✓</span>pass</span>
+                    <span class="rb-legend"><span class="rb-icon rb-icon--warn">!</span>warning</span>
+                    <span class="rb-legend"><span class="rb-icon rb-icon--fail">✕</span>fail</span>
+                    <span class="rb-legend"><span class="rb-nominal-key"></span>nominal</span>
+                    <button type="button" class="po-chip @(_table ? "active" : string.Empty)" aria-pressed="@_table" @onclick="() => _table = !_table">Table view</button>
+                </div>
+            </div>
+            <p class="po-muted">Each row changes one factor; everything else stays nominal. Click a cell for its numbers. The bar under each cell is mean tracking error against the @Thr.MeanErrDeg.ToString("0.#", Inv)° limit.</p>
+            @if (_table)
+            {
+                <div class="rb-scroll">
+                    <table class="diag-table rb-table">
+                        <tr><th>Factor</th><th>Level</th><th>Verdict</th><th class="num">Mean err</th><th class="num">Max err</th><th class="num">Max accel</th><th>Accel joint</th><th class="num">Trips</th><th>Why</th></tr>
+                        @foreach (var f in _report.Sensitivity ?? [])
+                        {
+                            for (var i = 0; i < f.Cells.Count && i < f.Levels.Count; i++)
+                            {
+                                var c = f.Cells[i];
+                                <tr>
+                                    <td>@f.Label</td><td>@Level(f.Levels[i], f.Unit)@(IsNominal(f, i) ? " (nominal)" : string.Empty)</td>
+                                    <td><span class="rb-icon rb-icon--@Verdict(c)" aria-hidden="true">@Icon(c)</span> @VerdictWord(c)</td>
+                                    <td class="num">@Deg(c.MeanErrDeg)</td><td class="num">@Deg(c.MaxErrDeg)</td><td class="num">@Acc(c.MaxAcc)</td>
+                                    <td>@JointLabel(c.AccJoint)</td><td class="num">@c.Trips</td><td class="po-muted">@Reason(c)</td>
+                                </tr>
+                            }
+                        }
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="rb-scroll">
+                    <div class="rb-grid" style="grid-template-columns: minmax(130px, 170px) repeat(@MaxLevels, minmax(104px, 1fr))">
+                        @foreach (var f in _report.Sensitivity ?? [])
+                        {
+                            <div class="rb-rowlabel"><b>@f.Label</b><span class="po-muted">@f.Unit</span></div>
+                            @for (var i = 0; i < MaxLevels; i++)
+                            {
+                                if (i >= f.Cells.Count || i >= f.Levels.Count)
+                                {
+                                    <div></div>
+                                    continue;
+                                }
+                                var c = f.Cells[i];
+                                var key = $"{f.Id}|{i}";
+                                var title = $"{f.Label} {Level(f.Levels[i], f.Unit)}";
+                                @RenderCell(c, Level(f.Levels[i], f.Unit), IsNominal(f, i), key, title)
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </section>
+
+        @if (_report.Interaction is { } ix)
+        {
+            <section class="po-card">
+                <h2 class="tel-title">@ix.X.Label.ToUpperInvariant() × @ix.Y.Label.ToUpperInvariant()</h2>
+                <p class="po-muted">Both factors at once: columns are @ix.X.Label.ToLowerInvariant() (@ix.X.Unit), rows are @ix.Y.Label.ToLowerInvariant() (@ix.Y.Unit).</p>
+                <div class="rb-scroll">
+                    <div class="rb-grid" style="grid-template-columns: minmax(90px, 110px) repeat(@ix.X.Levels.Count, minmax(96px, 1fr))">
+                        <div class="rb-axis">@ix.Y.Unit \ @ix.X.Unit</div>
+                        @foreach (var xl in ix.X.Levels)
+                        {
+                            <div class="rb-axis">@Level(xl, ix.X.Unit)</div>
+                        }
+                        @for (var yi = 0; yi < ix.Y.Levels.Count && yi < ix.Cells.Count; yi++)
+                        {
+                            var row = ix.Cells[yi];
+                            var yl = ix.Y.Levels[yi];
+                            <div class="rb-rowlabel"><b>@Level(yl, ix.Y.Unit)</b></div>
+                            @for (var xi = 0; xi < ix.X.Levels.Count; xi++)
+                            {
+                                if (xi >= row.Count)
+                                {
+                                    <div></div>
+                                    continue;
+                                }
+                                var xl = ix.X.Levels[xi];
+                                var nominal = IsAxisNominal(ix.X, xl) && IsAxisNominal(ix.Y, yl);
+                                @RenderCell(row[xi], null, nominal, $"ix|{yi}|{xi}", $"{ix.X.Label} {Level(xl, ix.X.Unit)}, {ix.Y.Label} {Level(yl, ix.Y.Unit)}")
+                            }
+                        }
+                    </div>
+                </div>
+            </section>
+        }
+
+        @if (_selected is { } sel)
+        {
+            <section class="po-card rb-detail" id="rb-detail" aria-live="polite">
+                <div class="sec-hdr">
+                    <h2 class="tel-title">@sel.Title</h2>
+                    <span class="po-pill @(Verdict(sel.Cell) switch { "pass" => "po-pill--ok", "fail" => "po-pill--bad", _ => "po-pill--orange" })">@Icon(sel.Cell) @VerdictWord(sel.Cell).ToUpperInvariant()</span>
+                </div>
+                <div class="po-muted">@Reason(sel.Cell)</div>
+                <dl class="diag-list">
+                    <dt>Mean tracking error</dt><dd>@Deg(sel.Cell.MeanErrDeg) (limit @Thr.MeanErrDeg.ToString("0.#", Inv)°, warn @Thr.WarnMeanErrDeg.ToString("0.#", Inv)°)</dd>
+                    <dt>Max tracking error</dt><dd>@Deg(sel.Cell.MaxErrDeg)</dd>
+                    <dt>Max joint acceleration</dt><dd>@Acc(sel.Cell.MaxAcc) on @JointLabel(sel.Cell.AccJoint) (limit @Thr.MaxAcc.ToString("0", Inv), warn @Thr.WarnAcc.ToString("0", Inv) rad/s²)</dd>
+                    <dt>Action jitter</dt><dd>@(sel.Cell.Jitter is double j ? $"{j:0.000} mean |Δaction| per step" : "—")</dd>
+                    <dt>Safety trips</dt><dd>@sel.Cell.Trips</dd>
+                    <dt>State finite</dt><dd>@(sel.Cell.Finite ? "yes" : "no: the simulation diverged")</dd>
+                </dl>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+    private RobotStatusDto? _status;
+    private RobustnessReportDto? _report;
+    private string? _loadError;
+    private bool _online;
+    private bool _table;
+    private string? _toast;
+    private string? _lastJob;
+    private (string Key, string Title, RobustnessCellDto Cell)? _selected;
+    private CancellationTokenSource? _cts;
+
+    private RobustnessThresholdsDto Thr => _report?.Thresholds ?? new RobustnessThresholdsDto();
+    private bool IsIdle => _online && string.IsNullOrEmpty(_status?.Job);
+    private bool Sweeping => string.Equals(_status?.Job, "robustness", StringComparison.OrdinalIgnoreCase);
+    private bool CanRun => IsIdle;
+    private int MaxLevels => _report?.Sensitivity is { Count: > 0 } s ? s.Max(f => f.Levels.Count) : 0;
+
+    private string HeaderPill => !_online ? "OFFLINE" : Sweeping ? "SWEEPING" : _report is { Available: true } ? "REPORT READY" : "NO SWEEP YET";
+    private string HeaderPillClass => !_online ? "po-pill--bad" : Sweeping ? "po-pill--orange" : _report is { Available: true } ? "po-pill--ok" : string.Empty;
+
+    private string CreatedText => DateTimeOffset.TryParse(_report?.CreatedAt, Inv, DateTimeStyles.AssumeUniversal, out var t)
+        ? t.ToLocalTime().ToString("yyyy-MM-dd HH:mm", Inv)
+        : _report?.CreatedAt ?? "—";
+
+    private static string Short(string? sha) => string.IsNullOrEmpty(sha) ? "—" : sha[..Math.Min(12, sha.Length)];
+
+    private static string Verdict(RobustnessCellDto c) => c.Verdict is "pass" or "warn" ? c.Verdict : "fail";
+    private static string VerdictWord(RobustnessCellDto c) => Verdict(c) switch { "pass" => "pass", "warn" => "warning", _ => "fail" };
+    private static string Icon(RobustnessCellDto c) => Verdict(c) switch { "pass" => "✓", "warn" => "!", _ => "✕" };
+
+    private static string Deg(double? v) => v is double d ? $"{d.ToString("0.0", Inv)}°" : "—";
+    private static string Acc(double? v) => v is double d ? $"{d.ToString("0", Inv)} rad/s²" : "—";
+
+    private static string Level(double v, string unit) => unit switch
+    {
+        "×" => $"{v.ToString("0.##", Inv)}×",
+        "" => v.ToString("0.##", Inv),
+        _ => $"{v.ToString("0.##", Inv)} {unit}",
+    };
+
+    /// <summary>"head_yaw_joint" -> "head yaw".</summary>
+    private static string JointLabel(string? j) => string.IsNullOrEmpty(j) ? "—" : j.Replace("_joint", string.Empty).Replace('_', ' ');
+
+    private string Metrics(RobustnessCellDto c) => c.Finite
+        ? $"mean error {Deg(c.MeanErrDeg)}, peak accel {Acc(c.MaxAcc)}"
+        : "the simulation diverged";
+
+    /// <summary>Why a cell is not a pass, in words (the coordinator asked for e.g. "acceleration on head yaw" to be readable).</summary>
+    private string Reason(RobustnessCellDto c)
+    {
+        if (!c.Finite)
+        {
+            return "Fails: the simulation went non-finite (diverged).";
+        }
+        var t = Thr;
+        var fail = new List<string>();
+        var warn = new List<string>();
+        if (c.MaxAcc is double a)
+        {
+            var where = string.IsNullOrEmpty(c.AccJoint) ? string.Empty : $" on {JointLabel(c.AccJoint)}";
+            if (a > t.MaxAcc) fail.Add($"acceleration {a.ToString("0", Inv)} rad/s²{where} (limit {t.MaxAcc.ToString("0", Inv)})");
+            else if (a > t.WarnAcc) warn.Add($"acceleration {a.ToString("0", Inv)} rad/s²{where}");
+        }
+        if (c.MeanErrDeg is double e)
+        {
+            if (e > t.MeanErrDeg) fail.Add($"mean tracking error {Deg(e)} (limit {t.MeanErrDeg.ToString("0.#", Inv)}°)");
+            else if (e > t.WarnMeanErrDeg) warn.Add($"mean tracking error {Deg(e)}");
+        }
+        if (c.Trips > 0)
+        {
+            fail.Add($"{c.Trips} safety trip{(c.Trips == 1 ? string.Empty : "s")}");
+        }
+        if (fail.Count > 0) return "Fails on " + string.Join("; ", fail) + ".";
+        if (warn.Count > 0) return "Warning: " + string.Join("; ", warn) + ".";
+        return Verdict(c) == "pass" ? "Within every limit." : $"Verdict {c.Verdict}.";
+    }
+
+    /// <summary>Short reason for inside a cell: "accel · head yaw", "error", "trips", "diverged".</summary>
+    private string ShortReason(RobustnessCellDto c)
+    {
+        if (!c.Finite) return "diverged";
+        var t = Thr;
+        var parts = new List<string>();
+        var v = Verdict(c);
+        var accLimit = v == "fail" ? t.MaxAcc : t.WarnAcc;
+        var errLimit = v == "fail" ? t.MeanErrDeg : t.WarnMeanErrDeg;
+        if (c.MaxAcc > accLimit) parts.Add($"accel · {JointLabel(c.AccJoint)}");
+        if (c.MeanErrDeg > errLimit) parts.Add("tracking error");
+        if (c.Trips > 0 && v == "fail") parts.Add("trips");
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>When most failing cells fail for the same reason on the same joint, say so once above the grids.</summary>
+    private string? DominantReason
+    {
+        get
+        {
+            var cells = (_report?.Sensitivity ?? []).SelectMany(f => f.Cells)
+                .Concat(_report?.Interaction?.Cells.SelectMany(r => r) ?? [])
+                .Where(c => Verdict(c) == "fail")
+                .ToList();
+            if (cells.Count < 3)
+            {
+                return null;
+            }
+            var accFails = cells.Where(c => c.MaxAcc > Thr.MaxAcc && !string.IsNullOrEmpty(c.AccJoint)).GroupBy(c => c.AccJoint!).OrderByDescending(g => g.Count()).FirstOrDefault();
+            if (accFails is null || accFails.Count() < cells.Count * 0.6)
+            {
+                return null;
+            }
+            var median = accFails.Select(c => c.MaxAcc ?? 0).OrderBy(x => x).ElementAt(accFails.Count() / 2);
+            return $"{accFails.Count()} of {cells.Count} failing cells fail on acceleration of the {JointLabel(accFails.Key)} joint (median {median.ToString("0", Inv)} rad/s², limit {Thr.MaxAcc.ToString("0", Inv)}). "
+                 + "The policy chatters on that joint in this twin; tracking error alone would pass far more cells.";
+        }
+    }
+
+    private static bool IsNominal(RobustnessFactorDto f, int i) => f.Nominal is double n && Math.Abs(f.Levels[i] - n) < 1e-9;
+
+    private bool IsAxisNominal(RobustnessAxisDto axis, double level)
+    {
+        var n = _report?.Sensitivity?.FirstOrDefault(f => f.Id == axis.Id)?.Nominal;
+        return n is double v && Math.Abs(level - v) < 1e-9;
+    }
+
+    private RenderFragment RenderCell(RobustnessCellDto c, string? levelText, bool nominal, string key, string title) => __builder =>
+    {
+        var v = Verdict(c);
+        var errFrac = c.MeanErrDeg is double e ? Math.Clamp(e / Math.Max(0.1, Thr.MeanErrDeg), 0, 1) : 1;
+        var selected = _selected?.Key == key;
+        var shortWhy = ShortReason(c);
+        <button type="button" class="rb-cell rb-cell--@v @(nominal ? "rb-cell--nominal" : string.Empty) @(selected ? "rb-cell--sel" : string.Empty)"
+                title="@title: @VerdictWord(c). @Reason(c)" aria-label="@title: @VerdictWord(c). @Reason(c)"
+                @onclick="() => SelectAsync(key, title, c)">
+            @if (levelText is not null)
+            {
+                <span class="rb-lvl">@levelText@(nominal ? " · nominal" : string.Empty)</span>
+            }
+            <span class="rb-verdict"><span class="rb-icon rb-icon--@v" aria-hidden="true">@Icon(c)</span>@VerdictWord(c)</span>
+            <span class="rb-metric">@Deg(c.MeanErrDeg) · @(c.MaxAcc is double a ? a.ToString("0", Inv) : "—") r/s²</span>
+            @if (!string.IsNullOrEmpty(shortWhy))
+            {
+                <span class="rb-why">@shortWhy</span>
+            }
+            <span class="rb-bar" aria-hidden="true"><span style="width:@((errFrac * 100).ToString("0", Inv))%"></span></span>
+        </button>
+    };
+
+    private async Task SelectAsync(string key, string title, RobustnessCellDto c)
+    {
+        _selected = (key, title, c);
+        StateHasChanged();
+        await Task.Yield();
+        await JS.InvokeVoidAsync("poScrollIntoView", "rb-detail"); // the detail card sits under the grids
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cts = new CancellationTokenSource();
+        await PollStatusAsync();
+        await LoadReportAsync();
+        _ = LoopAsync(_cts.Token);
+    }
+
+    private async Task LoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await PollStatusAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page closed
+        }
+    }
+
+    private async Task PollStatusAsync()
+    {
+        try
+        {
+            _status = await Api.GetStatusAsync(_cts?.Token ?? CancellationToken.None);
+            _online = _status is not null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _online = false;
+        }
+        var job = _status?.Job;
+        if (string.Equals(_lastJob, "robustness", StringComparison.OrdinalIgnoreCase) && !Sweeping)
+        {
+            await LoadReportAsync(); // sweep finished: show the new report
+            _toast = _status?.Results.GetValueOrDefault("robustness") is { Ok: false } r ? $"Sweep failed: {r.Reason}" : "Sweep finished.";
+        }
+        _lastJob = job;
+    }
+
+    private async Task LoadReportAsync()
+    {
+        try
+        {
+            var (report, err) = await Api.GetRobustnessAsync(_cts?.Token ?? CancellationToken.None);
+            _report = report;
+            _loadError = err;
+            _selected = null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _loadError = "RobotControl service unreachable.";
+        }
+    }
+
+    private async Task RunAsync(bool quick)
+    {
+        var res = await Api.RunRobustnessAsync(quick);
+        _toast = res.Ok ? $"Started a {(quick ? "quick" : "full")} sweep. The report refreshes when it finishes." : $"Could not start: {res.Error}";
+        await PollStatusAsync();
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

@@ -21,6 +21,15 @@ motor slots, limits, gains, and defaults.
 - Keep generated models, policies, and external reference checkouts in their
   documented locations. Do not replace or promote a policy without its
   validation gate.
+- Level 2 walking exists only in the simulated walk sandbox (`RobotControl/walk/`, `docs/level2_walk.md`). It must
+  never reach the robot: `robot_kit.py` excludes `walk/`, and the sandbox has no robot backend. A walking policy is
+  loaded only from `RobotControl/models/r1_level2_velocity/` after `robotcontrol.training.validate_level2 --promote`
+  passed (deploy.yaml `validation.policy_sha256` must match the ONNX). Training runs in Docker (`scripts/level2/`).
+- Operator console (`RobotControl/behaviours/console.py`, `docs/service_api.md` sections 4-7): poses, motions and
+  modes power several joints, so they stay simulation-only (the service refuses target `real`); the pre-flight
+  checklist and session limits may only add restrictions; zero offsets are stored, never applied to a controller.
+- New service endpoints (voice intent, robustness sweep, walk sandbox) are specified in `docs/service_api.md`; the
+  Blazor UI and the Unreal panel implement them at parity, so change both when the contract changes.
 - Reward penalty weights (torque², joint angular velocity², action rate, foot slip) and the curriculum
   thresholds live in `RobotControl/configs/reward_config.json`; `Level0Config` reads them and the Unreal
   DataAsset mirrors them (a pytest checks parity). Level 0 hangs on a stand, so `foot_slip` is inactive there.

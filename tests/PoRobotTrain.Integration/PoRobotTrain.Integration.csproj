@@ -16,4 +16,8 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- real behaviour-service replies, checked against the client's JSON contracts (ConsoleContractTests) -->
+    <None Include="console_samples.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -48,6 +48,18 @@ class UnrealMirror:
                 raise RuntimeError(f"Unreal twin has no joint {n!r}")
             self.adr.append(int(m.jnt_qposadr[j]))
         self.adr = np.array(self.adr)
+        free = [k for k in range(m.njnt) if m.jnt_type[k] == mujoco.mjtJoint.mjJNT_FREE]
+        self.root_adr = int(m.jnt_qposadr[free[0]]) if free else None
+
+    def push_full(self, root7, q) -> None:
+        """Floating base pose (x y z qw qx qy qz, MuJoCo world) + joint angles: the walk sandbox puppet."""
+        d = self.c.data
+        if self.root_adr is not None:
+            d.qpos[self.root_adr : self.root_adr + 7] = np.asarray(root7, dtype=np.float64)
+        d.qpos[self.adr] = np.asarray(q, dtype=np.float64)
+        d.qvel[:] = 0.0
+        self.mj.mj_forward(self.c.model, d)
+        self.c.step(n_steps=0)
 
     def push(self, q) -> None:
         d = self.c.data

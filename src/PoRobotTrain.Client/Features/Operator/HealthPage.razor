@@ -1,0 +1,453 @@
+@page "/robot-health"
+@implements IAsyncDisposable
+@inject ConsoleApiClient Console
+@inject IJSRuntime JS
+@inject UiState Ui
+
+@* Read-only monitoring (docs/service_api.md section 4): health summary (#1), alarm and fault log (#2), power (#3),
+   temperature trends (#4), head camera (#5), versions (#6), IMU check (#16). Nothing on this page moves the robot. *@
+<PageTitle>Health — PoRobotTrain</PageTitle>
+
+<div class="ops-grid">
+    <section class="po-card ops-span2">
+        <div class="sec-hdr">
+            <h1 class="dash-h1">ROBOT HEALTH</h1>
+            <span class="po-pill @(_health?.Overall == "ok" ? "po-pill--ok" : _health is null ? string.Empty : "po-pill--bad")">
+                @(_health is null ? "PROBING…" : _health.Overall == "ok" ? "✓ ALL REQUIRED CHECKS PASS" : $"✕ {_health.Failing} FAILING")
+            </span>
+        </div>
+        @* Simplification #6: the verdict first, in one sentence; the probe table only on request. *@
+        <p class="verdict" role="status">@Verdict</p>
+        @if (_health is { Failing: > 0 } hf && !_showDetails)
+        {
+            @foreach (var r in hf.Rows.Where(r => !r.Ok && !r.Optional))
+            {
+                <div class="assist-out warn">✕ @r.Name: @r.Detail</div>
+            }
+        }
+        <div class="ctrl-row ops-row">
+            <span class="ctrl-label">Data from</span>
+            @foreach (var s in Sources)
+            {
+                <button type="button" class="po-chip @(_source == s ? "active" : string.Empty)" @onclick="() => SetSource(s)">@SourceLabel(s)</button>
+            }
+            <button type="button" class="po-chip" @onclick="() => _showDetails = !_showDetails" aria-expanded="@_showDetails">@(_showDetails ? "Hide details" : "Show details")</button>
+            <span class="po-muted">Read-only: nothing here moves the robot. Live robot data needs "Check the real robot" on Control.</span>
+        </div>
+        <div class="po-muted">More checks: <a href="/robustness">Robustness explorer</a> (how the policy copes with changed physics) · <a href="/diag">Browser diagnostics</a> (3D twin, speech, files).</div>
+        @if (_healthError is not null)
+        {
+            <div class="assist-out warn">Health unavailable: @_healthError</div>
+        }
+        @if (_health is not null && _showDetails)
+        {
+            <div class="health-cols">
+                @foreach (var section in _health.Rows.Select(r => r.Section).Distinct())
+                {
+                    <div>
+                        <h3 class="diag-sec">@section</h3>
+                        <table class="diag-table">
+                            @foreach (var r in _health.Rows.Where(r => r.Section == section))
+                            {
+                                var state = r.Ok ? "ok" : r.Optional ? "idle" : "bad";
+                                <tr>
+                                    <td class="@state">@(r.Ok ? "✓ OK" : r.Optional ? "– not in use" : "✕ FAIL")</td>
+                                    <td>@r.Name</td>
+                                    <td class="po-muted">@r.Detail</td>
+                                </tr>
+                            }
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="po-card">
+        <div class="sec-hdr"><h2 class="tel-title">HEAD CAMERA (TWIN VIEW)</h2><span class="po-pill">~4 FPS</span></div>
+        <img class="cam-img" src="@_camUrl" alt="What the R1 head camera sees on the twin at the current pose" />
+        <p class="po-muted">Rendered from the twin's <code>head_rgbd</code> camera at the virtual pose. The physical robot's camera stream is not available yet: the robot has no video streamer (planned with Level 3).</p>
+    </section>
+
+    <section class="po-card">
+        <div class="sec-hdr"><h2 class="tel-title">BATTERY & POWER</h2>
+            @if (_power?.Available == true)
+            {
+                <span class="po-pill @(_power.Low ? "po-pill--bad" : "po-pill--ok")">@(_power.Low ? "⚠ LOW" : "✓ OK")</span>
+            }
+        </div>
+        @if (_power is { Available: true } p)
+        {
+            <div class="stat-row">
+                <div class="stat"><div class="stat__v">@($"{p.SocPct:0}") %</div><div class="stat__l">charge (estimate)</div></div>
+                <div class="stat"><div class="stat__v">@($"{p.LatestV:0.0}") V</div><div class="stat__l">bus · @($"{p.CellV:0.00}") V/cell</div></div>
+                <div class="stat"><div class="stat__v">@(p.MinutesLeft is double m ? $"{m:0} min" : "—")</div><div class="stat__l">time left (needs 1 min of falling voltage)</div></div>
+            </div>
+            <div class="chart" @ref="_powerChart"></div>
+            <p class="po-muted">@p.Assumption. Current: @(p.CurrentA?.ToString("0.0") ?? "n/a") (@p.CurrentNote).</p>
+        }
+        else
+        {
+            <p class="po-muted">No bus voltage yet from @SourceLabel(_source). Take a Snapshot or start Monitor (read-only).</p>
+        }
+    </section>
+
+    <section class="po-card ops-span2">
+        <div class="sec-hdr"><h2 class="tel-title">MOTOR TEMPERATURES (LAST 10 MIN)</h2>
+            @if (_temps?.Hottest is { } h)
+            {
+                <span class="po-pill @(h.TempC >= _temps.CritC ? "po-pill--bad" : h.TempC >= _temps.WarnC ? "po-pill--warn" : "po-pill--ok")">
+                    @(h.TempC >= _temps.CritC ? "✕" : h.TempC >= _temps.WarnC ? "⚠" : "✓") hottest @h.Joint @h.TempC °C
+                </span>
+            }
+        </div>
+        @if (_temps is { T.Count: > 0 } tm && tm.Latest is { } latest)
+        {
+            <p class="po-muted">The four hottest motors, one chart each. Dashed lines: warning @tm.WarnC °C, critical @tm.CritC °C. Hover a chart for values.</p>
+            <div class="multiples">
+                @foreach (var (k, j) in HotIndices(tm).Select((j, k) => (k, j)))
+                {
+                    <div class="multiple">
+                        <div class="multiple__t">@tm.JointNames[j] <b>@latest[j] °C</b> <span class="po-muted">@Rate(tm, j)</span></div>
+                        <div class="chart chart--sm" @ref="_tempRefs[k]"></div>
+                    </div>
+                }
+            </div>
+            <details class="ops-details">
+                <summary>All 26 motors (table)</summary>
+                <table class="diag-table">
+                    <tr><th>Joint</th><th>Now °C</th><th>Peak °C</th><th>Trend °C/min</th></tr>
+                    @for (var j = 0; j < tm.JointNames.Count; j++)
+                    {
+                        <tr><td>@tm.JointNames[j]</td><td class="num">@latest[j]</td><td class="num">@tm.Peak?[j]</td><td class="num">@(tm.RateCPerMin?[j]?.ToString("+0.0;-0.0;0.0") ?? "—")</td></tr>
+                    }
+                </table>
+            </details>
+        }
+        else
+        {
+            <p class="po-muted">No temperature samples yet from @SourceLabel(_source).</p>
+        }
+    </section>
+
+    <section class="po-card">
+        <div class="sec-hdr"><h2 class="tel-title">IMU CHECK (LAST 60 S)</h2>
+            @if (_imu is not null)
+            {
+                <span class="po-pill @(_imu.Verdict == "pass" ? "po-pill--ok" : _imu.Verdict == "warn" ? "po-pill--warn" : string.Empty)">
+                    @(_imu.Verdict switch { "pass" => "✓ PASS", "warn" => "⚠ WARN", _ => "NO DATA" })
+                </span>
+            }
+        </div>
+        @if (_imu is { Available: true } im)
+        {
+            <dl class="diag-list">
+                <dt>Roll / pitch / yaw</dt><dd>@Fmt(im.RpyDeg?[0])° / @Fmt(im.RpyDeg?[1])° / @Fmt(im.RpyDeg?[2])°</dd>
+                <dt>Tilt from level</dt><dd>@Fmt(im.TiltDeg)°</dd>
+                <dt>Gravity (body, up)</dt><dd>[@string.Join(", ", (im.GravityBody ?? []).Select(v => v.ToString("0.000")))]</dd>
+                <dt>Yaw drift</dt><dd>@(im.YawDriftDegPerMin?.ToString("+0.00;-0.00") ?? "—") °/min @(im.Still == true ? "(held still)" : "(moving)")</dd>
+                <dt>Roll / pitch noise</dt><dd>@Fmt(im.RollStdDeg, "0.000")° / @Fmt(im.PitchStdDeg, "0.000")° (std)</dd>
+                <dt>Samples</dt><dd>@im.Samples over @Fmt(im.WindowS) s</dd>
+            </dl>
+        }
+        @foreach (var n in _imu?.Notes ?? [])
+        {
+            <div class="assist-out warn">@n</div>
+        }
+    </section>
+
+    @if (Ui.Advanced)
+    {
+    <section class="po-card">
+        <div class="sec-hdr"><h2 class="tel-title">VERSIONS</h2>
+            @if (_versions is not null)
+            {
+                <span class="po-pill @(_versions.Warnings.Count == 0 ? "po-pill--ok" : "po-pill--bad")">@(_versions.Warnings.Count == 0 ? "✓ CONSISTENT" : $"⚠ {_versions.Warnings.Count} WARNING(S)")</span>
+            }
+        </div>
+        @if (_versions is { } v)
+        {
+            @foreach (var w in v.Warnings)
+            {
+                <div class="assist-out warn">⚠ @w</div>
+            }
+            <dl class="diag-list">
+                <dt>Service</dt><dd>@v.Service · commit @(v.Repo.Commit ?? "?")@(v.Repo.DirtyFiles > 0 ? $" (+{v.Repo.DirtyFiles} uncommitted files)" : string.Empty)</dd>
+                <dt>Python</dt><dd>@v.Python · @string.Join(" · ", v.Packages.Select(kv => $"{kv.Key} {kv.Value}"))</dd>
+                <dt>Robot firmware</dt><dd>@(v.Robot.Firmware ?? "unknown") <span class="po-muted">@v.Robot.Note</span></dd>
+            </dl>
+            <table class="diag-table">
+                <tr><th>Policy</th><th>Gate</th><th>sha256</th><th>Joint map</th></tr>
+                @foreach (var pol in v.Policies)
+                {
+                    <tr>
+                        <td>@pol.Name<div class="po-muted">@pol.TrainedAt · @pol.NumObs obs → @pol.NumActions actions</div></td>
+                        <td class="@(pol.Ok ? "ok" : "bad")">@(pol.Ok ? "✓" : "✕") @pol.Gate</td>
+                        <td class="mono">@pol.PolicySha256[..12]</td>
+                        <td>@(pol.JointMapMatches switch { true => "✓ matches", false => "✕ different", _ => "—" })</td>
+                    </tr>
+                }
+            </table>
+        }
+    </section>
+    }
+
+    <section class="po-card ops-span2">
+        <div class="sec-hdr"><h2 class="tel-title">ALARM & FAULT LOG</h2>
+            <span class="po-muted">@(_events?.Counts is { } c ? $"{c.GetValueOrDefault("critical")} critical · {c.GetValueOrDefault("warn")} warnings · {c.GetValueOrDefault("info")} info" : string.Empty)</span>
+        </div>
+        <div class="ctrl-row ops-row">
+            <span class="ctrl-label">Level</span>
+            @foreach (var lv in new[] { "info", "warn", "critical" })
+            {
+                <button type="button" class="po-chip @(_level == lv ? "active" : string.Empty)" @onclick="() => SetLevel(lv)">@(lv == "info" ? "All" : lv == "warn" ? "Warnings +" : "Critical")</button>
+            }
+            <span class="ctrl-label">Kind</span>
+            <select class="assist-input ops-select" value="@_kind" @onchange="e => SetKind(e.Value?.ToString())" aria-label="Event kind">
+                <option value="">any</option>
+                @foreach (var k in Kinds)
+                {
+                    <option value="@k">@k</option>
+                }
+            </select>
+            <button type="button" class="po-chip" @onclick="ExportCsvAsync" disabled="@((_events?.Events.Count ?? 0) == 0)">Export CSV</button>
+        </div>
+        @if (_events is { Events.Count: > 0 } ev)
+        {
+            <table class="diag-table events">
+                <tr><th>Time</th><th>Level</th><th>Kind</th><th>Source</th><th>Message</th></tr>
+                @foreach (var e in ev.Events.Take(100))
+                {
+                    <tr>
+                        <td class="mono">@Time(e.At)</td>
+                        <td class="@(e.Level == "critical" ? "bad" : e.Level == "warn" ? "warnc" : "off")">@(e.Level == "critical" ? "✕ critical" : e.Level == "warn" ? "⚠ warn" : "ℹ info")</td>
+                        <td>@e.Kind</td>
+                        <td>@e.Source</td>
+                        <td>@e.Message</td>
+                    </tr>
+                }
+            </table>
+        }
+        else
+        {
+            <p class="po-muted">No events match this filter.</p>
+        }
+    </section>
+</div>
+
+@code {
+    private static readonly string[] Sources = ["auto", "real", "practice"];
+    private bool _showDetails;
+
+    private string Verdict
+    {
+        get
+        {
+            if (_health is null)
+            {
+                return _healthError is null ? "Checking…" : "The behaviour service is not answering, so nothing can be checked.";
+            }
+            var parts = new List<string>
+            {
+                _health.Rows.FirstOrDefault(r => r.Name == "Behaviour service")?.Ok == true ? "Twin ready." : "Behaviour service has a problem.",
+                Ui.RealConnected ? "Real robot connected." : "Real robot not connected.",
+            };
+            if (_power is { Available: true, SocPct: double soc })
+            {
+                parts.Add($"Battery about {soc:0} % (estimate){(_power.Low ? ", LOW" : string.Empty)}.");
+            }
+            if (_temps?.Hottest is { } h)
+            {
+                parts.Add(h.TempC >= _temps.CritC ? $"Motors TOO HOT ({h.Joint} {h.TempC} °C): stop."
+                    : h.TempC >= _temps.WarnC ? $"Motors warm ({h.Joint} {h.TempC} °C)." : $"Motors cool (max {h.TempC} °C).");
+            }
+            var crit = _health.Rows.FirstOrDefault(r => r.Name.StartsWith("Critical events", StringComparison.Ordinal));
+            parts.Add(crit is { Ok: false } ? $"Recent critical alarm ({crit.Detail}): see the log below." : "No critical alarms.");
+            if (_versions is { Warnings.Count: > 0 } v)
+            {
+                parts.Add($"{v.Warnings.Count} version warning(s): tick Advanced to see them.");
+            }
+            if (_health.Failing > 0)
+            {
+                parts.Add($"{_health.Failing} required check(s) failing.");
+            }
+            return string.Join(" ", parts);
+        }
+    }
+    private static readonly string[] Kinds = ["temperature", "limit", "power", "job", "fault", "trip", "estop", "mode", "limits", "preflight", "calibration"];
+    private string _source = "auto";
+    private string _level = "info";
+    private string? _kind;
+    private HealthDto? _health;
+    private string? _healthError;
+    private EventsDto? _events;
+    private TempHistoryDto? _temps;
+    private PowerDto? _power;
+    private ImuCheckDto? _imu;
+    private VersionsDto? _versions;
+    private string _camUrl = "/api/robot/camera.png?source=twin&mode=virtual";
+    private readonly ElementReference[] _tempRefs = new ElementReference[4];
+    private ElementReference _powerChart;
+    private IJSObjectReference? _module;
+    private readonly CancellationTokenSource _cts = new();
+    private int _tick;
+
+    private static string SourceLabel(string s) => s switch
+    {
+        "auto" => "Auto",
+        "real" => "Real robot",
+        _ => "Twin",
+    };
+
+    private string SourceQuery => _source == "auto" ? string.Empty : $"source={_source}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync(full: true);
+        _ = LoopAsync(_cts.Token);
+    }
+
+    private async Task LoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                _tick++;
+                _camUrl = $"/api/robot/camera.png?source=twin&mode=virtual&n={_tick}";
+                if (_tick % 8 == 0)
+                {
+                    await RefreshAsync(full: _tick % 40 == 0);
+                }
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page closed
+        }
+    }
+
+    private async Task RefreshAsync(bool full)
+    {
+        var q = SourceQuery;
+        var ctx = RobotJsonContext.Default;
+        var tasks = new List<Task>
+        {
+            Task.Run(async () => _events = (await Console.GetAsync($"events?level={_level}&limit=200" + (_kind is { Length: > 0 } ? $"&kind={_kind}" : string.Empty), ctx.EventsDto)).Value ?? _events),
+            Task.Run(async () => _temps = (await Console.GetAsync("history/temps?" + q, ctx.TempHistoryDto)).Value),
+            Task.Run(async () => _power = (await Console.GetAsync("power?" + q, ctx.PowerDto)).Value),
+            Task.Run(async () => _imu = (await Console.GetAsync("imu?" + q, ctx.ImuCheckDto)).Value),
+        };
+        if (full || _health is null)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                var (h, err) = await Console.GetAsync("health", ctx.HealthDto);
+                _health = h ?? _health;
+                _healthError = h is null ? err : null;
+            }));
+        }
+        if (full || _versions is null)
+        {
+            tasks.Add(Task.Run(async () => _versions = (await Console.GetAsync("versions", ctx.VersionsDto)).Value ?? _versions));
+        }
+        await Task.WhenAll(tasks);
+        StateHasChanged();
+        await DrawChartsAsync();
+    }
+
+    private async Task DrawChartsAsync()
+    {
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/console/console.js");
+            if (_temps is { T.Count: > 0 } tm)
+            {
+                var hot = HotIndices(tm);
+                for (var k = 0; k < hot.Count; k++)
+                {
+                    var j = hot[k];
+                    var spec = new ChartSpec(tm.T, tm.Series[j].Select(v => (double)v).ToList(), "°C", "s", $"{tm.JointNames[j]} temperature",
+                        [new ChartRef(tm.WarnC, $"warn {tm.WarnC}"), new ChartRef(tm.CritC, $"crit {tm.CritC}")]);
+                    await _module.InvokeVoidAsync("lineChart", _tempRefs[k], System.Text.Json.JsonSerializer.Serialize(spec, ConsoleUiJsonContext.Default.ChartSpec));
+                }
+            }
+            if (_power is { Available: true } p)
+            {
+                var spec = new ChartSpec(p.T, p.BusV, "V", "s", "bus voltage");
+                await _module.InvokeVoidAsync("lineChart", _powerChart, System.Text.Json.JsonSerializer.Serialize(spec, ConsoleUiJsonContext.Default.ChartSpec));
+            }
+        }
+        catch (JSException)
+        {
+            // charts are an enhancement; the numbers above are still shown
+        }
+        catch (InvalidOperationException)
+        {
+            // element not rendered yet
+        }
+    }
+
+    private static List<int> HotIndices(TempHistoryDto tm) =>
+        tm.Latest is null ? [] : Enumerable.Range(0, tm.Latest.Count).OrderByDescending(j => tm.Latest[j]).ThenBy(j => j).Take(4).ToList();
+
+    private static string Rate(TempHistoryDto tm, int j) =>
+        tm.RateCPerMin?[j] is double r ? $"{r:+0.0;-0.0;0.0} °C/min" : string.Empty;
+
+    private async Task SetSource(string s)
+    {
+        _source = s;
+        await RefreshAsync(full: false);
+    }
+
+    private async Task SetLevel(string lv)
+    {
+        _level = lv;
+        await RefreshAsync(full: false);
+    }
+
+    private async Task SetKind(string? k)
+    {
+        _kind = string.IsNullOrEmpty(k) ? null : k;
+        await RefreshAsync(full: false);
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_events is null)
+        {
+            return;
+        }
+        var sb = new System.Text.StringBuilder("time_utc,level,kind,source,joint,message\n");
+        foreach (var e in _events.Events)
+        {
+            sb.Append(DateTimeOffset.FromUnixTimeMilliseconds((long)(e.At * 1000)).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ")).Append(',')
+              .Append(e.Level).Append(',').Append(e.Kind).Append(',').Append(e.Source).Append(',').Append(e.Joint).Append(',')
+              .Append('"').Append(e.Message.Replace("\"", "\"\"")).Append("\"\n");
+        }
+        _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/console/console.js");
+        await _module.InvokeVoidAsync("downloadText", $"r1_events_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv", sb.ToString(), "text/csv");
+    }
+
+    private static string Time(double at) => DateTimeOffset.FromUnixTimeMilliseconds((long)(at * 1000)).ToLocalTime().ToString("HH:mm:ss");
+
+    private static string Fmt(double? v, string f = "0.0") => v?.ToString(f) ?? "—";
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts.Cancel();
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+    }
+}

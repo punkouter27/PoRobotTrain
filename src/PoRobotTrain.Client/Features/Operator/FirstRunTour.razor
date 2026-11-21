@@ -1,0 +1,70 @@
+@implements IDisposable
+@inject UiState Ui
+
+@* Simplification #10: a dismissible four-step tour on the first visit (reopen it from Help). *@
+@if (Ui.TourOpen)
+{
+    <div class="po-modal-bg" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+        <div class="po-modal tour">
+            <div class="tour__step">Step @(_step + 1) of @Steps.Length</div>
+            <h2 id="tour-title">@Steps[_step].Title</h2>
+            <p>@Steps[_step].Body</p>
+            <div class="tour__dots" aria-hidden="true">
+                @for (var i = 0; i < Steps.Length; i++)
+                {
+                    <span class="@(i == _step ? "on" : string.Empty)"></span>
+                }
+            </div>
+            <div class="btn-row">
+                @if (_step > 0)
+                {
+                    <button type="button" class="po-btn" @onclick="() => _step--">Back</button>
+                }
+                @if (_step < Steps.Length - 1)
+                {
+                    <button type="button" class="po-btn po-btn--blue" style="flex:1" @onclick="() => _step++">Next</button>
+                }
+                else
+                {
+                    <button type="button" class="po-btn po-btn--blue" style="flex:1" @onclick="FinishAsync">Start using the app</button>
+                }
+                <button type="button" class="po-chip" @onclick="FinishAsync">Skip</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly (string Title, string Body)[] Steps =
+    [
+        ("The twin is a safe copy of the robot",
+         "Everything you try first runs on the twin, a simulated R1 on its stand. Nothing physical moves. The badge at the top says TWIN ONLY until a real robot is connected."),
+        ("Stopping",
+         "The red E-STOP button (or the Esc key) stops everything this app is running. On the real robot, the remote is the emergency stop: hold L2 + B for 5 seconds. Keep it in your hand."),
+        ("Moving the real robot takes four steps",
+         "1 Preview the motion on the twin. 2 Run the read-only check (no motor power). 3 Tick the pre-flight checklist. 4 Confirm and run. The Control page shows these as a progress bar and tells you what is missing."),
+        ("Ask, or open Help",
+         "Type a question or a request in the Ask box (\"is the robot ready?\", \"wave hello on the twin\"). Help opens the guide for the page you are on. Expert tools appear when you tick Advanced."),
+    ];
+
+    private int _step;
+
+    protected override void OnInitialized() => Ui.Changed += OnChanged;
+
+    private void OnChanged()
+    {
+        if (Ui.TourOpen && _step >= Steps.Length)
+        {
+            _step = 0;
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task FinishAsync()
+    {
+        _step = 0;
+        await Ui.FinishTourAsync();
+    }
+
+    public void Dispose() => Ui.Changed -= OnChanged;
+}
