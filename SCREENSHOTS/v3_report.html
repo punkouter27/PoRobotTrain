@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consistency Pass Report</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.row{grid-template-columns:1fr}}
+.narrow{max-width:460px}
+</style>
+</head>
+<body>
+<main>
+<h1>Consistency pass (2026-11-22): Radzen controls, inline validation, footer stamp, Unreal benchmark</h1>
+<p>Blazor control UI: trimmed Release publish on port 5080 against the behaviour service on 8765 (<code>--no-mirror</code>), no robot connected; captured with headless Chromium. Unreal: R1Twin <code>-game</code> with <code>-ShowcaseCapture -ShowcaseTouch -ShowcaseBench</code>. The five HUD anchors of the Unreal panel are unchanged.</p>
+
+<h2>Before</h2>
+<p>The previous state is in <a href="console_report.html">console_report.html</a> (raw HTML buttons and inputs, the version stamp in the header, SkiaSharp heatmap) and <a href="unreal_console_report.html">unreal_console_report.html</a> (overlay without a benchmark button).</p>
+<div class="row">
+<figure><img src="console_before_control_1600x900.png" alt="Control page before"><figcaption>Before, 1600×900: stamp in the header row.</figcaption></figure>
+<figure class="narrow"><img src="console_before_control_450x800.png" alt="Control page before on a phone"><figcaption>Before, 450×800.</figcaption></figure>
+</div>
+
+<h2>After</h2>
+<div class="row">
+<figure><img src="v3_after_setup_full_1600.png" alt="Setup page after: Radzen checkboxes, buttons, text boxes, numeric and dropdowns; stamp bottom-right after the content"><figcaption>Setup (Advanced on): every control is a Radzen component; the profile form validates inline (FluentValidation, registered by type). Stamp bottom-right, after the content.</figcaption></figure>
+<figure class="narrow"><img src="v3_after_control_450x800.png" alt="Control page on a phone after"><figcaption>450×800: no sideways scroll; the stamp follows the content.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="v3_after_motions_full_1600.png" alt="Motions page after"><figcaption>Motions: Radzen buttons keep the app's chip / button look (theme in a low CSS layer), import is a RadzenFileInput.</figcaption></figure>
+<figure><img src="v3_after_diag_full_1600.png" alt="Diagnostics page after"><figcaption>Diagnostics: the API snapshot now reads back (it showed blank values and "Upstream Reachable: No" before); OFF rows are grey and do not fail the page.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="v3_after_unreal_overlay_bench_1600x900.png" alt="Unreal overlay with benchmark result"><figcaption>Unreal 16:9: Tab overlay with the new "Benchmark training speed" button (1 s of MuJoCo steps on a copy of the scene: ~20,000 steps/s, ~40x real time).</figcaption></figure>
+<figure class="narrow"><img src="v3_after_unreal_overlay_policy_450x800.png" alt="Unreal overlay in portrait with the Level 0 policy running"><figcaption>Unreal 9:16 with the Level 0 policy on (config override): reward, inference latency, curriculum stage and the benchmark fit the overlay.</figcaption></figure>
+</div>
+</main>
+</body>
+</html>
