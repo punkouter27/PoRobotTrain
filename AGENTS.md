@@ -69,7 +69,20 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
   `AZURE_STATIC_WEB_APPS_API_TOKEN`) and checks `/`, `/diag` and the `X-Commit` header (= the pushed commit) live.
 - The Unreal twin is built and tested locally (GitHub's runners have no Unreal Engine). URLab is not tracked:
   `scripts/setup_urlab.ps1` recreates it (pinned upstream commit + MuJoCo 4.0.0 + `scripts/patches/`).
-- Live checks are a handful of page loads (home, /diag); never run test suites against the live site.
+- **Hosting:** Azure Static Web App `swa-porobottrain` (RG `PoShared`), Free tier; the control UI is not hosted. Never
+  run test suites against the live site; live checks = at most 6 page loads + /diag + X-Commit.
+
+### Deliberate deviations
+
+| Deviation | Why | Commit sha / date | How to undo |
+|---|---|---|---|
+| No Entra sign-in on the localhost robot console (it holds the software E-STOP and may run offline) — proposed 2026-11-22, awaiting owner decision | Profile A asks for Microsoft Entra | — | add Entra sign-in if the owner decides so |
+| URLab gitlink from owner commit `f03c5e7` replaced by `scripts/setup_urlab.ps1` (same pinned upstream + patches, MuJoCo 4.0.0); folder git-ignored | the gitlink pointed at a local-only commit, so fresh clones could not build; v3 forbids submodules | `9dc0eb7` 2026-11-22 (local) | revert `9dc0eb7`'s `.gitignore`/index change for a true vendored copy |
+| Radzen exceptions: read-only `<table class="diag-table">` tables; the twin and joint-history `<canvas>` and SVG charts are drawings | allowed kinds (Profile A) | `03ff3b2` 2026-11-22 (local) | — |
+| /diag (control UI and showcase): capabilities off on purpose (WebGPU, speech recognition; the showcase's switched-off row) show a grey **Off**, not counted | not faults | `03ff3b2`, `8b5dd01` 2026-11-22 (local) | — |
+| Control UI: version stamp in the footer after the content; showcase: sticky 20 px footer on desktop, static on phones | a fixed stamp covered content on phones | `03ff3b2`, `8b5dd01` 2026-11-22 (local) | `git revert` the stamp part |
+| `bRunLevel0PolicyOnPlay=False` kept: on a normal Play the overlay shows reward/latency as n/a | owner decision 2026-11-15 | — | set it to True |
+| The Blazor control UI is not deployed (local operator console); only `web/` is | it drives the robot | — | — |
 
 ### Unreal content layout
 
@@ -161,6 +174,11 @@ every publish. Tests never write into tracked files.
   `SCREENSHOTS/`.
 
 ## 3. Verify the repo (exact commands)
+
+The sequence below verifies the repo; for the non-Unreal part in one line:
+`.venv\Scripts\python.exe -m ruff check . && .venv\Scripts\python.exe -m pytest && dotnet build PoRobotTrain.slnx -c Release && dotnet test tests\PoRobotTrain.Unit -c Release --no-build && dotnet test tests\PoRobotTrain.Integration -c Release --no-build && powershell -ExecutionPolicy Bypass -File scripts\run-e2eui.ps1`.
+Last full run (2026-11-22): pytest 150 passed; Release build 0 warnings; Unit 25/25; Integration 27/27; E2EUI 19/19
+(4 runs in a row); R1TwinEditor build succeeded.
 
 ```powershell
 # Python (repo root; .venv as in README)
