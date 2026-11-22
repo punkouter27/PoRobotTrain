@@ -7,7 +7,9 @@ UnrealProject/Binaries/
 UnrealProject/Intermediate/
 UnrealProject/Saved/
 UnrealProject/DerivedDataCache/
-# URLab is vendored in UnrealProject/Plugins/UnrealRoboticsLab (tracked); only its build output is ignored
+# URLab is NOT tracked (its own git clone, ~2 GB with build output): scripts/setup_urlab.ps1 recreates it from the
+# pinned upstream commit + scripts/patches/urlab_mujoco4_ue58.patch + MuJoCo 4.0.0 and builds its native dependencies.
+UnrealProject/Plugins/UnrealRoboticsLab/
 UnrealProject/Plugins/*/Binaries/
 UnrealProject/Plugins/*/Intermediate/
 *.onnx.data

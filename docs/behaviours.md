@@ -32,7 +32,7 @@ ssh -t unitree@192.168.123.164 "cd ~/porobot && ./run.sh robotcontrol.behaviours
 1. Start the service on the PC: `.venv\Scripts\python.exe -m robotcontrol.behaviours.service`
 2. Start the twin: open `UnrealProject\R1Twin.uproject` and press **Play** (`R1_Stand` is the startup map), or
    run it as a standalone window from PowerShell (Git Bash rewrites `/Game/...` into a file path):
-   `& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
+   `& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Project/Environments/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
    With `bRunLevel0PolicyOnPlay=False` (Config/DefaultGame.ini) the twin holds its pose. The panel is top left;
    URLab's debug panels are hidden (**Details** or Tab shows them, plus the raw service output and 26-joint telemetry matrix).
 3. Pick a behaviour (**Neck Turn**, **Neck Nod**, **Arm Raise**, **Hand Wave**) and turn/sweep size (10 / 20 / 30 deg).

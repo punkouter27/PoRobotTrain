@@ -10,6 +10,7 @@
 //   -ShowcaseTouch            show the touch corner button on desktop
 //   -ShowcaseIdle=<seconds>   override the idle threshold
 //   -ShowcaseCapture=<dir>    self-capture: overlay_on, overlay_off, demo_a, demo_b screenshots into <dir>, then quit
+//   -ShowcaseBench            with -ShowcaseCapture: press the overlay's benchmark button before the overlay_on shot
 #pragma once
 
 #include "CoreMinimal.h"
@@ -100,6 +101,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Showcase") float GetIdleSeconds() const { return IdleTime; }
 	UFUNCTION(BlueprintPure, Category = "Showcase") float GetFps() const { return Fps; }
 	UFUNCTION(BlueprintPure, Category = "Showcase") float GetMeanInferenceMs() const;
+	/**
+	 * Training-speed benchmark (the overlay's button): steps a private copy of the live MuJoCo scene (model + current
+	 * state) as fast as possible for at most 1 s on a worker thread and reports physics steps/s and x real time. Training
+	 * runs this same MuJoCo model headless, so it is the sim-throughput bound of one training environment on this PC.
+	 * The live simulation and the robot are never touched.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Showcase") void RunBenchmark();
+	UFUNCTION(BlueprintPure, Category = "Showcase") FString GetBenchmarkText() const { return BenchText; }
 	/** Starts demo mode now (e.g. a level opened by demo mode keeps showing it). */
 	UFUNCTION(BlueprintCallable, Category = "Showcase") void StartDemo() { IdleTime = IdleThreshold; SetDemoActive(true); }
 	/** Any real input: leaves demo mode and restarts the idle timer. */
@@ -129,6 +138,7 @@ private:
 	void RemoveWidgets();
 	void TickCapture(float DeltaTime);
 	void Shot(const TCHAR* Name);
+	void FinishBenchmark(int32 Steps, double Seconds, double Timestep);
 
 	TSharedPtr<FR1ShowcaseInput> Input;
 	TSharedPtr<SWidget> OverlayWidget;
@@ -149,6 +159,9 @@ private:
 	FString RewardNote;
 	TArray<float> LatencySamples;
 	int32 LatencyNext = 0;
+
+	bool bBenchRunning = false;
+	FString BenchText;
 
 	FString CaptureDir;
 	float CaptureClock = 0.f;

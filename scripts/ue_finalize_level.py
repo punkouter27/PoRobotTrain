@@ -1,4 +1,4 @@
-"""Runs INSIDE the Unreal editor (via scripts/ue_remote.py). Finalizes /Game/Levels/R1_Stand:
+"""Runs INSIDE the Unreal editor (via scripts/ue_remote.py). Finalizes /Game/Project/Environments/Levels/R1_Stand:
 
 * World Settings GameMode -> R1TwinGameMode (follow camera pawn + in-engine policy host, Chaos disabled)
 * Lighting/rendering: sun, real-time SkyLight, SkyAtmosphere, unbound PostProcessVolume with manual exposure
@@ -11,7 +11,7 @@ Everything is idempotent: actors are found by label and updated, never duplicate
 
 import unreal
 
-LEVEL = "/Game/Levels/R1_Stand"
+LEVEL = "/Game/Project/Environments/Levels/R1_Stand"
 TAG = "R1Articulation"
 
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
