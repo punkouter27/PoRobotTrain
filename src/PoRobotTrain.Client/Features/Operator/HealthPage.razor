@@ -29,9 +29,9 @@
             <span class="ctrl-label">Data from</span>
             @foreach (var s in Sources)
             {
-                <button type="button" class="po-chip @(_source == s ? "active" : string.Empty)" @onclick="() => SetSource(s)">@SourceLabel(s)</button>
+                <RadzenButton class="@($"po-plain po-chip {(_source == s ? " active" : string.Empty)}")" Click="() => SetSource(s)">@SourceLabel(s)</RadzenButton>
             }
-            <button type="button" class="po-chip" @onclick="() => _showDetails = !_showDetails" aria-expanded="@_showDetails">@(_showDetails ? "Hide details" : "Show details")</button>
+            <RadzenButton class="po-plain po-chip" Click="() => _showDetails = !_showDetails" aria-expanded="@_showDetails">@(_showDetails ? "Hide details" : "Show details")</RadzenButton>
             <span class="po-muted">Read-only: nothing here moves the robot. Live robot data needs "Check the real robot" on Control.</span>
         </div>
         <div class="po-muted">More checks: <a href="/robustness">Robustness explorer</a> (how the policy copes with changed physics) · <a href="/diag">Browser diagnostics</a> (3D twin, speech, files).</div>
@@ -200,17 +200,12 @@
             <span class="ctrl-label">Level</span>
             @foreach (var lv in new[] { "info", "warn", "critical" })
             {
-                <button type="button" class="po-chip @(_level == lv ? "active" : string.Empty)" @onclick="() => SetLevel(lv)">@(lv == "info" ? "All" : lv == "warn" ? "Warnings +" : "Critical")</button>
+                <RadzenButton class="@($"po-plain po-chip {(_level == lv ? " active" : string.Empty)}")" Click="() => SetLevel(lv)">@(lv == "info" ? "All" : lv == "warn" ? "Warnings +" : "Critical")</RadzenButton>
             }
             <span class="ctrl-label">Kind</span>
-            <select class="assist-input ops-select" value="@_kind" @onchange="e => SetKind(e.Value?.ToString())" aria-label="Event kind">
-                <option value="">any</option>
-                @foreach (var k in Kinds)
-                {
-                    <option value="@k">@k</option>
-                }
-            </select>
-            <button type="button" class="po-chip" @onclick="ExportCsvAsync" disabled="@((_events?.Events.Count ?? 0) == 0)">Export CSV</button>
+            <RadzenDropDown TValue="string" class="assist-input ops-select" Data="@KindOptions" Value="@(_kind ?? string.Empty)"
+                            TextProperty="Text" ValueProperty="Value" Change="@(v => SetKind(v as string))" aria-label="Event kind" />
+            <RadzenButton class="po-plain po-chip" Click="ExportCsvAsync" Disabled="@((_events?.Events.Count ?? 0) == 0)">Export CSV</RadzenButton>
         </div>
         @if (_events is { Events.Count: > 0 } ev)
         {
@@ -275,6 +270,10 @@
         }
     }
     private static readonly string[] Kinds = ["temperature", "limit", "power", "job", "fault", "trip", "estop", "mode", "limits", "preflight", "calibration"];
+
+    private sealed record Option(string Value, string Text);
+
+    private static readonly Option[] KindOptions = [new(string.Empty, "any"), .. Kinds.Select(k => new Option(k, k))];
     private string _source = "auto";
     private string _level = "info";
     private string? _kind;

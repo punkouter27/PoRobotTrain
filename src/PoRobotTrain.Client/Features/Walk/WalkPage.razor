@@ -37,24 +37,24 @@
         <div class="ctrl-row">
             <span class="ctrl-label">Mode</span>
             <div class="size-row">
-                <button type="button" class="po-chip @(_mode == "policy" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_mode == "policy")" @onclick='() => _mode = "policy"'>Walking policy</button>
-                <button type="button" class="po-chip @(_mode == "hold" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_mode == "hold")" @onclick='() => _mode = "hold"'>Hold pose (test)</button>
+                <RadzenButton class="@($"po-plain po-chip {(_mode == "policy" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_mode == "policy")" Click='() => _mode = "policy"'>Walking policy</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_mode == "hold" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_mode == "hold")" Click='() => _mode = "hold"'>Hold pose (test)</RadzenButton>
             </div>
         </div>
         <div class="ctrl-row">
             <span class="ctrl-label">Course</span>
             <div class="size-row">
-                <button type="button" class="po-chip @(_course == "loop" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_course == "loop")" @onclick='() => _course = "loop"'>Loop (checkpoints + obstacles)</button>
-                <button type="button" class="po-chip @(_course == "flat" ? "active" : string.Empty)" disabled="@Running" aria-pressed="@(_course == "flat")" @onclick='() => _course = "flat"'>Flat</button>
+                <RadzenButton class="@($"po-plain po-chip {(_course == "loop" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_course == "loop")" Click='() => _course = "loop"'>Loop (checkpoints + obstacles)</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_course == "flat" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_course == "flat")" Click='() => _course = "flat"'>Flat</RadzenButton>
             </div>
         </div>
 
         <div class="btn-row">
-            <button type="button" class="po-btn po-btn--blue" style="flex:1" disabled="@(!_online || Running || _busy || (_mode == "policy" && _state is { PolicyAvailable: false }))" @onclick="StartAsync">
+            <RadzenButton class="po-plain po-btn po-btn--blue" style="flex:1" Disabled="@(!_online || Running || _busy || (_mode == "policy" && _state is { PolicyAvailable: false }))" Click="StartAsync">
                 @(_mode == "hold" ? "Start (hold pose)" : "Start walking sandbox")
-            </button>
-            <button type="button" class="po-btn" disabled="@(!Running || _busy)" @onclick="ResetAsync">Reset</button>
-            <button type="button" class="po-btn po-btn--danger" disabled="@(!Running || _busy)" @onclick="StopAsync">Stop</button>
+            </RadzenButton>
+            <RadzenButton class="po-plain po-btn" Disabled="@(!Running || _busy)" Click="ResetAsync">Reset</RadzenButton>
+            <RadzenButton class="po-plain po-btn po-btn--danger" Disabled="@(!Running || _busy)" Click="StopAsync">Stop</RadzenButton>
         </div>
 
         <div class="sub-section sub-section--virtual">
@@ -74,9 +74,7 @@
                         <span></span>
                         continue;
                     }
-                    <button type="button" class="po-chip walk-pad__btn" disabled="@(!DriveEnabled)" title="@title" aria-label="@title"
-                            @onpointerdown="() => PadAsync(dir, true)" @onpointerup="() => PadAsync(dir, false)"
-                            @onpointerleave="() => PadAsync(dir, false)" @onpointercancel="() => PadAsync(dir, false)">@label</button>
+                    <RadzenButton class="po-plain po-chip walk-pad__btn" Disabled="@(!DriveEnabled)" title="@title" aria-label="@title" @onpointerdown="() => PadAsync(dir, true)" @onpointerup="() => PadAsync(dir, false)" @onpointerleave="() => PadAsync(dir, false)" @onpointercancel="() => PadAsync(dir, false)">@label</RadzenButton>
                 }
             </div>
             <div class="sticks" aria-label="On-screen thumbsticks: drag to drive, release to stop">

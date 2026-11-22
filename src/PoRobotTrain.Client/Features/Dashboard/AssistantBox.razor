@@ -13,16 +13,16 @@
    does not recognise a motion, the local MiniLM matcher below takes over. *@
 <div class="assist">
     <form class="assist-row" @onsubmit="AskAsync" @onsubmit:preventDefault>
-        <input class="assist-input" placeholder="Ask or tell the robot… e.g. is the robot ready?"
-               @bind="_text" @bind:event="oninput" disabled="@_busy" aria-label="Describe the motion" />
-        <button type="submit" class="po-chip" disabled="@(_busy || string.IsNullOrWhiteSpace(_text))">
+        <RadzenTextBox class="assist-input" Placeholder="Ask or tell the robot… e.g. is the robot ready?"
+                       @bind-Value="_text" Immediate="true" Disabled="@_busy" aria-label="Describe the motion" />
+        <RadzenButton ButtonType="ButtonType.Submit" class="po-plain po-chip" Disabled="@(_busy || string.IsNullOrWhiteSpace(_text))">
             @(_busy ? (_loaded ? "Thinking…" : _progress ?? "Thinking…") : "Ask")
-        </button>
+        </RadzenButton>
     </form>
     <div class="askbar__chips">
         @foreach (var ex in Examples)
         {
-            <button type="button" class="po-chip askbar__chip" disabled="@_busy" @onclick="() => AskExampleAsync(ex)">@ex</button>
+            <RadzenButton class="po-plain po-chip askbar__chip" Disabled="@_busy" Click="() => AskExampleAsync(ex)">@ex</RadzenButton>
         }
     </div>
     <VoiceInput @ref="_voice" Disabled="_busy" OnPartial="OnVoicePartial" OnFinal="OnVoiceFinalAsync" />
@@ -39,7 +39,7 @@
     {
         <div class="assist-out">
             <span>@_chat.Note</span>
-            <button type="button" class="po-chip active" @onclick="() => PreviewPoseAsync(pose)">Preview @_chat.Label on practice twin</button>
+            <RadzenButton class="po-plain po-chip active" Click="() => PreviewPoseAsync(pose)">Preview @_chat.Label on practice twin</RadzenButton>
         </div>
     }
     @if (_suggestion is { } s)
@@ -48,11 +48,11 @@
             <span>@s.Note</span>
             @if (s.Kind == "behaviour" && !s.Blocked && s.Id is not null)
             {
-                <button type="button" class="po-chip active" @onclick="ApplyAsync">Select @s.Label@(s.Amplitude is double a ? $" {a:0}°" : string.Empty)</button>
+                <RadzenButton class="po-plain po-chip active" Click="ApplyAsync">Select @s.Label@(s.Amplitude is double a ? $" {a:0}°" : string.Empty)</RadzenButton>
             }
             else if (s.Kind == "joint" && s.Joint is not null)
             {
-                <button type="button" class="po-chip" @onclick="ShowJointAsync">Show @s.Label slider</button>
+                <RadzenButton class="po-plain po-chip" Click="ShowJointAsync">Show @s.Label slider</RadzenButton>
             }
         </div>
     }

@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Text.Json
 @implements IAsyncDisposable
+@inject IValidator<MotionClipDto> ClipValidator
 @inject ConsoleApiClient Console
 @inject IJSRuntime JS
 @inject UiState Ui
@@ -20,15 +21,15 @@
         <p class="po-muted">Pick a motion and press ▶ to watch it on the twin (the 3D view on Control, or Unreal). Motions move several joints at once, so they never run on the real robot.</p>
         <div class="ctrl-row ops-row">
             <span class="ctrl-label">Twin engine</span>
-            <button type="button" class="po-chip @(Ui.Engine == "builtin" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("builtin")'>Built-in</button>
-            <button type="button" class="po-chip @(Ui.Engine == "unreal" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("unreal")'>Unreal</button>
+            <RadzenButton class="@($"po-plain po-chip {(Ui.Engine == "builtin" ? "active" : string.Empty)}")" Click='() => Ui.SetEngineAsync("builtin")'>Built-in</RadzenButton>
+            <RadzenButton class="@($"po-plain po-chip {(Ui.Engine == "unreal" ? "active" : string.Empty)}")" Click='() => Ui.SetEngineAsync("unreal")'>Unreal</RadzenButton>
         </div>
         <div class="player-bar" role="status">
             @if (_player is { Running: true } pl)
             {
                 <span class="po-pill po-pill--blue">▶ @(pl.Kind == "mode" ? $"MODE {pl.Mode}" : $"PLAYING {pl.Name}")</span>
                 <span class="po-muted">@($"{pl.T:0.0}") s@(pl.DurationS is double d ? $" / {d:0.0} s" : string.Empty)@(pl.Loop == true ? " · loop" : string.Empty)</span>
-                <button type="button" class="po-btn po-btn--danger" @onclick="StopPlayerAsync">Stop</button>
+                <RadzenButton class="po-plain po-btn po-btn--danger" Click="StopPlayerAsync">Stop</RadzenButton>
             }
             else
             {
@@ -45,8 +46,9 @@
         <div class="sec-hdr">
             <h2 class="tel-title">MOTION LIBRARY</h2>
             <div class="row-actions">
-                <button type="button" class="po-btn po-btn--blue" @onclick="NewClip">+ New motion</button>
-                <label class="po-chip file-pick">Import… <InputFile OnChange="ImportAsync" accept=".json,application/json" /></label>
+                <RadzenButton class="po-plain po-btn po-btn--blue" Click="NewClip">+ New motion</RadzenButton>
+                <RadzenFileInput TValue="string" class="motion-import" ChooseText="Import…" Accept=".json,application/json" MaxFileSize="524288"
+                                 Change="ImportAsync" title="Import a motion package (.json)" />
             </div>
         </div>
         @if (Busy)
@@ -68,13 +70,13 @@
                         <div class="why">Can't play: @string.Join("; ", m.Issues)</div>
                     }
                     <div class="motion-card__actions">
-                        <button type="button" class="po-btn po-btn--blue" disabled="@(Busy || !m.Valid)" @onclick="() => PlayAsync(m.Name, false)">▶ Play on twin</button>
-                        <button type="button" class="po-chip" disabled="@(Busy || !m.Valid)" @onclick="() => PlayAsync(m.Name, true)" title="Repeat until Stop">⟳ Loop</button>
-                        <button type="button" class="po-chip" @onclick="() => EditAsync(m.Name)">Edit</button>
-                        <button type="button" class="po-chip" @onclick="() => ExportAsync(m.Name)" title="Download a checksummed package to share">Export</button>
+                        <RadzenButton class="po-plain po-btn po-btn--blue" Disabled="@(Busy || !m.Valid)" Click="() => PlayAsync(m.Name, false)">▶ Play on twin</RadzenButton>
+                        <RadzenButton class="po-plain po-chip" Disabled="@(Busy || !m.Valid)" Click="() => PlayAsync(m.Name, true)" title="Repeat until Stop">⟳ Loop</RadzenButton>
+                        <RadzenButton class="po-plain po-chip" Click="() => EditAsync(m.Name)">Edit</RadzenButton>
+                        <RadzenButton class="po-plain po-chip" Click="() => ExportAsync(m.Name)" title="Download a checksummed package to share">Export</RadzenButton>
                         @if (m.Source == "user")
                         {
-                            <button type="button" class="po-chip" @onclick="() => DeleteAsync(m.Name)">Delete</button>
+                            <RadzenButton class="po-plain po-chip" Click="() => DeleteAsync(m.Name)">Delete</RadzenButton>
                         }
                     </div>
                 </article>
@@ -88,7 +90,7 @@
         <div class="pose-grid">
             @foreach (var p in _poses)
             {
-                <button type="button" class="po-btn po-btn--blue-soft" disabled="@Busy" @onclick="() => PoseAsync(p.Name)" title="@string.Join(", ", p.QDeg.Select(kv => $"{Short(kv.Key)} {kv.Value:0}°"))">@p.Label</button>
+                <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@Busy" Click="() => PoseAsync(p.Name)" title="@string.Join(", ", p.QDeg.Select(kv => $"{Short(kv.Key)} {kv.Value:0}°"))">@p.Label</RadzenButton>
             }
         </div>
     </section>
@@ -101,7 +103,7 @@
         <div class="ctrl-row ops-row">
             @foreach (var m in new[] { "damp", "hold", "zero_torque" })
             {
-                <button type="button" class="po-chip @(_mode == m ? "active" : string.Empty)" @onclick="() => _mode = m">@m.Replace('_', ' ')</button>
+                <RadzenButton class="@($"po-plain po-chip {(_mode == m ? "active" : string.Empty)}")" Click="() => _mode = m">@m.Replace('_', ' ')</RadzenButton>
             }
         </div>
         @if (_mode != "zero_torque")
@@ -109,13 +111,13 @@
             <div class="joint-picks">
                 @foreach (var j in UpperBody)
                 {
-                    <label class="joint-pick"><input type="checkbox" checked="@_modeJoints.Contains(j.Name)" @onchange="e => ToggleModeJoint(j.Name, (bool)e.Value!)" /> @j.DisplayLabel</label>
+                    <label class="joint-pick"><RadzenCheckBox TValue="bool" Value="@_modeJoints.Contains(j.Name)" Change="@(v => ToggleModeJoint(j.Name, v))" /> @j.DisplayLabel</label>
                 }
             </div>
         }
         <div class="ctrl-row ops-row">
-            <button type="button" class="po-btn po-btn--blue" disabled="@(Busy || (_mode != "zero_torque" && _modeJoints.Count == 0))" @onclick="StartModeAsync">Start @_mode.Replace('_', ' ')</button>
-            <button type="button" class="po-btn" disabled="@(_player?.Kind != "mode" || _player?.Running != true)" @onclick="ModeOffAsync">Mode off</button>
+            <RadzenButton class="po-plain po-btn po-btn--blue" Disabled="@(Busy || (_mode != "zero_torque" && _modeJoints.Count == 0))" Click="StartModeAsync">Start @_mode.Replace('_', ' ')</RadzenButton>
+            <RadzenButton class="po-plain po-btn" Disabled="@(_player?.Kind != "mode" || _player?.Running != true)" Click="ModeOffAsync">Mode off</RadzenButton>
         </div>
         @if (_mode != "zero_torque" && _modeJoints.Count == 0)
         {
@@ -142,16 +144,16 @@
                     <tr>
                         <td>@spec.Label @(_limits.Tightened?.Contains(key) == true ? "⚠" : string.Empty)</td>
                         <td class="lim-cell">
-                            <input type="range" min="@spec.Min" max="@spec.Max" step="@Step(spec)" value="@_limitEdit[key]" aria-label="@spec.Label"
-                                   @oninput="e => _limitEdit[key] = double.Parse(e.Value!.ToString()!, System.Globalization.CultureInfo.InvariantCulture)" />
+                            <RadzenSlider TValue="double" Min="(decimal)spec.Min" Max="(decimal)spec.Max" Step="@Step(spec).ToString(System.Globalization.CultureInfo.InvariantCulture)" Value="@_limitEdit[key]" aria-label="@spec.Label"
+                                          ValueChanged="@((double v) => _limitEdit[key] = v)" />
                             <span class="num">@_limitEdit[key].ToString("0.##") @spec.Unit</span>
                         </td>
                     </tr>
                 }
             </table>
             <div class="ctrl-row ops-row">
-                <button type="button" class="po-btn po-btn--blue-soft" @onclick="ApplyLimitsAsync">Apply limits</button>
-                <button type="button" class="po-chip" @onclick="ResetLimitsAsync">Reset to defaults</button>
+                <RadzenButton class="po-plain po-btn po-btn--blue-soft" Click="ApplyLimitsAsync">Apply limits</RadzenButton>
+                <RadzenButton class="po-plain po-chip" Click="ResetLimitsAsync">Reset to defaults</RadzenButton>
             </div>
         }
     </section>
@@ -168,23 +170,23 @@
                 }
             </div>
             <div class="editor-meta">
-                <label>Name <input class="assist-input" @bind="_clipName" aria-label="Motion name (a-z, 0-9, _)" /></label>
-                <label>Title <input class="assist-input" @bind="_clipTitle" /></label>
-                <label>Description <input class="assist-input" @bind="_clipDesc" /></label>
-                <label class="joint-pick"><input type="checkbox" @bind="_clipLoop" /> loop</label>
+                <label>Name <RadzenTextBox class="assist-input" @bind-Value="_clipName" aria-label="Motion name (a-z, 0-9, _)" /><FieldError Message="@ClipError("Name")" /></label>
+                <label>Title <RadzenTextBox class="assist-input" @bind-Value="_clipTitle" /><FieldError Message="@ClipError("Title")" /></label>
+                <label>Description <RadzenTextBox class="assist-input" @bind-Value="_clipDesc" /><FieldError Message="@ClipError("Description")" /><FieldError Message="@ClipError("Keyframes")" /></label>
+                <label class="joint-pick"><RadzenCheckBox TValue="bool" @bind-Value="_clipLoop" /> loop</label>
             </div>
             <div class="teach">
                 <span class="ctrl-label">Record into this editor</span>
                 @if (_rec?.Active == true)
                 {
                     <span class="po-pill po-pill--orange">● RECORDING @(_rec.Source == "real" ? "real robot" : "twin") · @_rec.Samples samples · @($"{_rec.ElapsedS:0.0}") s</span>
-                    <button type="button" class="po-btn po-btn--orange" @onclick="RecordStopAsync">■ Stop and load</button>
+                    <RadzenButton class="po-plain po-btn po-btn--orange" Click="RecordStopAsync">■ Stop and load</RadzenButton>
                 }
                 else
                 {
-                    <button type="button" class="po-chip @(_recSource == "practice" ? "active" : string.Empty)" @onclick='() => _recSource = "practice"'>From the twin</button>
-                    <button type="button" class="po-chip @(_recSource == "real" ? "active" : string.Empty)" @onclick='() => _recSource = "real"'>From the real robot (read-only)</button>
-                    <button type="button" class="po-btn po-btn--orange-soft" @onclick="RecordStartAsync">● Record</button>
+                    <RadzenButton class="@($"po-plain po-chip {(_recSource == "practice" ? "active" : string.Empty)}")" Click='() => _recSource = "practice"'>From the twin</RadzenButton>
+                    <RadzenButton class="@($"po-plain po-chip {(_recSource == "real" ? "active" : string.Empty)}")" Click='() => _recSource = "real"'>From the real robot (read-only)</RadzenButton>
+                    <RadzenButton class="po-plain po-btn po-btn--orange-soft" Click="RecordStartAsync">● Record</RadzenButton>
                 }
                 <div class="po-muted">@(_recSource == "real"
                     ? "Start \"Check the real robot → Live view\" on Control, then move a limp arm by hand. No motor is powered."
@@ -206,26 +208,16 @@
                 </svg>
             </div>
             <div class="ctrl-row ops-row">
-                <button type="button" class="po-chip" @onclick="AddKeyframe">+ Keyframe (+1 s)</button>
-                <select class="assist-input ops-select" @onchange="AddPoseKeyframe" aria-label="Add a keyframe from a pose">
-                    <option value="">+ Keyframe from pose…</option>
-                    @foreach (var p in _poses)
-                    {
-                        <option value="@p.Name">@p.Label</option>
-                    }
-                </select>
-                <select class="assist-input ops-select" @onchange="AddJoint" aria-label="Add a joint column">
-                    <option value="">+ Joint…</option>
-                    @foreach (var j in UpperBody.Where(j => !_joints.Contains(j.Name)))
-                    {
-                        <option value="@j.Name">@j.DisplayLabel</option>
-                    }
-                </select>
-                <button type="button" class="po-btn po-btn--blue-soft" @onclick="CheckAsync">Check</button>
-                <button type="button" class="po-btn po-btn--blue" disabled="@Busy" @onclick="PreviewClipAsync">▶ Preview on twin</button>
-                <button type="button" class="po-btn po-btn--teal" @onclick="SaveAsync">Save</button>
-                <label class="joint-pick"><input type="checkbox" @bind="_overwrite" /> replace if the name exists</label>
-                <button type="button" class="po-chip" @onclick="() => _clip = null">Close</button>
+                <RadzenButton class="po-plain po-chip" Click="AddKeyframe">+ Keyframe (+1 s)</RadzenButton>
+                <RadzenDropDown TValue="string" class="assist-input ops-select" Data="@_poses" TextProperty="Label" ValueProperty="Name"
+                                Placeholder="+ Keyframe from pose…" Value="@((string?)null)" Change="@(v => AddPoseKeyframe(v as string))" aria-label="Add a keyframe from a pose" />
+                <RadzenDropDown TValue="string" class="assist-input ops-select" Data="@UpperBody.Where(j => !_joints.Contains(j.Name)).ToList()" TextProperty="DisplayLabel" ValueProperty="Name"
+                                Placeholder="+ Joint…" Value="@((string?)null)" Change="@(v => AddJoint(v as string))" aria-label="Add a joint column" />
+                <RadzenButton class="po-plain po-btn po-btn--blue-soft" Click="CheckAsync">Check</RadzenButton>
+                <RadzenButton class="po-plain po-btn po-btn--blue" Disabled="@Busy" Click="PreviewClipAsync">▶ Preview on twin</RadzenButton>
+                <RadzenButton class="po-plain po-btn po-btn--teal" Click="SaveAsync">Save</RadzenButton>
+                <label class="joint-pick"><RadzenCheckBox TValue="bool" @bind-Value="_overwrite" /> replace if the name exists</label>
+                <RadzenButton class="po-plain po-chip" Click="() => _clip = null">Close</RadzenButton>
             </div>
             <div class="kf-table-wrap">
                 <table class="diag-table kf-table">
@@ -233,7 +225,7 @@
                         <th>#</th><th>t (s)</th><th>ease</th>
                         @foreach (var j in _joints)
                         {
-                            <th>@Short(j) <button type="button" class="x-btn" title="Remove joint" @onclick="() => RemoveJoint(j)">×</button></th>
+                            <th>@Short(j) <RadzenButton class="po-plain x-btn" title="Remove joint" Click="() => RemoveJoint(j)">×</RadzenButton></th>
                         }
                         <th></th>
                     </tr>
@@ -243,21 +235,18 @@
                         var idx = k;
                         <tr class="@(k == _selKf ? "sel" : string.Empty)" @onclick="() => SelectKf(idx)">
                             <td>@(k + 1)</td>
-                            <td><input type="number" step="0.1" min="0" class="assist-input num-in" value="@kf.T.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" @onchange="e => SetT(idx, e)" /></td>
+                            <td><RadzenNumeric TValue="double" Step="0.1" Min="0" ShowUpDown="false" class="assist-input num-in" Value="@kf.T" Format="0.##" Change="@(v => SetT(idx, v))" aria-label="@($"Time of keyframe {idx + 1} (s)")" /></td>
                             <td>
-                                <select class="assist-input" value="@kf.Ease" @onchange="e => SetEase(idx, e)">
-                                    <option value="smooth">smooth</option>
-                                    <option value="linear">linear</option>
-                                </select>
+                                <RadzenDropDown TValue="string" class="assist-input" Data="@Eases" Value="@kf.Ease" Change="@(v => SetEase(idx, v as string))" aria-label="@($"Easing of keyframe {idx + 1}")" />
                             </td>
                             @foreach (var j in _joints)
                             {
                                 var joint = j;
-                                <td><input type="number" step="1" class="assist-input num-in" placeholder="hold" aria-label="@($"{Short(joint)} at keyframe {idx + 1}")"
-                                           value="@(kf.Q.TryGetValue(joint, out var qv) ? qv.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) : string.Empty)"
-                                           @onchange="e => SetQ(idx, joint, e)" /></td>
+                                <td><RadzenNumeric TValue="double?" Step="1" ShowUpDown="false" class="assist-input num-in" Placeholder="hold" aria-label="@($"{Short(joint)} at keyframe {idx + 1}")"
+                                           Value="@(kf.Q.TryGetValue(joint, out var qv) ? Math.Round(qv, 1) : null)" Format="0.#"
+                                           Change="@(v => SetQ(idx, joint, v))" /></td>
                             }
-                            <td><button type="button" class="x-btn" title="Delete keyframe" @onclick="() => DeleteKf(idx)" @onclick:stopPropagation>×</button></td>
+                            <td><span class="po-stop" @onclick:stopPropagation="true"><RadzenButton class="po-plain x-btn" title="Delete keyframe" Click="() => DeleteKf(idx)">×</RadzenButton></span></td>
                         </tr>
                     }
                 </table>
@@ -470,18 +459,23 @@
         }
     }
 
-    private async Task ImportAsync(InputFileChangeEventArgs e)
+    // RadzenFileInput hands the file over as a data URL (data:application/json;base64,...)
+    private async Task ImportAsync(string? dataUrl)
     {
+        if (string.IsNullOrEmpty(dataUrl))
+        {
+            return;
+        }
         try
         {
-            using var stream = e.File.OpenReadStream(maxAllowedSize: 512 * 1024);
-            using var doc = await JsonDocument.ParseAsync(stream);
+            var bytes = Convert.FromBase64String(dataUrl[(dataUrl.IndexOf(',', StringComparison.Ordinal) + 1)..]);
+            using var doc = JsonDocument.Parse(bytes);
             var req = new PackageImportRequest(doc.RootElement.Clone(), _overwrite);
             var (r, err) = await Console.PostAsync("motions/import", req, Ctx.PackageImportRequest, Ctx.MotionResultDto);
             Say(r?.Ok == true ? $"Imported {r.Name} (validated)." : $"Import refused: {err}{(r?.Validation is { Ok: false } v ? " — " + string.Join("; ", v.Issues.Select(i => i.Message)) : string.Empty)}", r?.Ok == true);
             await LoadMotionsAsync();
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        catch (Exception ex) when (ex is JsonException or FormatException)
         {
             Say($"Not a motion package: {ex.Message}", false);
         }
@@ -549,9 +543,11 @@
         _selKf = _clip.Count - 1;
     }
 
-    private void AddPoseKeyframe(ChangeEventArgs e)
+    private static readonly string[] Eases = ["smooth", "linear"];
+
+    private void AddPoseKeyframe(string? name)
     {
-        var pose = _poses.FirstOrDefault(p => p.Name == e.Value?.ToString());
+        var pose = _poses.FirstOrDefault(p => p.Name == name);
         if (pose is null || _clip is null)
         {
             return;
@@ -565,9 +561,9 @@
         _selKf = _clip.Count - 1;
     }
 
-    private void AddJoint(ChangeEventArgs e)
+    private void AddJoint(string? name)
     {
-        if (e.Value?.ToString() is { Length: > 0 } j && !_joints.Contains(j))
+        if (name is { Length: > 0 } j && !_joints.Contains(j))
         {
             _joints.Add(j);
             if (_clip is { Count: > 0 })
@@ -592,22 +588,13 @@
         _selKf = -1;
     }
 
-    private static double? ParseNum(ChangeEventArgs e) =>
-        double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+    private void SetT(int k, double t) => _clip![k].T = Math.Max(0, t);
 
-    private void SetT(int k, ChangeEventArgs e)
+    private void SetEase(int k, string? ease) => _clip![k].Ease = ease ?? "smooth";
+
+    private void SetQ(int k, string joint, double? value)
     {
-        if (ParseNum(e) is double t)
-        {
-            _clip![k].T = Math.Max(0, t);
-        }
-    }
-
-    private void SetEase(int k, ChangeEventArgs e) => _clip![k].Ease = e.Value?.ToString() ?? "smooth";
-
-    private void SetQ(int k, string joint, ChangeEventArgs e)
-    {
-        if (ParseNum(e) is double v)
+        if (value is double v)
         {
             _clip![k].Q[joint] = v;
         }
@@ -660,9 +647,20 @@
         Say(r?.Ok == true ? "Previewing your edit on the twin." : $"Preview not started: {err}", r?.Ok == true);
     }
 
+    private Dictionary<string, string> _clipErrors = [];
+
+    private string? ClipError(string field) => _clipErrors.GetValueOrDefault(field);
+
     private async Task SaveAsync()
     {
-        var (r, err) = await Console.PostAsync("motions/save", new ClipRequest(BuildClip(), _overwrite), Ctx.ClipRequest, Ctx.MotionResultDto);
+        var clip = BuildClip();
+        var check = await ClipValidator.ValidateAsync(clip);
+        _clipErrors = check.Errors.GroupBy(e => e.PropertyName).ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+        if (!check.IsValid)
+        {
+            return;
+        }
+        var (r, err) = await Console.PostAsync("motions/save", new ClipRequest(clip, _overwrite), Ctx.ClipRequest, Ctx.MotionResultDto);
         _validation = r?.Validation ?? _validation;
         Say(r?.Ok == true ? $"Saved {r.Name}." : $"Not saved: {err}", r?.Ok == true);
         await LoadMotionsAsync();

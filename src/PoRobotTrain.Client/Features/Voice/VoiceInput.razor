@@ -6,16 +6,12 @@
 @* Mic button + spoken replies (wwwroot/js/twin/voice.js). Web Speech API when the browser has it, else Whisper tiny.en
    locally through Transformers.js. It only produces text; the parent decides what the text may do. *@
 <div class="voice">
-    <button type="button" class="po-chip voice-mic @(Listening ? "voice-mic--on" : string.Empty)"
-            disabled="@(Disabled || _engine == "none")" aria-pressed="@Listening"
-            title="@(_engine == "none" ? "No speech input in this browser" : Listening ? "Stop listening" : $"Speak a command ({EngineLabel})")"
-            @onclick="ToggleAsync">
+    <RadzenButton class="@($"po-plain po-chip voice-mic {(Listening ? "voice-mic--on" : string.Empty)}")" Disabled="@(Disabled || _engine == "none")" aria-pressed="@Listening" title="@(_engine == "none" ? "No speech input in this browser" : Listening ? "Stop listening" : $"Speak a command ({EngineLabel})")" Click="ToggleAsync">
         <span class="voice-dot" aria-hidden="true"></span>@(Listening ? "Listening…" : _state == "transcribing" ? "Transcribing…" : _state == "loading" ? "Loading…" : "Speak")
-    </button>
-    <button type="button" class="po-chip @(_muted ? string.Empty : "active")" aria-pressed="@(!_muted)"
-            disabled="@(!_synthesis)" title="@(_synthesis ? "Spoken replies on/off" : "No speech synthesis in this browser")" @onclick="ToggleMuteAsync">
+    </RadzenButton>
+    <RadzenButton class="@($"po-plain po-chip {(_muted ? string.Empty : "active")}")" aria-pressed="@(!_muted)" Disabled="@(!_synthesis)" title="@(_synthesis ? "Spoken replies on/off" : "No speech synthesis in this browser")" Click="ToggleMuteAsync">
         @(_muted ? "Replies muted" : "Replies on")
-    </button>
+    </RadzenButton>
     <span class="voice-status @(_state == "error" ? "warn" : string.Empty)" aria-live="polite">@StatusText</span>
 </div>
 

@@ -18,17 +18,17 @@
             <div class="btn-row">
                 @if (_step > 0)
                 {
-                    <button type="button" class="po-btn" @onclick="() => _step--">Back</button>
+                    <RadzenButton class="po-plain po-btn" Click="() => _step--">Back</RadzenButton>
                 }
                 @if (_step < Steps.Length - 1)
                 {
-                    <button type="button" class="po-btn po-btn--blue" style="flex:1" @onclick="() => _step++">Next</button>
+                    <RadzenButton class="po-plain po-btn po-btn--blue" style="flex:1" Click="() => _step++">Next</RadzenButton>
                 }
                 else
                 {
-                    <button type="button" class="po-btn po-btn--blue" style="flex:1" @onclick="FinishAsync">Start using the app</button>
+                    <RadzenButton class="po-plain po-btn po-btn--blue" style="flex:1" Click="FinishAsync">Start using the app</RadzenButton>
                 }
-                <button type="button" class="po-chip" @onclick="FinishAsync">Skip</button>
+                <RadzenButton class="po-plain po-chip" Click="FinishAsync">Skip</RadzenButton>
             </div>
         </div>
     </div>

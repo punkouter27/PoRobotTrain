@@ -1,0 +1,9 @@
+@* Inline validation message under a form field (FluentValidation result); renders nothing when there is no error. *@
+@if (!string.IsNullOrEmpty(Message))
+{
+    <span class="field-error" role="alert">@Message</span>
+}
+
+@code {
+    [Parameter] public string? Message { get; set; }
+}

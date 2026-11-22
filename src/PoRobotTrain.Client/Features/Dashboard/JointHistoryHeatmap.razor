@@ -1,7 +1,7 @@
-@using SkiaSharp
-@using SkiaSharp.Views.Blazor
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
-@* 26-joint history strip drawn with SkiaSharp: one row per joint (policy order, grouped), one column per
+@* 26-joint history strip (one canvas pixel per cell, painted by js/heatmap.js): one row per joint (policy order, grouped), one column per
    telemetry sample. Shows at a glance which joints moved, which approached their limits, and where the
    virtual sim and the physical / practice robot disagreed during a run. *@
 <div class="hist-card">
@@ -11,10 +11,10 @@
             <span class="po-muted" style="margin-left:8px">@SourceLabel · last @_count of @Capacity samples</span>
         </div>
         <div class="size-row">
-            <button type="button" class="po-chip @(_mode == HistMode.Position ? "active" : string.Empty)" @onclick="() => SetMode(HistMode.Position)">Position</button>
-            <button type="button" class="po-chip @(_mode == HistMode.Margin ? "active" : string.Empty)" @onclick="() => SetMode(HistMode.Margin)">Limit margin</button>
-            <button type="button" class="po-chip @(_mode == HistMode.Error ? "active" : string.Empty)" disabled="@(!_anyError)" title="Needs both a virtual run and a physical / practice reading" @onclick="() => SetMode(HistMode.Error)">Sim − real</button>
-            <button type="button" class="po-chip" @onclick="Clear">Clear</button>
+            <RadzenButton class="@($"po-plain po-chip {(_mode == HistMode.Position ? " active" : string.Empty)}")" Click="() => SetMode(HistMode.Position)">Position</RadzenButton>
+            <RadzenButton class="@($"po-plain po-chip {(_mode == HistMode.Margin ? " active" : string.Empty)}")" Click="() => SetMode(HistMode.Margin)">Limit margin</RadzenButton>
+            <RadzenButton class="@($"po-plain po-chip {(_mode == HistMode.Error ? " active" : string.Empty)}")" Disabled="@(!_anyError)" title="Needs both a virtual run and a physical / practice reading" Click="() => SetMode(HistMode.Error)">Sim − real</RadzenButton>
+            <RadzenButton class="po-plain po-chip" Click="Clear">Clear</RadzenButton>
         </div>
     </div>
     <div class="hist-body">
@@ -25,7 +25,7 @@
                 <div style="height:@(n * RowH)px;border-left:3px solid @g.ColorHex;color:@g.ColorHex">@g.Title</div>
             }
         </div>
-        <SKCanvasView @ref="_view" OnPaintSurface="OnPaint" class="hist-canvas" style="@($"height:{RowsHeight}px")" />
+        <canvas @ref="_canvas" class="hist-canvas" width="@Capacity" height="@Rows" style="@($"height:{RowsHeight}px")" aria-label="Joint history heatmap"></canvas>
     </div>
     <div class="hist-scale">@ScaleText</div>
 </div>
@@ -42,7 +42,9 @@
     [Parameter] public double? SampleTime { get; set; }
     [Parameter] public string SourceLabel { get; set; } = "";
 
-    private SKCanvasView? _view;
+    private ElementReference _canvas;
+    private IJSObjectReference? _module;
+    private bool _dirty = true;
     private readonly double[][] _q = new double[Capacity][];
     private readonly double[]?[] _err = new double[Capacity][];
     private int _head;
@@ -85,13 +87,13 @@
         _anyError |= _err[_head] is not null;
         _head = (_head + 1) % Capacity;
         _count = Math.Min(Capacity, _count + 1);
-        _view?.Invalidate();
+        _dirty = true;
     }
 
     private void SetMode(HistMode m)
     {
         _mode = m;
-        _view?.Invalidate();
+        _dirty = true;
     }
 
     private void Clear()
@@ -99,70 +101,97 @@
         _count = 0;
         _head = 0;
         _anyError = false;
-        _view?.Invalidate();
+        _dirty = true;
     }
 
-    private void OnPaint(SKPaintSurfaceEventArgs e)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var canvas = e.Surface.Canvas;
-        var info = e.Info;
-        canvas.Clear(new SKColor(0x0a, 0x0c, 0x10));
-        if (_count == 0)
+        if (!_dirty)
         {
             return;
         }
+        _dirty = false;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/heatmap.js");
+            await _module.InvokeVoidAsync("paint", _canvas, Pixels(), Capacity, Rows);
+        }
+        catch (JSException)
+        {
+            // the strip is informational; a failed paint leaves the previous frame
+        }
+    }
 
-        var rowH = info.Height / (float)Rows;
-        var colW = info.Width / (float)Capacity;
-        using var paint = new SKPaint { IsAntialias = false };
+    // RGBA, row-major: one row per joint (RowJoint order), newest sample in the right-most column
+    private byte[] Pixels()
+    {
+        var px = new byte[Capacity * Rows * 4];
+        for (var i = 0; i < Capacity * Rows; i++)
+        {
+            px[i * 4] = 0x0a;
+            px[i * 4 + 1] = 0x0c;
+            px[i * 4 + 2] = 0x10;
+            px[i * 4 + 3] = 0xff;
+        }
         for (var c = 0; c < _count; c++)
         {
             var idx = (_head - _count + c + Capacity) % Capacity;
             var q = _q[idx];
             var err = _err[idx];
-            var x = info.Width - (_count - c) * colW;
+            var x = Capacity - _count + c;
             for (var r = 0; r < Rows; r++)
             {
                 var j = RobotJointCatalog.All[RowJoint[r]];
-                paint.Color = _mode switch
+                var col = _mode switch
                 {
                     HistMode.Position => PositionColor(j, q[j.PolicyIndex]),
                     HistMode.Margin => MarginColor(j, q[j.PolicyIndex]),
-                    _ => err is null ? new SKColor(0x15, 0x18, 0x20) : ErrorColor(err[j.PolicyIndex]),
+                    _ => err is null ? new Rgb(0x15, 0x18, 0x20) : ErrorColor(err[j.PolicyIndex]),
                 };
-                canvas.DrawRect(x, r * rowH, colW + 0.6f, rowH - 0.8f, paint);
+                var o = (r * Capacity + x) * 4;
+                px[o] = col.R;
+                px[o + 1] = col.G;
+                px[o + 2] = col.B;
             }
         }
+        return px;
+    }
 
-        // group separators
-        using var sep = new SKPaint { Color = new SKColor(255, 255, 255, 40), StrokeWidth = 1 };
-        var row = 0;
-        foreach (var g in RobotJointCatalog.GroupOrder)
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
         {
-            row += RobotJointCatalog.All.Count(j => j.Group == g.Group);
-            canvas.DrawLine(0, row * rowH - 0.4f, info.Width, row * rowH - 0.4f, sep);
+            try
+            {
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
         }
     }
 
-    private static SKColor Lerp(SKColor a, SKColor b, double t)
+    private readonly record struct Rgb(byte R, byte G, byte B);
+
+    private static Rgb Lerp(Rgb a, Rgb b, double t)
     {
         t = Math.Clamp(t, 0, 1);
-        return new SKColor(
-            (byte)(a.Red + (b.Red - a.Red) * t),
-            (byte)(a.Green + (b.Green - a.Green) * t),
-            (byte)(a.Blue + (b.Blue - a.Blue) * t));
+        return new Rgb(
+            (byte)(a.R + (b.R - a.R) * t),
+            (byte)(a.G + (b.G - a.G) * t),
+            (byte)(a.B + (b.B - a.B) * t));
     }
 
-    private static readonly SKColor Blue = new(0x3d, 0xc7, 0xf2);
-    private static readonly SKColor White = new(0xee, 0xf1, 0xf7);
-    private static readonly SKColor Orange = new(0xff, 0x9c, 0x47);
-    private static readonly SKColor Green = new(0x2f, 0x9e, 0x63);
-    private static readonly SKColor Amber = new(0xff, 0xbd, 0x42);
-    private static readonly SKColor Red = new(0xff, 0x5c, 0x57);
-    private static readonly SKColor Violet = new(0xb1, 0x8c, 0xff);
-    private static readonly SKColor Black = new(0x10, 0x12, 0x18);
+    private static readonly Rgb Blue = new(0x3d, 0xc7, 0xf2);
+    private static readonly Rgb White = new(0xee, 0xf1, 0xf7);
+    private static readonly Rgb Orange = new(0xff, 0x9c, 0x47);
+    private static readonly Rgb Green = new(0x2f, 0x9e, 0x63);
+    private static readonly Rgb Amber = new(0xff, 0xbd, 0x42);
+    private static readonly Rgb Red = new(0xff, 0x5c, 0x57);
+    private static readonly Rgb Violet = new(0xb1, 0x8c, 0xff);
+    private static readonly Rgb Black = new(0x10, 0x12, 0x18);
 
-    private static SKColor PositionColor(JointSpec j, double q)
+    private static Rgb PositionColor(JointSpec j, double q)
     {
         if (q <= j.DefaultDeg)
         {
@@ -171,12 +200,12 @@
         return Lerp(White, Orange, (q - j.DefaultDeg) / Math.Max(1e-6, j.MaxDeg - j.DefaultDeg));
     }
 
-    private static SKColor MarginColor(JointSpec j, double q)
+    private static Rgb MarginColor(JointSpec j, double q)
     {
         var m = Math.Min(q - j.MinDeg, j.MaxDeg - q);
         return m < 4 ? Red : m < 8 ? Amber : Lerp(Amber, Green, (m - 8) / 17.0);
     }
 
-    private static SKColor ErrorColor(double e) =>
+    private static Rgb ErrorColor(double e) =>
         e < 2 ? Lerp(Black, Violet, e / 2) : Lerp(Violet, White, (e - 2) / 6);
 }

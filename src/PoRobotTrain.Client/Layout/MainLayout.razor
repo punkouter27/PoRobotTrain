@@ -27,10 +27,9 @@
         <div class="po-header__right">
             <RobotBadge />
             <label class="adv-toggle" title="Show expert tools: modes, limits, calibration, network, versions, the 26-joint matrix and raw logs">
-                <input type="checkbox" checked="@Ui.Advanced" @onchange="e => Ui.SetAdvancedAsync((bool)e.Value!)" /> Advanced
+                <RadzenCheckBox TValue="bool" Value="@Ui.Advanced" Change="@(v => Ui.SetAdvancedAsync(v))" /> Advanced
             </label>
             <EstopButton />
-            <span class="po-stamp">v@(BuildStamp)</span>
         </div>
     </header>
 
@@ -48,11 +47,14 @@
                 <div class="po-card po-card--danger">
                     <h2>UI Error</h2>
                     <p>@ex.Message</p>
-                    <button type="button" class="po-btn" @onclick="Recover">Recover</button>
+                    <RadzenButton class="po-plain po-btn" Click="Recover">Recover</RadzenButton>
                 </div>
             </ErrorContent>
         </ErrorBoundary>
     </main>
+
+    @* Version stamp: bottom-right, in the page flow after the content (never floats over it, also on phones). *@
+    <footer class="po-foot"><span class="po-stamp">v@(BuildStamp)</span></footer>
 </div>
 
 <FirstRunTour />

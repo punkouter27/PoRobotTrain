@@ -6,14 +6,14 @@
    voice). It answers status questions and suggests motions; it never starts anything on its own. *@
 <div class="askbar">
     <form class="askbar__row" @onsubmit="() => AskAsync(_text)" @onsubmit:preventDefault>
-        <input class="assist-input askbar__input" placeholder="Ask or tell the robot… e.g. is the robot ready?" @bind="_text" @bind:event="oninput"
-               aria-label="Ask or tell the robot" disabled="@_busy" />
-        <button type="submit" class="po-chip active" disabled="@(_busy || string.IsNullOrWhiteSpace(_text))">Ask</button>
+        <RadzenTextBox class="assist-input askbar__input" Placeholder="Ask or tell the robot… e.g. is the robot ready?" @bind-Value="_text" Immediate="true"
+                       aria-label="Ask or tell the robot" Disabled="@_busy" />
+        <RadzenButton ButtonType="ButtonType.Submit" class="po-plain po-chip active" Disabled="@(_busy || string.IsNullOrWhiteSpace(_text))">Ask</RadzenButton>
     </form>
     <div class="askbar__chips">
         @foreach (var ex in Examples)
         {
-            <button type="button" class="po-chip askbar__chip" disabled="@_busy" @onclick="() => AskAsync(ex)">@ex</button>
+            <RadzenButton class="po-plain po-chip askbar__chip" Disabled="@_busy" Click="() => AskAsync(ex)">@ex</RadzenButton>
         }
     </div>
     @if (_reply is { } r)
@@ -23,7 +23,7 @@
             @switch (r.Kind)
             {
                 case "pose" when r.Pose is not null:
-                    <button type="button" class="po-chip active" @onclick="() => PoseAsync(r.Pose)">Preview on twin</button>
+                    <RadzenButton class="po-plain po-chip active" Click="() => PoseAsync(r.Pose)">Preview on twin</RadzenButton>
                     break;
                 case "behaviour" when r.Id is not null && !r.Blocked:
                     <a class="po-chip active" href="@($"/?behaviour={Uri.EscapeDataString(r.Id)}&amp={r.Amplitude ?? 10:0}")">Open on Control</a>

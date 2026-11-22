@@ -19,11 +19,11 @@
         <div class="chooser__grid">
             @foreach (var t in Tasks)
             {
-                <button type="button" class="chooser__card chooser__card--@t.Tone" @onclick="() => ChooseAsync(t.Id)">
+                <RadzenButton class="@($"po-plain chooser__card chooser__card--{(t.Tone)}")" Click="() => ChooseAsync(t.Id)">
                     <span class="chooser__icon" aria-hidden="true">@t.Icon</span>
                     <span class="chooser__title">@t.Title</span>
                     <span class="chooser__desc">@t.Desc</span>
-                </button>
+                </RadzenButton>
             }
         </div>
     </section>
@@ -33,9 +33,9 @@ else
     <nav class="taskbar" aria-label="Task">
         @foreach (var t in Tasks)
         {
-            <button type="button" class="po-chip @(Ui.Task == t.Id ? "active" : string.Empty)" @onclick="() => ChooseAsync(t.Id)">@t.Icon @t.Title</button>
+            <RadzenButton class="@($"po-plain po-chip {(Ui.Task == t.Id ? " active" : string.Empty)}")" Click="() => ChooseAsync(t.Id)">@t.Icon @t.Title</RadzenButton>
         }
-        <button type="button" class="po-chip" @onclick="() => Ui.SetTaskAsync(null)">All tasks</button>
+        <RadzenButton class="po-plain po-chip" Click="() => Ui.SetTaskAsync(null)">All tasks</RadzenButton>
     </nav>
 
     <div class="dash-grid">
@@ -67,10 +67,9 @@ else
                         {
                             var sel = b.Id == _selectedBehaviour;
                             var locked = !_armUnlocked && IsArmBehaviour(b.Id);
-                            <button type="button" class="po-chip @(sel ? "active" : string.Empty)" disabled="@(locked || (!IsIdle && !sel))"
-                                    title="@(locked ? "Tick 'Unlock arm motions' first" : b.Desc)" @onclick="() => SelectBehaviour(b.Id)">
+                            <RadzenButton class="@($"po-plain po-chip {(sel ? " active" : string.Empty)}")" Disabled="@(locked || (!IsIdle && !sel))" title="@(locked ? " Tick 'Unlock arm motions' first" : b.Desc)" Click="() => SelectBehaviour(b.Id)">
                                 @b.Label
-                            </button>
+                            </RadzenButton>
                         }
                     </div>
                     @if (!_armUnlocked)
@@ -84,14 +83,14 @@ else
                         @foreach (var amp in new[] { 10.0, 20.0, 30.0 })
                         {
                             var sel = Math.Abs(_selectedAmp - amp) < 0.01;
-                            <button type="button" class="po-chip @(sel ? "active" : string.Empty)" disabled="@(!IsIdle && !sel)" @onclick="() => SelectAmplitude(amp)">@($"{amp:0}°")</button>
+                            <RadzenButton class="@($"po-plain po-chip {(sel ? " active" : string.Empty)}")" Disabled="@(!IsIdle && !sel)" Click="() => SelectAmplitude(amp)">@($"{amp:0}°")</RadzenButton>
                         }
                     </div>
                 </div>
                 <div class="ctrl-top" style="align-items:center">
                     <div class="po-muted">@ActiveDesc</div>
                     <label class="po-muted" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
-                        <input type="checkbox" @bind="_armUnlocked" @bind:after="OnArmLockChanged" /> Unlock arm motions
+                        <RadzenCheckBox TValue="bool" @bind-Value="_armUnlocked" @bind-Value:after="OnArmLockChanged" /> Unlock arm motions
                     </label>
                 </div>
                 @if (BusyWhy is { } busy)
@@ -108,9 +107,9 @@ else
                         <span class="po-pill po-pill--blue">SAFE · NOTHING PHYSICAL MOVES</span>
                     </div>
                     @EngineChooser
-                    <button type="button" class="po-btn po-btn--blue" disabled="@(!IsIdle)" @onclick="() => PreviewAsync(Ui.PreviewTarget)">
+                    <RadzenButton class="po-plain po-btn po-btn--blue" Disabled="@(!IsIdle)" Click="() => PreviewAsync(Ui.PreviewTarget)">
                         @(IsJob("preview") ? "Running on the twin…" : $"▶ Run {_selectedBehaviour.Replace('_', ' ')} {_selectedAmp:0}° on the twin")
-                    </button>
+                    </RadzenButton>
                     @if (!IsIdle && BusyWhy is { } why)
                     {
                         <div class="why">@why</div>
@@ -132,14 +131,14 @@ else
                         }
                         else
                         {
-                            <button type="button" class="po-chip" disabled="@(!IsIdle)" @onclick="ProbeRealAsync">@(IsJob("snapshot") ? "Looking for the robot…" : "Connect to the real robot")</button>
+                            <RadzenButton class="po-plain po-chip" Disabled="@(!IsIdle)" Click="ProbeRealAsync">@(IsJob("snapshot") ? "Looking for the robot…" : "Connect to the real robot")</RadzenButton>
                         }
                     </div>
                     <div class="po-muted">These only read: no motor is powered. @(RealConnected ? string.Empty : "Until the robot connects, they read the twin so you can practise.")</div>
                     <div class="btn-row">
-                        <button type="button" class="po-btn @(RealConnected ? "po-btn--orange-soft" : "po-btn--blue-soft")" style="flex:1" disabled="@(!IsIdle)" @onclick="SnapshotAsync">@(IsJob("snapshot") ? "Reading…" : "Read pose now")</button>
-                        <button type="button" class="po-btn po-btn--teal" style="flex:1" disabled="@(!IsIdle)" @onclick="MonitorAsync">@(IsJob("monitor") ? "Live view on…" : "Live view (20 s)")</button>
-                        <button type="button" class="po-btn @(RealConnected ? "po-btn--orange-soft" : "po-btn--blue-soft")" style="flex:1" disabled="@(!IsIdle)" @onclick="CheckAsync">@(IsJob("check") ? "Checking…" : "Read-only check")</button>
+                        <RadzenButton class="@($"po-plain po-btn {(RealConnected ? " po-btn--orange-soft" : "po-btn--blue-soft")}")" style="flex:1" Disabled="@(!IsIdle)" Click="SnapshotAsync">@(IsJob("snapshot") ? "Reading…" : "Read pose now")</RadzenButton>
+                        <RadzenButton class="po-plain po-btn po-btn--teal" style="flex:1" Disabled="@(!IsIdle)" Click="MonitorAsync">@(IsJob("monitor") ? "Live view on…" : "Live view (20 s)")</RadzenButton>
+                        <RadzenButton class="@($"po-plain po-btn {(RealConnected ? " po-btn--orange-soft" : "po-btn--blue-soft")}")" style="flex:1" Disabled="@(!IsIdle)" Click="CheckAsync">@(IsJob("check") ? "Checking…" : "Read-only check")</RadzenButton>
                     </div>
                     @if (BusyWhy is { } why)
                     {
@@ -219,10 +218,10 @@ else
             <p>Motion: <b>@_selectedBehaviour.Replace('_', ' ')</b> (@($"{_selectedAmp:0}°")).</p>
             <p>Robot hanging on its stand, area clear, remote in your hand?</p>
             <div class="btn-row">
-                <button type="button" class="po-btn po-btn--orange" style="flex:1" @onclick="ConfirmRunAsync">
+                <RadzenButton class="po-plain po-btn po-btn--orange" style="flex:1" Click="ConfirmRunAsync">
                     @(PracticeActive ? "Yes, run the practice step" : "Yes, move the REAL robot")
-                </button>
-                <button type="button" class="po-btn" @onclick="() => _confirmOpen = false">Cancel</button>
+                </RadzenButton>
+                <RadzenButton class="po-plain po-btn" Click="() => _confirmOpen = false">Cancel</RadzenButton>
             </div>
         </div>
     </div>
@@ -354,8 +353,8 @@ else
     {
         <div class="ctrl-row ops-row">
             <span class="ctrl-label">Twin engine</span>
-            <button type="button" class="po-chip @(Ui.Engine == "builtin" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("builtin")' title="Headless MuJoCo stand twin on this PC; shown in the 3D view">Built-in</button>
-            <button type="button" class="po-chip @(Ui.Engine == "unreal" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("unreal")' title="The Unreal Engine twin (press Play in Unreal first)">Unreal</button>
+            <RadzenButton class="@($"po-plain po-chip {(Ui.Engine == " builtin" ? "active" : string.Empty)}")" Click='() => Ui.SetEngineAsync("builtin")' title="Headless MuJoCo stand twin on this PC; shown in the 3D view">Built-in</RadzenButton>
+            <RadzenButton class="@($"po-plain po-chip {(Ui.Engine == " unreal" ? "active" : string.Empty)}")" Click='() => Ui.SetEngineAsync("unreal")' title="The Unreal Engine twin (press Play in Unreal first)">Unreal</RadzenButton>
         </div>
     };
 
@@ -369,7 +368,7 @@ else
             </div>
             @if (action is { } a && !running)
             {
-                <button type="button" class="po-btn @(n == 4 && RealConnected ? "po-btn--orange" : "po-btn--blue-soft")" @onclick="a.Act">@a.Label</button>
+                <RadzenButton class="@($"po-plain po-btn {(n == 4 && RealConnected ? " po-btn--orange" : "po-btn--blue-soft")}")" Click="a.Act">@a.Label</RadzenButton>
             }
             else if (link is not null && !done)
             {
