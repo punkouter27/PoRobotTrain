@@ -1,9 +1,9 @@
 name: Test & Deploy Showcase
 
-# The one workflow. Push to master: Python checks (ruff, pytest) -> build the showcase site (web/build.py) -> deploy it
-# to the Azure Static Web App swa-porobottrain (resource group PoShared) -> check / and /diag live.
-# Pull requests get the checks and the build, never a deploy. The Unreal project is built locally (GitHub's runners
-# have no Unreal Engine); it compiles from a fresh clone because URLab is vendored in UnrealProject/Plugins/.
+# The one workflow. Push to master: Python checks (ruff, pytest) -> .NET format/build/tests -> build the showcase site
+# (web/build.py) -> deploy it to the Azure Static Web App swa-porobottrain (resource group PoShared) -> check / and
+# /diag live (X-Commit header = this commit). Pull requests get the checks and the build, never a deploy. The Unreal
+# project is built locally (GitHub's runners have no Unreal Engine) after scripts/setup_urlab.ps1 recreates URLab.
 #
 # Repo secret: AZURE_STATIC_WEB_APPS_API_TOKEN (the Static Web App's deployment token).
 on:
@@ -49,6 +49,19 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libosmesa6
           python -m pytest
 
+      # The Blazor WASM control UI + API (PoRobotTrain.slnx): format, Release build (0 warnings), Unit + Integration.
+      # It is not deployed (it runs on the operator's PC next to the robot); browser tests: scripts/run-e2eui.ps1.
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: .NET format, build, tests
+        run: |
+          dotnet format PoRobotTrain.slnx --verify-no-changes
+          dotnet build PoRobotTrain.slnx -c Release -warnaserror
+          dotnet test tests/PoRobotTrain.Unit -c Release --no-build
+          dotnet test tests/PoRobotTrain.Integration -c Release --no-build
+
       - name: Build the showcase site
         id: build
         run: |
@@ -73,12 +86,13 @@ jobs:
           VERSION: ${{ steps.build.outputs.version }}
         run: |
           for i in $(seq 1 20); do
-            if curl -fsS --max-time 30 "$URL/version.json" | grep -q "\"$VERSION\"" \
+            if curl -fsSI --max-time 30 "$URL/" | grep -qi "^x-commit: $GITHUB_SHA" \
+              && curl -fsS --max-time 30 "$URL/version.json" | grep -q "\"$VERSION\"" \
               && curl -fsS --max-time 30 "$URL/" | grep -q "PoRobotTrain" \
               && curl -fsS --max-time 30 "$URL/diag" | grep -q "<title>System status</title>" \
               && curl -fsS --max-time 30 "$URL/diag_checks.json" | grep -q '"checks"'; then
-              echo "Live: $URL ($VERSION), / and /diag served"; exit 0
+              echo "Live: $URL ($VERSION, X-Commit $GITHUB_SHA), / and /diag served"; exit 0
             fi
             sleep 15
           done
-          echo "$URL did not serve $VERSION on / and /diag"; exit 1
+          echo "$URL did not serve $VERSION with X-Commit $GITHUB_SHA on / and /diag"; exit 1
