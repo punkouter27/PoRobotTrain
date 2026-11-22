@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} Benchmark</title>
+<style>
+  :root { --bg:#0b0f17; --surface:#121826; --line:#232b3d; --text:#e6e9f2; --muted:#9aa3b5; --accent:#6366f1;
+          --good:#34d399; --warn:#fbbf24; --bad:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter, system-ui, sans-serif; }
+  header { height:44px; display:flex; align-items:center; padding:0 16px; border-bottom:1px solid var(--line); }
+  header b { font-size:15px; } header span { color:var(--muted); margin-left:8px; }
+  main { padding:16px; max-width:1440px; margin:0 auto; }
+  .run { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 18px; font:600 15px inherit;
+           font-family:inherit; cursor:pointer; } button:disabled { opacity:.5; cursor:wait; }
+  #status { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .latest { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+            margin-bottom:16px; display:flex; gap:28px; flex-wrap:wrap; }
+  .latest[hidden] { display:none; } td.load { white-space:normal; min-width:200px; max-width:260px; }
+  .latest div { min-width:120px; } .latest small { color:var(--muted); display:block; }
+  .latest strong { font-size:22px; font-variant-numeric:tabular-nums; }
+  .wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+  th, td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:top; }
+  th { color:var(--muted); font-weight:500; background:var(--surface); position:sticky; top:0; }
+  td small { color:var(--muted); display:block; }
+  tr.other td { opacity:.45; } tr.failed td { color:var(--bad); }
+  .tag { display:inline-block; padding:1px 6px; border-radius:6px; font-size:12px; background:var(--line); }
+  .busy { background:#3b2a0a; color:var(--warn); } .same { color:var(--good); }
+  pre { color:var(--muted); font-size:12px; white-space:pre-wrap; max-height:160px; overflow:auto; }
+</style>
+</head>
+<body>
+<header><b>{{TITLE}}</b><span>training benchmark</span></header>
+<main>
+  <div class="run">
+    <button id="go">Run Benchmark</button>
+    <span id="status">loading...</span>
+  </div>
+  <div class="latest" id="latest" hidden></div>
+  <div class="wrap"><table>
+    <thead><tr><th>When</th><th>Machine</th><th>Step time</th><th>Sim / Learn</th><th>Env steps/s</th>
+      <th>Workload</th><th>Load before</th><th>Load during</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <pre id="log"></pre>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const n = (v, d = 1) => v == null ? "–" : Number(v).toFixed(d);
+const load = l => !l || !Object.keys(l).length ? "–" :
+  `GPU ${n(l.gpu_pct, 0)}% · VRAM ${n(l.vram_used_gb)} GB · ${n(l.gpu_temp_c, 0)}°C · ${n(l.sm_clock_mhz, 0)} MHz` +
+  `<small>CPU ${n(l.cpu_pct, 0)}% · RAM ${n(l.ram_used_gb)} GB${l.on_battery ? " · ON BATTERY" : ""}` +
+  `${l.gpu_processes?.length ? ` · <span title="${esc(l.gpu_processes.join(", "))}">${l.gpu_processes.length} apps on GPU</span>` : ""}</small>`;
+
+async function history() {
+  const h = await (await fetch("/history")).json();
+  const runs = h.runs.slice(-20).reverse();
+  const newest = runs.find(r => r.ok);
+  $("rows").innerHTML = runs.map(r => {
+    const same = newest && r.workload_id === newest.workload_id;
+    const res = r.result;
+    const changes = (r.workload_changes || []).join("\n");
+    return `<tr class="${!r.ok ? "failed" : same ? "" : "other"}">
+      <td>${esc(r.when.replace("T", " ").slice(0, 16))}</td>
+      <td>${esc(r.machine.hostname)}<small>${esc(r.machine.gpu || "no NVIDIA GPU")} · ${n(r.machine.vram_gb, 0)} GB</small>
+          <small>${esc(r.machine.cpu)}</small></td>
+      <td>${res ? `<b>${n(res.step_time_ms, 2)} ms</b><small>startup ${n(res.startup_s)} s</small>` : esc(r.error)}</td>
+      <td>${!res ? "–" : r.workload.split ? `<small title="${esc(r.workload.split)}">not split (jitted)</small>` : `${n(res.sim_ms, 2)} / ${n(res.learn_ms, 2)} ms`}</td>
+      <td>${res ? Number(res.env_steps_per_s).toLocaleString() : "–"}</td>
+      <td><span class="tag ${same ? "same" : ""}" title="${esc(JSON.stringify(r.workload, null, 1))}">${esc(r.workload_id)}</span>
+          ${changes ? `<small title="${esc(changes)}">changed: ${esc(r.workload_changes.length)} setting(s)</small>` : ""}</td>
+      <td class="load">${r.busy ? '<span class="tag busy">busy before</span> ' : ""}${load(r.load_before)}</td>
+      <td class="load">${load(r.load_during)}</td></tr>`;
+  }).join("") || `<tr><td colspan="8">No benchmarks yet. Press Run Benchmark.</td></tr>`;
+  if (newest) {
+    const r = newest.result;
+    $("latest").hidden = false;
+    $("latest").innerHTML = `<div><small>Latest step time</small><strong>${n(r.step_time_ms, 2)} ms</strong></div>
+      <div><small>Sim / Learn</small><strong>${newest.workload.split ? "not split" : `${n(r.sim_ms, 2)} / ${n(r.learn_ms, 2)}`}</strong></div>
+      <div><small>Env steps / s</small><strong>${Number(r.env_steps_per_s).toLocaleString()}</strong></div>
+      <div><small>Machine</small><strong>${esc(newest.machine.hostname)}</strong></div>
+      <div><small>Workload</small><strong>${esc(newest.workload.num_envs ?? "")} envs</strong></div>`;
+  }
+}
+
+let wasRunning = false;
+async function poll() {
+  const s = await (await fetch("/status")).json();
+  $("go").disabled = s.running;
+  $("status").textContent = s.running ? s.line : (s.line === "idle" ? "ready (about 10 s measured, plus start-up)" : s.line);
+  $("log").textContent = s.running || s.line.startsWith("failed") ? s.log.join("\n") : "";
+  if (wasRunning && !s.running) history();
+  wasRunning = s.running;
+  setTimeout(poll, s.running ? 700 : 3000);
+}
+
+$("go").onclick = async () => { $("go").disabled = true; await fetch("/run", { method: "POST" }); poll(); };
+history(); poll();
+</script>
+</body>
+</html>
