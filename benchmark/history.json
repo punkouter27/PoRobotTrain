@@ -1,0 +1,82 @@
+{
+ "schema": 1,
+ "runs": [
+  {
+   "when": "2026-11-21T16:57:27-05:00",
+   "ok": true,
+   "error": null,
+   "machine": {
+    "hostname": "WIN-C2ANEVBHN6Q",
+    "cpu": "Intel(R) Core(TM) Ultra 9 275HX (24 threads)",
+    "gpu": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "vram_gb": 11.9,
+    "ram_gb": 31.4,
+    "gpu_driver": "621.24",
+    "os": "Windows 11 (10.0.26300)"
+   },
+   "load_before": {
+    "cpu_pct": 22,
+    "ram_used_gb": 29.2,
+    "gpu_pct": 19.0,
+    "vram_used_gb": 1.1,
+    "gpu_temp_c": 86.69,
+    "sm_clock_mhz": 1777.0,
+    "on_battery": false,
+    "gpu_processes": [
+     "Code.exe",
+     "DCv2.exe",
+     "EOSOverlayRenderer-Win64-Shipping.exe",
+     "EpicGamesLauncher.exe",
+     "explorer.exe",
+     "msedge.exe"
+    ]
+   },
+   "load_during": {
+    "cpu_pct": 51.0,
+    "ram_used_gb": 30.1,
+    "gpu_pct": 30.4,
+    "vram_used_gb": 1.2,
+    "gpu_temp_c": 86.69,
+    "sm_clock_mhz": 1403.4,
+    "on_battery": false,
+    "samples": 8
+   },
+   "busy": false,
+   "workload_id": "db91bb",
+   "workload": {
+    "repo": "PoRobotTrain",
+    "trainer": "PoRobotTrain PPO (RobotControl/training/ppo.py), torch 2.11.0+cu128",
+    "script": "RobotControl/training/train_level0.py",
+    "args": "--iters 1500 --num-envs 512 --horizon 24 --seed 0 --out logs/benchmark/level0",
+    "num_envs": 512,
+    "horizon": 24,
+    "net": [
+     256,
+     128,
+     64
+    ],
+    "obs": 23,
+    "actions": 7,
+    "config_hash": "cdde6d"
+   },
+   "result": {
+    "step_time_ms": 25.399,
+    "sim_ms": 15.923,
+    "learn_ms": 9.477,
+    "env_steps_per_s": 20158,
+    "steps_measured": 408,
+    "measured_s": 10.36,
+    "startup_s": 34.0
+   },
+   "git_commit": "bc6b90c",
+   "versions": {
+    "python": "3.11.9",
+    "torch": "2.11.0+cu128",
+    "mujoco": "4.0.1",
+    "device": "cuda",
+    "mujoco_threads": 23
+   },
+   "workload_changes": []
+  }
+ ]
+}
