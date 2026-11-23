@@ -295,8 +295,10 @@
             {
                 var jm = Math.Max(1e-3, _jitter.Max());
                 var pts = string.Join(' ', _jitter.Select((j, i) => $"{F(6 + (W - 12) * i / (_jitter.Count - 1))},{F(H + 34 - 26 * j / jm)}"));
-                <polyline fill="none" stroke="#ffbd42" stroke-width="1.5" points="@pts" />
-                <text x="6" y="@(H + 4)" fill="#9aa3b5" font-size="9">jitter (max @jm.ToString("0.000", Inv))</text>
+                <g>
+                    <polyline fill="none" stroke="#ffbd42" stroke-width="1.5" points="@pts" />
+                    <text x="6" y="@(H + 4)" fill="#9aa3b5" font-size="9">jitter (max @jm.ToString("0.000", Inv))</text>
+                </g>
             }
         </svg>
     };
@@ -336,8 +338,10 @@
             }
             @if (fa.TUnstable is double tu)
             {
-                <line x1="@(X(tu).ToString("0.#", Inv))" y1="4" x2="@(X(tu).ToString("0.#", Inv))" y2="@H" stroke="#ffbd42" stroke-width="2" />
-                <text x="@((X(tu) + 3).ToString("0.#", Inv))" y="@(H + 12)" fill="#ffbd42" font-size="10">unstable</text>
+                <g>
+                    <line x1="@(X(tu).ToString("0.#", Inv))" y1="4" x2="@(X(tu).ToString("0.#", Inv))" y2="@H" stroke="#ffbd42" stroke-width="2" />
+                    <text x="@((X(tu) + 3).ToString("0.#", Inv))" y="@(H + 12)" fill="#ffbd42" font-size="10">unstable</text>
+                </g>
             }
             <line x1="@(X(fa.TFall).ToString("0.#", Inv))" y1="4" x2="@(X(fa.TFall).ToString("0.#", Inv))" y2="@H" stroke="#ff5c57" stroke-width="2" />
             <text x="@((X(fa.TFall) - 22).ToString("0.#", Inv))" y="@(H + 12)" fill="#ff8a80" font-size="10">fall</text>

@@ -63,7 +63,7 @@ public static class SimFeatureMath
         // 0 -> #2e7d4f, 0.5 -> #ffbd42, 1 -> #ff5c57
         static byte Lerp(double a, double b, double k) => (byte)Math.Round(a + (b - a) * k);
         return u < 0.5
-            ? (Lerp(0x2e, 0xff, u * 2), Lerp(0x7d, 0xbd, u * 2), Lerp(0x4f, 0x42, u * 2), 255)
-            : (Lerp(0xff, 0xff, (u - 0.5) * 2), Lerp(0xbd, 0x5c, (u - 0.5) * 2), Lerp(0x42, 0x57, (u - 0.5) * 2), 255);
+            ? (Lerp(0x2e, 0xff, u * 2), Lerp(0x7d, 0xbd, u * 2), Lerp(0x4f, 0x42, u * 2), (byte)255)
+            : (Lerp(0xff, 0xff, (u - 0.5) * 2), Lerp(0xbd, 0x5c, (u - 0.5) * 2), Lerp(0x42, 0x57, (u - 0.5) * 2), (byte)255);
     }
 }

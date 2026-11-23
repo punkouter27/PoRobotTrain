@@ -5,6 +5,7 @@
 @implements IAsyncDisposable
 @inject RobotApiClient Api
 @inject IJSRuntime JS
+@inject IValidator<WalkStartRequest> StartValidator
 
 <PageTitle>Walk sandbox — PoRobotTrain</PageTitle>
 
@@ -21,17 +22,21 @@
             <span class="po-pill @StatePillClass">@StatePill</span>
         </div>
 
-        @if (_state is { PolicyAvailable: false } && !(_state.Running && _state.Mode == "hold"))
+        @if (_state is { PolicyAvailable: false } && !(_state.Running && _state.Mode is "hold" or "free_hold"))
         {
             <div class="walk-note walk-note--warn" role="status">
                 <b>No validated Level 2 policy yet.</b>
                 <span>@(_state.PolicyReason ?? "The sandbox loads a policy only after validate_level2.py passed.")</span>
-                <span>Hold mode still works: it stands the robot on the course, held by a virtual harness, with every joint at its default pose.</span>
+                <span>Hold mode still works: it stands the robot on the course, held by a virtual harness, with every joint at its default pose. "Hold without harness" lets it topple, for the physics, fall analysis and replay views.</span>
             </div>
         }
         @if (_state is { Running: true, Mode: "hold" })
         {
             <div class="walk-note" role="status"><b>Hold pose: no walking policy (held by a virtual harness).</b> Velocity commands are ignored.</div>
+        }
+        @if (_state is { Running: true, Mode: "free_hold" })
+        {
+            <div class="walk-note" role="status"><b>Hold without harness: every joint holds its default angle, nothing holds the robot up.</b> It topples in about a second; watch the physics and fall analysis below.</div>
         }
 
         <div class="ctrl-row">
@@ -39,19 +44,35 @@
             <div class="size-row">
                 <RadzenButton class="@($"po-plain po-chip {(_mode == "policy" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_mode == "policy")" Click='() => _mode = "policy"'>Walking policy</RadzenButton>
                 <RadzenButton class="@($"po-plain po-chip {(_mode == "hold" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_mode == "hold")" Click='() => _mode = "hold"'>Hold pose (test)</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_mode == "free_hold" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_mode == "free_hold")" title="Every joint PD-held at its default angle, without the virtual harness: the robot tips over in about a second" Click='() => _mode = "free_hold"'>Hold without harness (topples)</RadzenButton>
             </div>
+            <FieldError Message="@StartError("Mode")" />
         </div>
         <div class="ctrl-row">
             <span class="ctrl-label">Course</span>
             <div class="size-row">
                 <RadzenButton class="@($"po-plain po-chip {(_course == "loop" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_course == "loop")" Click='() => _course = "loop"'>Loop (checkpoints + obstacles)</RadzenButton>
                 <RadzenButton class="@($"po-plain po-chip {(_course == "flat" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_course == "flat")" Click='() => _course = "flat"'>Flat</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_course == "procedural" ? "active" : string.Empty)}")" Disabled="@Running" aria-pressed="@(_course == "procedural")" title="Seeded terrain (stairs, ramps, stepping stones, clutter, planks), the same generator training uses" Click='() => _course = "procedural"'>Procedural terrain</RadzenButton>
             </div>
+            @if (_course == "procedural")
+            {
+                <div class="walk-form">
+                    <label>Seed <RadzenNumeric TValue="long" class="assist-input" ShowUpDown="false" Disabled="@Running" @bind-Value="_seed" /><FieldError Message="@StartError("Seed")" /></label>
+                    <label>Difficulty (0-1) <RadzenNumeric TValue="double" class="assist-input" ShowUpDown="false" Step="0.1" Disabled="@Running" @bind-Value="_difficulty" /><FieldError Message="@StartError("Difficulty")" /></label>
+                    <RadzenButton class="po-plain po-btn" Disabled="@(!_online || _busy)" title="Pick a new random seed (restarts the sandbox when it is running on procedural terrain)" Click="NewTerrainAsync">New terrain</RadzenButton>
+                </div>
+                @if (_state is { Running: true, Course: "procedural" })
+                {
+                    <div class="po-muted">Running seed @(_state.Seed?.ToString(CultureInfo.InvariantCulture) ?? "—") · difficulty @(_state.Difficulty?.ToString("0.0#", CultureInfo.InvariantCulture) ?? "—")</div>
+                }
+            }
+            <FieldError Message="@StartError("Course")" />
         </div>
 
         <div class="btn-row">
             <RadzenButton class="po-plain po-btn po-btn--blue" style="flex:1" Disabled="@(!_online || Running || _busy || (_mode == "policy" && _state is { PolicyAvailable: false }))" Click="StartAsync">
-                @(_mode == "hold" ? "Start (hold pose)" : "Start walking sandbox")
+                @(_mode switch { "hold" => "Start (hold pose)", "free_hold" => "Start (no harness)", _ => "Start walking sandbox" })
             </RadzenButton>
             <RadzenButton class="po-plain po-btn" Disabled="@(!Running || _busy)" Click="ResetAsync">Reset</RadzenButton>
             <RadzenButton class="po-plain po-btn po-btn--danger" Disabled="@(!Running || _busy)" Click="StopAsync">Stop</RadzenButton>
@@ -64,7 +85,7 @@
             </div>
             @if (!DriveEnabled)
             {
-                <div class="why">@(Running ? "Hold pose doesn't walk: stop it and start the walking policy to drive." : "Driving unlocks once the walking sandbox is started (Start above).")</div>
+                <div class="why">@(Running ? "Hold modes don't walk: stop and start the walking policy to drive." : "Driving unlocks once the walking sandbox is started (Start above).")</div>
             }
             <div class="walk-pad" role="group" aria-label="On-screen drive pad (hold a button)">
                 @foreach (var (dir, label, title) in Pad)
@@ -97,6 +118,8 @@
             </div>
             <div class="po-muted">Release everything and the command returns to zero. The service also zeroes it 0.5 s after the last command.</div>
         </div>
+
+        <WalkSimTools State="_state" Online="_online" OnToast="t => _toast = t" OnRefresh="RefreshAsync" />
 
         <div class="ctrl-row">
             <span class="ctrl-label">Voice</span>
@@ -137,7 +160,13 @@
                 <div class="walk-hud__row"><span>Unreal virtual robot</span><b>@(_state?.Puppet?.Connected == true ? "receiving poses" : "not connected")</b></div>
                 <div class="walk-hud__row"><span>Sim time</span><b>@(_state?.T is double t ? $"{t:0.0} s" : "—")</b></div>
             </div>
-            @if (_state?.Fallen == true)
+            @if (_state?.Replay is { Active: true } rp)
+            {
+                <div class="walk-banner walk-banner--replay" role="status">
+                    REPLAY @(rp.Speed?.ToString("0.##", CultureInfo.InvariantCulture) ?? "?")x · @(_state.T is double rt ? $"{rt:0.00} s" : "—")@(rp.DurationS is double rd ? $" · last {rd:0.#} s" : string.Empty) · simulation paused
+                </div>
+            }
+            else if (_state?.Fallen == true)
             {
                 <div class="walk-banner" role="alert">Fell: resetting at the start</div>
             }
@@ -146,7 +175,10 @@
             <span><i style="background:#6366f1"></i>checkpoint</span>
             <span><i style="background:#ffe066"></i>next checkpoint</span>
             <span><i style="background:#66738c"></i>obstacle</span>
+            <span><i style="background:#e8505b"></i>thrown ball</span>
+            <span><i style="background:#d9822b"></i>thrown box</span>
         </div>
+        <WalkSimPanels State="_state" OnOverlay="SetOverlayAsync" />
     </section>
 </div>
 
@@ -171,6 +203,9 @@
     private bool _driveEnabled;
     private string _mode = "policy";
     private string _course = "loop";
+    private long _seed;
+    private double _difficulty = 0.5;
+    private Dictionary<string, string> _startErrors = [];
     private string? _toast;
     private string? _error;
     private string? _twinError;
@@ -178,10 +213,12 @@
     private string? _voiceNote;
 
     private bool Running => _state?.Running ?? false;
-    private bool DriveEnabled => Running && _state?.Mode != "hold";
+    private bool DriveEnabled => Running && _state?.Mode is null or "policy";
+
+    private string? StartError(string field) => _startErrors.GetValueOrDefault(field);
 
     private string StatePill => !_online ? "OFFLINE"
-        : Running ? (_state!.Mode == "hold" ? "HOLD POSE" : "WALKING")
+        : Running ? (_state!.Mode switch { "hold" => "HOLD POSE", "free_hold" => "NO HARNESS", _ => "WALKING" })
         : _state is { PolicyAvailable: false } ? "NO POLICY" : "IDLE";
 
     private string StatePillClass => !_online ? "po-pill--bad" : Running ? "po-pill--ok" : string.Empty;
@@ -189,6 +226,7 @@
     private string ModeText => _state is null ? "—"
         : !Running ? "stopped"
         : _state.Mode == "hold" ? "Hold pose: no walking policy (held by a virtual harness)"
+        : _state.Mode == "free_hold" ? "Hold without harness (topples)"
         : $"policy · {_state.Course ?? _course}";
 
     private double? Cmd(int i) => _state?.Cmd is { Length: 3 } c ? c[i] : null;
@@ -250,15 +288,62 @@
         _busy = true;
         try
         {
-            var res = await Api.WalkStartAsync(new WalkStartRequest(_course, _mode));
+            var req = _course == "procedural"
+                ? new WalkStartRequest(_course, _mode, _seed, _difficulty)
+                : new WalkStartRequest(_course, _mode);
+            var check = await StartValidator.ValidateAsync(req);
+            _startErrors = check.Errors.GroupBy(e => e.PropertyName).ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+            if (!check.IsValid)
+            {
+                return;
+            }
+            var res = await Api.WalkStartAsync(req);
             _toast = res.Ok
-                ? (_mode == "hold" ? "Started hold pose on the course (no walking policy)." : $"Walking sandbox started on the {_course} course. Drive with WASD, the pad, a gamepad or voice.")
+                ? _mode switch
+                {
+                    "hold" => "Started hold pose on the course (no walking policy).",
+                    "free_hold" => "Started without the harness: the robot will topple in about a second.",
+                    _ => $"Walking sandbox started on the {_course} course. Drive with WASD, the pad, a gamepad or voice.",
+                }
                 : res.PolicyReason is { } why ? $"{res.Error}: {why}" : res.Error;
             await RefreshAsync();
         }
         finally
         {
             _busy = false;
+        }
+    }
+
+    /// <summary>#3: a new random seed; restarts the sandbox when it is already on procedural terrain.</summary>
+    private async Task NewTerrainAsync()
+    {
+        _seed = Random.Shared.NextInt64(0, 1_000_000);
+        if (_state is { Running: true, Course: "procedural" })
+        {
+            _mode = _state.Mode ?? _mode;
+            _busy = true;
+            try
+            {
+                await Api.WalkStopAsync();
+            }
+            finally
+            {
+                _busy = false;
+            }
+            await RefreshAsync();
+            await StartAsync();
+        }
+        else
+        {
+            _toast = $"New terrain: seed {_seed}. Press Start.";
+        }
+    }
+
+    private async Task SetOverlayAsync(bool on)
+    {
+        if (_driver is not null)
+        {
+            await _driver.InvokeVoidAsync("setPhysicsOverlay", on);
         }
     }
 

@@ -58,6 +58,8 @@ class HeadSkill:
     yaw_range: float = 0.0
     pitch_range: float = 0.0
     size_lo: float = 0.3
+    # taught pose (behaviours/taught_poses.py): fixed (yaw, pitch) rad reference, command [0, 0, 0] like Hold Centre
+    pose: Optional[Tuple[float, float]] = None
 
 
 SKILLS: Dict[str, HeadSkill] = {
@@ -136,6 +138,9 @@ def reference(skill: HeadSkill, cmd: np.ndarray, phase: Optional[np.ndarray] = N
     n = cmd.shape[0]
     if skill.id == "hold_centre":
         return np.zeros((n, len(skill.powered)))
+    if skill.pose is not None:
+        want = {HEAD_YAW: np.full(n, skill.pose[0]), HEAD_PITCH: np.full(n, skill.pose[1])}
+        return np.stack([want[j] for j in skill.powered], axis=1)
     if skill.id == "look_at":
         want = {HEAD_YAW: cmd[:, 0], HEAD_PITCH: cmd[:, 1]}
         return np.stack([want[j] for j in skill.powered], axis=1)
@@ -288,7 +293,7 @@ class TrainedHeadBehaviour:
         # Tracking timeout against the REFERENCE motion (head blocked, wrong direction, policy misbehaving). The smooth
         # skills track within ~1 deg after validation, so they get a tight window; Look At jumps between targets (up
         # to 60 deg, which takes the weak 0.86 Nm yaw motor most of a second), so it gets a wide one.
-        steps = sk.id == "look_at"
+        steps = sk.id == "look_at" or sk.pose is not None  # a taught pose starts with a move of up to 30 deg
         safety = SweepParams(
             amplitude_deg=max(self.amp_deg, 1.0),
             max_amplitude_deg=90.0,
@@ -332,7 +337,7 @@ class TrainedHeadBehaviour:
 
     def command_at(self, t: float) -> np.ndarray:
         sk = self.skill
-        if t >= self.run_s or sk.id == "hold_centre":
+        if t >= self.run_s or sk.id == "hold_centre" or sk.pose is not None:
             return np.zeros(NUM_CMD)
         if sk.id == "look_at":
             yaw, pitch = look_at_script(t, self.amp_deg)
@@ -341,7 +346,7 @@ class TrainedHeadBehaviour:
 
     def reference_at(self, t: float) -> np.ndarray:
         """What the policy is asked to do now (for the panel's target readout and the logs)."""
-        if t >= self.run_s:
+        if t >= self.run_s and self.skill.pose is None:  # a taught pose settles at its pose, not at centre
             return np.zeros(len(self.skill.powered))
         cmd = self.command_at(t)
         ph = None if self.skill.period_s <= 0 else np.array([(t / self.skill.period_s) % 1.0])
@@ -386,7 +391,7 @@ class TrainedHeadBehaviour:
 
     def describe(self) -> str:
         sk = self.skill
-        size = "" if sk.id == "hold_centre" else f" size {self.amp_deg:.0f} deg"
+        size = "" if sk.id == "hold_centre" or sk.pose is not None else f" size {self.amp_deg:.0f} deg"
         return f"trained skill {sk.label}{size} for {self.run_s:.0f} s (+{self.settle_s:.0f} s settle), ONNX policy"
 
 
@@ -396,3 +401,46 @@ def _make_class(sk: HeadSkill) -> type:
 
 
 SKILL_CLASSES: Dict[str, type] = {k: _make_class(s) for k, s in SKILLS.items()}
+
+
+# ----------------------------------------------------------------------------- taught poses (pose_<id> skills)
+BUILTIN_SKILLS = tuple(SKILLS)
+
+
+def pose_skill(pose: dict) -> HeadSkill:
+    """HeadSkill for a taught pose {"id", "name", "yaw_deg", "pitch_deg"} (behaviours/taught_poses.py)."""
+    y, p = float(pose["yaw_deg"]), float(pose["pitch_deg"])
+    return HeadSkill(
+        "pose_" + str(pose["id"]),
+        f"Pose: {pose['name']}",
+        f"Taught pose: holds the head at yaw {y:+.0f} deg, pitch {p:+.0f} deg. Head pitch + yaw only.",
+        (HEAD_PITCH, HEAD_YAW),
+        HEAD_YAW,
+        "HEAD YAW",
+        30.0,
+        pose=(math.radians(y), math.radians(p)),
+    )
+
+
+def sync_taught_poses(poses: Optional[List[dict]] = None) -> None:
+    """Make the pose_<id> entries of SKILLS / SKILL_CLASSES match the stored poses (built-in skills untouched)."""
+    if poses is None:
+        from .taught_poses import load_poses
+
+        poses = load_poses()
+    want = {}
+    for p in poses:
+        sk = pose_skill(p)
+        want[sk.id] = sk
+    for sid in [s for s in SKILLS if s not in BUILTIN_SKILLS and s not in want]:
+        del SKILLS[sid]
+        SKILL_CLASSES.pop(sid, None)
+    for sid, sk in want.items():
+        if sid in BUILTIN_SKILLS:
+            continue
+        if SKILLS.get(sid) != sk:
+            SKILLS[sid] = sk
+            SKILL_CLASSES[sid] = _make_class(sk)
+
+
+sync_taught_poses()

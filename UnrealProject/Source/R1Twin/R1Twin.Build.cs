@@ -28,6 +28,9 @@ public class R1Twin : ModuleRules
 		// sandbox only. UMG: hide URLab's debug widget; Slate: click input.
 		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json", "UMG", "Slate", "SlateCore", "DeveloperSettings" });
 
+		// Motor sound (docs/sim_features.md #1, #17): a USynthComponent generating samples in code, no sound assets.
+		PublicDependencyModuleNames.Add("AudioMixer");
+
 		// One version stamp (Po Game Standard): UTC yyMMdd of the HEAD commit (web/build.py uses the same rule), else today (UTC).
 		string Stamp = DateTime.UtcNow.ToString("yyMMdd");
 		try

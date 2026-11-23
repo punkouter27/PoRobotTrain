@@ -321,3 +321,12 @@ def _register_trained_head_skills() -> None:
 
 
 _register_trained_head_skills()
+
+
+def sync_trained_head_skills() -> None:
+    """Re-sync after taught poses changed (behaviours/taught_poses.py): drop trained entries that left SKILLS."""
+    from .head_skills import SKILLS
+
+    for sid in [k for k, v in BEHAVIOUR_SPECS.items() if v.kind == "trained" and k not in SKILLS]:
+        del BEHAVIOUR_SPECS[sid]
+    _register_trained_head_skills()

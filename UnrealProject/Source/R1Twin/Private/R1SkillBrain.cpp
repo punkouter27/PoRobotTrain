@@ -14,9 +14,13 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
+#include "ImageUtils.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "TextureResource.h"
 
 namespace
 {
@@ -108,6 +112,7 @@ void UR1SkillBrainComponent::BeginPlay()
 
 void UR1SkillBrainComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
+	StopRecording();   // keep the labels of the frames already written
 	if (Bridge && PushLeftS > 0.f)
 	{
 		Bridge->ClearBodyWrench(HeadYawLink);
@@ -178,6 +183,32 @@ bool UR1SkillBrainComponent::EnsureBridge()
 		return false;
 	}
 	Readout.bConnected = Art != nullptr && !Bridge->GetDescription().Contains(TEXT("Mock"));
+	// motor model: one slot per commanded joint; effort from the skills' deploy.json, else the joint map
+	const int32 N = BridgeJoints.Num();
+	ActuatorSlot.Reset();
+	MotorEffort.Reset(N);
+	for (int32 i = 0; i < N; ++i)
+	{
+		ActuatorSlot.Add(Params.ActuatorNames[i], i);
+		float Effort = FR1MotorModel::JointMapEffort(BridgeJoints[i]);
+		for (const FR1SkillDef& S : Skills)
+		{
+			const int32 J = S.JointIndex(BridgeJoints[i]);
+			if (J != INDEX_NONE && S.Effort.IsValidIndex(J))
+			{
+				Effort = S.Effort[J];
+				break;
+			}
+		}
+		MotorEffort.Add(Effort);
+	}
+	MotorTarget.Init(0.f, N);
+	MotorKp.Init(0.f, N);
+	MotorKd.Init(0.f, N);
+	MotorTau.Init(0.f, N);
+	MotorDq.Init(0.f, N);
+	Motor.Reset(BridgeJoints, MotorEffort);
+	MotorAccumulator = 0.f;
 	if (Props && Art)
 	{
 		Props->HeadCam->HiddenActors.AddUnique(Art);   // the camera sits inside the head shell: show the world, not the robot
@@ -238,6 +269,7 @@ bool UR1SkillBrainComponent::EnsureModel(int32 SkillIndex, FString& OutWhy)
 
 bool UR1SkillBrainComponent::Play(int32 SkillIndex, float InSizeDeg, float DurationS, FString& OutWhy)
 {
+	EndScenario();   // a manual Play replaces a running scenario script (PlayScenario sets it again afterwards)
 	if (!Skills.IsValidIndex(SkillIndex))
 	{
 		OutWhy = TEXT("no such skill");
@@ -266,6 +298,7 @@ bool UR1SkillBrainComponent::Play(int32 SkillIndex, float InSizeDeg, float Durat
 
 bool UR1SkillBrainComponent::PlayTimeline(FString& OutWhy)
 {
+	EndScenario();
 	if (Timeline.Num() == 0)
 	{
 		OutWhy = TEXT("the timeline is empty: add steps first");
@@ -318,6 +351,7 @@ void UR1SkillBrainComponent::StartSkill(int32 SkillIndex, float InSizeDeg, float
 		D = S.Default;
 	}
 	DelayHead = 0;
+	ActionView.Reset(K, R1Skills::PolicyDt);
 	LastJumpT = 0.f;
 	ErrSum = 0.f;
 	ErrCount = 0;
@@ -349,6 +383,7 @@ void UR1SkillBrainComponent::StartSkill(int32 SkillIndex, float InSizeDeg, float
 
 void UR1SkillBrainComponent::Stop()
 {
+	EndScenario();
 	Active = -1;
 	TimelineIndex = -1;
 	Readout.bRunning = false;
@@ -403,7 +438,7 @@ void UR1SkillBrainComponent::Push(const FVector2D& Dir)
 {
 	// a shove a hand would give: ~1.2 Nm about the yaw axis (the yaw motor's limit is 0.86 Nm), ~5 Nm about pitch
 	PushTorqueMj = FVector(0.0, 5.0 * Dir.Y, 1.2 * Dir.X);
-	PushLeftS = 0.2f;
+	PushLeftS = 0.25f;   // docs/sim_features.md: the scripted push is the same 0.25 s shove
 }
 
 void UR1SkillBrainComponent::ApplyGains()
@@ -418,11 +453,11 @@ void UR1SkillBrainComponent::ApplyGains()
 		for (int32 i = 0; i < S.HoldJoints.Num(); ++i)
 		{
 			const bool bHead = S.HoldJoints[i] == R1Skills::HeadPitch || S.HoldJoints[i] == R1Skills::HeadYaw;
-			Bridge->SetActuatorGains(S.HoldActuators[i], S.HoldKp[i] * (bHead ? Scale : 1.f), S.HoldKd[i] * (bHead ? Scale : 1.f));
+			SetGains(S.HoldActuators[i], S.HoldKp[i] * (bHead ? Scale : 1.f), S.HoldKd[i] * (bHead ? Scale : 1.f));
 		}
 		for (int32 i = 0; i < S.NumJoints(); ++i)
 		{
-			Bridge->SetActuatorGains(S.Actuators[i], S.Kp[i] * Scale, S.Kd[i] * Scale);
+			SetGains(S.Actuators[i], S.Kp[i] * Scale, S.Kd[i] * Scale);
 		}
 	}
 	AppliedStrength = StrengthPct;
@@ -435,7 +470,7 @@ void UR1SkillBrainComponent::HoldPose()
 	{
 		for (int32 i = 0; i < S.HoldJoints.Num(); ++i)
 		{
-			Bridge->SetActuatorTarget(S.HoldActuators[i], S.HoldDefault[i]);
+			SetTarget(S.HoldActuators[i], S.HoldDefault[i]);
 		}
 	}
 }
@@ -458,6 +493,14 @@ void UR1SkillBrainComponent::FillCommand(const FR1SkillDef& S, float InT, float 
 		Cmd[0] = FMath::DegreesToRadians(Yaw);
 		Cmd[1] = FMath::DegreesToRadians(Pitch);
 		Readout.LookCmdDeg = FVector2D(Yaw, Pitch);
+		return;
+	}
+	if (S.bPose)
+	{
+		for (int32 c = 0; c < R1Skills::NumCmd; ++c)
+		{
+			Cmd[c] = S.PoseCommand[c];
+		}
 		return;
 	}
 	if (S.PeriodS > 0.f)
@@ -586,6 +629,7 @@ void UR1SkillBrainComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		ApplyGains();
 	}
 
+	TickScenario(DeltaTime);   // before the target and the policy step, so a step lands on its time
 	UpdateTargetDirection(DeltaTime);
 	if (PushLeftS > 0.f)
 	{
@@ -620,7 +664,272 @@ void UR1SkillBrainComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			Accumulator = 0.f;   // hitch: drop the backlog
 		}
 	}
+	StepMotorModel(DeltaTime);
 	UpdateProps();
+	TickRecording(DeltaTime);
+}
+
+// =====================================================================================================
+// simulation features (docs/sim_features.md): motor model, scenario scripts, dataset recording
+// =====================================================================================================
+
+void UR1SkillBrainComponent::SetTarget(FName Actuator, float TargetRad)
+{
+	Bridge->SetActuatorTarget(Actuator, TargetRad);
+	if (const int32* Slot = ActuatorSlot.Find(Actuator))
+	{
+		MotorTarget[*Slot] = TargetRad;
+	}
+}
+
+void UR1SkillBrainComponent::SetGains(FName Actuator, float Kp, float Kd)
+{
+	Bridge->SetActuatorGains(Actuator, Kp, Kd);
+	if (const int32* Slot = ActuatorSlot.Find(Actuator))
+	{
+		MotorKp[*Slot] = Kp;
+		MotorKd[*Slot] = Kd;
+	}
+}
+
+void UR1SkillBrainComponent::StepMotorModel(float DeltaTime)
+{
+	// the lab's torque source is the PD estimate kp*(target-q) - kd*dq, clipped to effort (display only)
+	MotorAccumulator += DeltaTime;
+	if (MotorAccumulator < R1Skills::PolicyDt || !Bridge || Motor.Num() != BridgeJoints.Num())
+	{
+		return;
+	}
+	const float Dt = FMath::Min(MotorAccumulator, 0.1f);
+	MotorAccumulator = 0.f;
+	for (int32 i = 0; i < BridgeJoints.Num(); ++i)
+	{
+		const float Qi = static_cast<float>(Bridge->GetJointPos(BridgeJoints[i]));
+		MotorDq[i] = static_cast<float>(Bridge->GetJointVel(BridgeJoints[i]));
+		MotorTau[i] = FMath::Clamp(MotorKp[i] * (MotorTarget[i] - Qi) - MotorKd[i] * MotorDq[i], -MotorEffort[i], MotorEffort[i]);
+	}
+	Motor.Step(Dt, MotorTau, MotorDq);
+}
+
+bool UR1SkillBrainComponent::GetBodyPoseUe(FName Body, FVector& OutPosUe, FQuat& OutRotUe) const
+{
+	FVector P;
+	FQuat Q;
+	if (!Bridge || !Readout.bConnected || !Bridge->GetBodyPoseMj(Body, P, Q))
+	{
+		return false;
+	}
+	OutPosUe = MjUe::PositionToUe(P);
+	OutRotUe = MjUe::QuatToUe(Q);
+	return true;
+}
+
+bool UR1SkillBrainComponent::PlayScenario(const FR1LabScenario& In, FString& OutWhy)
+{
+	const int32 Idx = FindSkill(In.Skill);
+	if (Idx == INDEX_NONE)
+	{
+		OutWhy = FString::Printf(TEXT("the scenario needs the skill %s, which is not trained here"), *In.Skill);
+		return false;
+	}
+	EndScenario();
+	SavedDelay = DelaySteps;
+	SavedNoise = NoiseDeg;
+	SavedStrength = StrengthPct;
+	SavedTargetMode = TargetMode;
+	if (!Play(Idx, In.SizeDeg, In.DurationS, OutWhy))
+	{
+		return false;
+	}
+	Scenario = In;
+	ScenarioNext = 0;
+	ScenarioClock = 0.f;
+	NoiseRng.Initialize(In.Seed);
+	Readout.ScenarioName = In.Name;
+	Readout.ScenarioDurationS = In.DurationS;
+	Readout.ScenarioSteps = In.Steps.Num();
+	Readout.ScenarioStep = 0;
+	Readout.ScenarioT = 0.f;
+	Readout.ScenarioLast.Reset();
+	UE_LOG(LogR1Twin, Log, TEXT("R1SkillBrain: scenario %s (%s, %d steps)"), *In.Id, *In.Skill, In.Steps.Num());
+	return true;
+}
+
+void UR1SkillBrainComponent::EndScenario()
+{
+	if (!Scenario.IsSet())
+	{
+		return;
+	}
+	Scenario.Reset();
+	DelaySteps = SavedDelay;
+	NoiseDeg = SavedNoise;
+	StrengthPct = SavedStrength;
+	SetTargetMode(SavedTargetMode);
+	Readout.ScenarioName.Reset();
+	Readout.ScenarioSteps = 0;
+}
+
+void UR1SkillBrainComponent::TickScenario(float DeltaTime)
+{
+	if (!Scenario.IsSet())
+	{
+		return;
+	}
+	if (Active < 0)
+	{
+		EndScenario();   // the skill finished (or was stopped): the script ends with it
+		return;
+	}
+	ScenarioClock += DeltaTime;
+	const TArray<FR1LabScenarioStep>& Steps = Scenario->Steps;
+	while (Steps.IsValidIndex(ScenarioNext) && Steps[ScenarioNext].T <= ScenarioClock)
+	{
+		const FR1LabScenarioStep& St = Steps[ScenarioNext++];
+		if (St.Do == TEXT("target"))
+		{
+			SetTargetMode(ER1TargetMode::Manual);
+			TargetYawDeg = FMath::Clamp(St.YawDeg, -60.f, 60.f);
+			TargetPitchDeg = FMath::Clamp(St.PitchDeg, -35.f, 35.f);
+			Readout.ScenarioLast = FString::Printf(TEXT("target yaw %+.0f pitch %+.0f deg"), St.YawDeg, St.PitchDeg);
+		}
+		else if (St.Do == TEXT("push"))
+		{
+			Push(FVector2D(St.Yaw, St.Pitch));
+			Readout.ScenarioLast = FString::Printf(TEXT("push (yaw %+.0f, pitch %+.0f)"), St.Yaw, St.Pitch);
+		}
+		else if (St.Do == TEXT("noise"))
+		{
+			NoiseDeg = FMath::Clamp(St.Deg, 0.f, 10.f);
+			Readout.ScenarioLast = FString::Printf(TEXT("sensor noise %g deg"), NoiseDeg);
+		}
+		else if (St.Do == TEXT("delay"))
+		{
+			DelaySteps = FMath::Clamp(St.Steps, 0, 4);
+			Readout.ScenarioLast = FString::Printf(TEXT("action delay %d ms"), DelaySteps * 20);
+		}
+		else if (St.Do == TEXT("strength"))
+		{
+			StrengthPct = FMath::Clamp(St.Pct, 30.f, 100.f);
+			Readout.ScenarioLast = FString::Printf(TEXT("motor strength %.0f%%"), StrengthPct);
+		}
+		else
+		{
+			Readout.ScenarioLast = FString::Printf(TEXT("unknown step '%s' skipped"), *St.Do);
+		}
+	}
+	Readout.ScenarioT = ScenarioClock;
+	Readout.ScenarioStep = ScenarioNext;
+}
+
+bool UR1SkillBrainComponent::StartRecording(const FString& Dir, int32 Frames, FString& OutWhy)
+{
+	if (!GetHeadCamTexture())
+	{
+		OutWhy = TEXT("no head camera (needs the URLab articulation in the level)");
+		return false;
+	}
+	if (!IFileManager::Get().MakeDirectory(*FPaths::Combine(Dir, TEXT("rgb")), /*Tree*/ true))
+	{
+		OutWhy = FString::Printf(TEXT("cannot create %s"), *Dir);
+		return false;
+	}
+	Recording = FR1DatasetRecording();
+	Recording.bActive = true;
+	Recording.Dir = Dir;
+	Recording.Wanted = FMath::Clamp(Frames, 1, 2000);
+	UE_LOG(LogR1Twin, Log, TEXT("R1SkillBrain: recording %d head-camera frames to %s"), Recording.Wanted, *Dir);
+	return true;
+}
+
+void UR1SkillBrainComponent::StopRecording()
+{
+	if (!Recording.bActive)
+	{
+		return;
+	}
+	Recording.bActive = false;
+	UTextureRenderTarget2D* RT = Props ? Props->HeadCamRT.Get() : nullptr;
+	const FString Json = FString::Printf(
+		TEXT("{\n \"source\": \"unreal_head_cam\",\n \"simulation_only\": true,\n \"camera\": \"head_rgbd\",\n \"width\": %d,\n \"height\": %d,\n")
+		TEXT(" \"hfov_deg\": %.1f,\n \"ball_radius_m\": 0.06,\n \"frames\": [\n%s\n ]\n}\n"),
+		RT ? RT->SizeX : 0, RT ? RT->SizeY : 0, CamHFovDeg, *Recording.LabelsJson);
+	FFileHelper::SaveStringToFile(Json, *FPaths::Combine(Recording.Dir, TEXT("labels.json")));
+	UE_LOG(LogR1Twin, Log, TEXT("R1SkillBrain: dataset done, %d frame(s) in %s"), Recording.Frames, *Recording.Dir);
+}
+
+void UR1SkillBrainComponent::TickRecording(float DeltaTime)
+{
+	if (!Recording.bActive)
+	{
+		return;
+	}
+	Recording.NextS -= DeltaTime;
+	if (Recording.NextS > 0.f)
+	{
+		return;
+	}
+	Recording.NextS = Recording.IntervalS;
+	UTextureRenderTarget2D* RT = GetHeadCamTexture();
+	FTextureRenderTargetResource* Res = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
+	if (!Res)
+	{
+		Recording.LastError = TEXT("the head camera went away");
+		StopRecording();
+		return;
+	}
+	Props->HeadCam->CaptureScene();   // this frame's view, so the label matches the picture
+	TArray<FColor> Pixels;
+	if (!Res->ReadPixels(Pixels) || Pixels.Num() != RT->SizeX * RT->SizeY)
+	{
+		Recording.LastError = TEXT("could not read the head camera");
+		StopRecording();
+		return;
+	}
+	for (FColor& C : Pixels)
+	{
+		C.A = 255;   // scene captures leave alpha empty
+	}
+	TArray64<uint8> Png;
+	FImageUtils::PNGCompressImageArray(RT->SizeX, RT->SizeY, TArrayView64<const FColor>(Pixels.GetData(), Pixels.Num()), Png);
+	const FString Rel = FString::Printf(TEXT("rgb/%05d.png"), Recording.Frames);
+	if (!FFileHelper::SaveArrayToFile(Png, *FPaths::Combine(Recording.Dir, Rel)))
+	{
+		Recording.LastError = TEXT("could not write the PNG");
+		StopRecording();
+		return;
+	}
+
+	// label: the ball's box in the picture (pinhole projection of a 6 cm sphere) and the head angles
+	const float W = static_cast<float>(RT->SizeX), H = static_cast<float>(RT->SizeY);
+	const float Focal = 0.5f * W / FMath::Tan(FMath::DegreesToRadians(0.5f * Props->HeadCam->FOVAngle));
+	const FVector Local = Props->HeadCam->GetComponentTransform().InverseTransformPosition(Props->Ball->GetComponentLocation());
+	bool bVisible = Props->Ball->IsVisible() && Local.X > 5.0;
+	float X0 = 0.f, Y0 = 0.f, X1 = 0.f, Y1 = 0.f, U = 0.f, V = 0.f;
+	if (bVisible)
+	{
+		const float R = Focal * 6.f / static_cast<float>(Local.X);
+		U = 0.5f * W + Focal * static_cast<float>(Local.Y / Local.X);
+		V = 0.5f * H - Focal * static_cast<float>(Local.Z / Local.X);
+		X0 = FMath::Clamp(U - R, 0.f, W);
+		X1 = FMath::Clamp(U + R, 0.f, W);
+		Y0 = FMath::Clamp(V - R, 0.f, H);
+		Y1 = FMath::Clamp(V + R, 0.f, H);
+		bVisible = X1 > X0 && Y1 > Y0;
+	}
+	const float YawDeg = FMath::RadiansToDegrees(static_cast<float>(Bridge->GetJointPos(R1Skills::HeadYaw)));
+	const float PitchDeg = FMath::RadiansToDegrees(static_cast<float>(Bridge->GetJointPos(R1Skills::HeadPitch)));
+	const FString Ball = bVisible
+		? FString::Printf(TEXT("{\"class\": \"ball\", \"visible\": true, \"bbox\": [%.1f, %.1f, %.1f, %.1f], \"center\": [%.1f, %.1f], \"dist_m\": %.3f, \"yaw_deg\": %.2f, \"pitch_deg\": %.2f}"),
+			X0, Y0, X1, Y1, U, V, Local.X / 100.0, TargetYawDeg, TargetPitchDeg)
+		: FString(TEXT("{\"class\": \"ball\", \"visible\": false}"));
+	Recording.LabelsJson += FString::Printf(TEXT("%s  {\"frame\": %d, \"rgb\": \"%s\", \"head_yaw_deg\": %.2f, \"head_pitch_deg\": %.2f, \"skill\": \"%s\", \"objects\": [%s]}"),
+		Recording.Frames > 0 ? TEXT(",\n") : TEXT(""), Recording.Frames, *Rel, YawDeg, PitchDeg,
+		Skills.IsValidIndex(Active) ? *Skills[Active].Id : TEXT(""), *Ball);
+	if (++Recording.Frames >= Recording.Wanted)
+	{
+		StopRecording();
+	}
 }
 
 void UR1SkillBrainComponent::PolicyStep()
@@ -651,7 +960,7 @@ void UR1SkillBrainComponent::PolicyStep()
 	const float Noise = FMath::DegreesToRadians(NoiseDeg);
 	for (int32 i = 0; i < K; ++i)
 	{
-		Obs[i] = Q[i] - S.Default[i] + (Noise > 0.f ? FMath::FRandRange(-Noise, Noise) : 0.f);
+		Obs[i] = Q[i] - S.Default[i] + (Noise > 0.f ? NoiseRng.FRandRange(-Noise, Noise) : 0.f);
 		Obs[K + i] = Dq[i];
 		Obs[2 * K + i] = LastAction[i];
 	}
@@ -681,6 +990,7 @@ void UR1SkillBrainComponent::PolicyStep()
 		LastAction[i] = A;
 		Tgt[i] = FMath::Clamp(S.Default[i] + S.ActionScale[i] * A, S.SoftLo[i], S.SoftHi[i]);
 	}
+	ActionView.Push(LastAction.GetData(), K);   // #15: shown only; the brain still applies the raw action
 	const int32 Lag = FMath::Clamp(DelaySteps, 0, DelayQueue.Num() - 1);
 	const TArray<float>& Applied = DelayQueue[(DelayHead - Lag + DelayQueue.Num()) % DelayQueue.Num()];
 	// the runtime's torque cap: kp * |target - q| <= effort, then the soft limits
@@ -688,7 +998,7 @@ void UR1SkillBrainComponent::PolicyStep()
 	{
 		const float Band = S.Effort[i] / FMath::Max(S.Kp[i], 1e-6f);
 		Target[i] = FMath::Clamp(FMath::Clamp(Applied[i], Q[i] - Band, Q[i] + Band), S.SoftLo[i], S.SoftHi[i]);
-		Bridge->SetActuatorTarget(S.Actuators[i], Target[i]);
+		SetTarget(S.Actuators[i], Target[i]);
 	}
 
 	// reference + tracking, as the robot's safety envelope sees it
@@ -715,7 +1025,7 @@ void UR1SkillBrainComponent::PolicyStep()
 		Readout.ErrMeanDeg = ErrSum / ErrCount;
 		Readout.ErrMaxDeg = FMath::Max(Readout.ErrMaxDeg, ErrNow);
 	}
-	const bool bSteps = S.Id == TEXT("look_at");
+	const bool bSteps = S.Id == TEXT("look_at") || S.bPose;   // a taught pose starts with a step away from centre
 	const float Thr = bSteps ? 15.f : 8.f, Window = bSteps ? 1.f : 0.4f;
 	if (ErrWorst > Thr)
 	{

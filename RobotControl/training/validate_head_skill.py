@@ -36,12 +36,17 @@ BARS = {
     "shake_no": (3.0, 4.0, 4.0),
     "glance_around": (4.0, 5.0, 5.0),
 }
+POSE_BARS = (1.5, 2.0, 2.5)  # taught poses (pose_<id>): a held angle, like Hold Centre but off centre
 MAX_OTHER_DEG = 5.0
 EVAL_AMP_DEG = {"hold_centre": 0.0, "look_at": 30.0}
 
 
+def bars(skill_id: str) -> tuple:
+    return BARS.get(skill_id, POSE_BARS)
+
+
 def _duration(sk: hs.HeadSkill) -> float:
-    if sk.id == "hold_centre":
+    if sk.id == "hold_centre" or sk.pose is not None:
         return 4.0
     if sk.id == "look_at":
         return 15.0
@@ -50,7 +55,7 @@ def _duration(sk: hs.HeadSkill) -> float:
 
 def _score_mask(sk: hs.HeadSkill, t: np.ndarray) -> np.ndarray:
     """Which samples count: hold after 1.5 s; look_at the last 0.5 s of each 2.5 s target; periodic after 0.5 s."""
-    if sk.id == "hold_centre":
+    if sk.id == "hold_centre" or sk.pose is not None:
         return t >= 1.5
     if sk.id == "look_at":
         return np.mod(t, 2.5) >= 2.0
@@ -111,7 +116,7 @@ def _runtime_rollout(skill_id: str, onnx_path: Path, seed: int = 0) -> dict:
     sk = hs.SKILLS[skill_id]
     jm = JointMap.load()
     pol = hs.OnnxPolicy(onnx_path, hs.obs_size(sk))
-    amp = EVAL_AMP_DEG.get(skill_id, sk.max_deg)
+    amp = 0.0 if sk.pose is not None else EVAL_AMP_DEG.get(skill_id, sk.max_deg)
     beh = hs.SKILL_CLASSES[skill_id](
         jm, SweepParams(amplitude_deg=max(amp, 1.0), duration_s=_duration(sk)), check_tracking=True, policy=pol
     )
@@ -173,7 +178,7 @@ def validate(skill_id: str, folder: Path) -> dict:
     def batch_policy(obs):
         return pol.sess.run(None, {pol.inp: obs.astype(np.float32)})[0]
 
-    bar_nom, bar_dr, bar_rt = BARS[skill_id]
+    bar_nom, bar_dr, bar_rt = bars(skill_id)
     failures = []
     parity = _parity(folder, sk)
     if not parity < 1e-4:
@@ -243,6 +248,8 @@ def write_engine_json(skill_id: str, folder: Path) -> Path:
             "glance_move": hs.GLANCE_MOVE,
             "yaw_range": sk.yaw_range,
             "pitch_range": sk.pitch_range,
+            # taught pose: the fixed head reference (rad), null for the other skills
+            "pose": None if sk.pose is None else {"yaw": sk.pose[0], "pitch": sk.pose[1]},
         }
     )
     out = folder / "deploy.json"

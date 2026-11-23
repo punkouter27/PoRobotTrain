@@ -2,6 +2,12 @@
 
     .venv/Scripts/python.exe -u -m robotcontrol.training.train_head_skill look_at
     .venv/Scripts/python.exe -u -m robotcontrol.training.train_head_skill all --iters 250
+    .venv/Scripts/python.exe -u -m robotcontrol.training.train_head_skill look_at --checkpoint-every 25
+
+``--checkpoint-every N`` saves the policy weights every N iterations (same format as model.pt: the ActorCritic
+state_dict on the CPU) into ``models/head_skills/<skill>/checkpoints/iter_XXXXX.pt`` for the training montage
+(``tools/training_montage.py``); a new run with checkpoints replaces the previous run's. ``--scratch DIR`` trains,
+exports and validates into DIR only (checkpoints in DIR/checkpoints): no version is stored or activated.
 
 Outputs (RobotControl/models/head_skills/<skill>/): policy.onnx, deploy.yaml (with the validation block),
 model.pt, train_log.csv, validation.json. Prints "@progress k/n" lines that the behaviour service turns into the
@@ -15,11 +21,13 @@ import argparse
 import csv
 import datetime as dt
 import hashlib
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
@@ -31,6 +39,8 @@ from .head_skill_env import HeadSkillConfig, HeadSkillEnv
 from .ppo import PPO, ActorCritic
 
 DEFAULT_ITERS = {"hold_centre": 120, "look_at": 300, "nod_yes": 250, "shake_no": 250, "glance_around": 300}
+POSE_ITERS = 150  # taught poses (pose_<id>)
+CHECKPOINTS = "checkpoints"
 
 
 class ExportWrapper(torch.nn.Module):
@@ -44,6 +54,18 @@ class ExportWrapper(torch.nn.Module):
 
 def out_dir(skill_id: str) -> Path:
     return MODELS_DIR / hs.SKILLS_SUBDIR / skill_id
+
+
+def checkpoint_dir(skill_id: str) -> Path:
+    return out_dir(skill_id) / CHECKPOINTS
+
+
+def save_checkpoint(ac: ActorCritic, folder: Path, it: int) -> Path:
+    """Weights at iteration ``it`` in model.pt's format (CPU state_dict), loadable by ActorCritic.load_state_dict."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"iter_{it:05d}.pt"
+    torch.save({k: v.detach().cpu().clone() for k, v in ac.state_dict().items()}, path)
+    return path
 
 
 def _git() -> str:
@@ -109,8 +131,19 @@ def export(ac: ActorCritic, env: HeadSkillEnv, out: Path, meta: dict) -> Path:
     return onnx_path
 
 
-def train(skill_id: str, iters: int, num_envs: int = 512, horizon: int = 24, seed: int = 0, progress=(0, 1)) -> Path:
-    """Train, export into a staging folder, validate, then move it into place. Returns the policy folder."""
+def train(
+    skill_id: str,
+    iters: int,
+    num_envs: int = 512,
+    horizon: int = 24,
+    seed: int = 0,
+    progress=(0, 1),
+    checkpoint_every: int = 0,
+    scratch: Optional[Path] = None,
+) -> Path:
+    """Train, export into a staging folder, validate, then move it into place. Returns the policy folder.
+
+    ``scratch``: export + validate into that folder only (no version stored or activated)."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(seed)
     env = HeadSkillEnv(HeadSkillConfig(skill=skill_id, num_envs=num_envs, seed=seed))
@@ -121,6 +154,10 @@ def train(skill_id: str, iters: int, num_envs: int = 512, horizon: int = 24, see
     staging = LOGS_DIR / "head_skills" / "staging"  # an interrupted run leaves nothing in models/
     staging.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=f"{skill_id}_", dir=str(staging)))
+    ckpt_dir = (Path(scratch) / CHECKPOINTS) if scratch else checkpoint_dir(skill_id)
+    if checkpoint_every > 0:  # one run per montage: drop the previous run's checkpoints
+        for old in ckpt_dir.glob("iter_*.pt") if ckpt_dir.is_dir() else []:
+            old.unlink()
     logf = open(stage / "train_log.csv", "w", newline="", encoding="utf-8")
     w = csv.writer(logf)
     w.writerow(["iter", "time_s", "reward_mean", "track_err_deg", "max_acc", "max_frc", "kl", "lr", "std", "fps"])
@@ -156,6 +193,8 @@ def train(skill_id: str, iters: int, num_envs: int = 512, horizon: int = 24, see
             w.writerow([f"{x:.5g}" if isinstance(x, float) else x for x in row])
             logf.flush()
             print(f"@progress {k0 + it}/{ktot}", flush=True)
+            if checkpoint_every > 0 and (it == 1 or it % checkpoint_every == 0 or it == iters):
+                save_checkpoint(ac, ckpt_dir, it)
             if it == 1 or it % 10 == 0 or it == iters:
                 print(
                     f"[{skill_id}] it {it:4d}/{iters} | reward {row[2]:6.3f} | track err {err:5.2f} deg | "
@@ -184,6 +223,15 @@ def train(skill_id: str, iters: int, num_envs: int = 512, horizon: int = 24, see
     from .validate_head_skill import validate
 
     report = validate(skill_id, stage)
+    if scratch:
+        dest = Path(scratch)
+        dest.mkdir(parents=True, exist_ok=True)
+        for f in stage.iterdir():
+            shutil.move(str(f), str(dest / f.name))
+        stage.rmdir()
+        verdict = "PASSED" if report["passed"] else "FAILED: " + "; ".join(report["failures"])
+        print(f"[{skill_id}] scratch run in {dest}: validation {verdict} (nothing stored or activated)", flush=True)
+        return dest
     version = sv.next_version(skill_id)
     stored = sv.store(skill_id, stage, version)
     verdict = "PASSED" if report["passed"] else "FAILED: " + "; ".join(report["failures"])
@@ -203,14 +251,23 @@ def main(argv=None) -> int:
     ap.add_argument("--iters", type=int, default=None, help="PPO iterations (default: per skill)")
     ap.add_argument("--num-envs", type=int, default=512)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--checkpoint-every", type=int, default=0, help="save weights every N iterations (montage)")
+    ap.add_argument("--scratch", type=Path, default=None, help="train into this folder only; store no version")
     args = ap.parse_args(argv)
+    if args.checkpoint_every < 0:
+        ap.error("--checkpoint-every must be >= 0")
     (MODELS_DIR / hs.SKILLS_SUBDIR).mkdir(parents=True, exist_ok=True)
     skills = list(hs.SKILLS) if args.skill == "all" else [args.skill]
-    plan = [(s, args.iters or DEFAULT_ITERS[s]) for s in skills]
+    plan = [(s, args.iters or DEFAULT_ITERS.get(s, POSE_ITERS)) for s in skills]
     total, done, ok = sum(n for _, n in plan), 0, True
+    if args.scratch and len(plan) > 1:
+        ap.error("--scratch trains one skill")
     for s, n in plan:
-        dest = train(s, n, args.num_envs, seed=args.seed, progress=(done, total))
+        dest = train(s, n, args.num_envs, seed=args.seed, progress=(done, total),
+                     checkpoint_every=args.checkpoint_every, scratch=args.scratch)  # fmt: skip
         done += n
+        if args.scratch:
+            return 0
         ok = ok and hs.skill_status(s)["state"] == "ready"
         print(f"[{s}] status: {hs.skill_status(s)['state']} ({dest})", flush=True)
     return 0 if ok else 4
