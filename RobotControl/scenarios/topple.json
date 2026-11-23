@@ -1,0 +1,15 @@
+{
+  "id": "topple",
+  "name": "Topple without a harness",
+  "target": "walk",
+  "description": "Every joint PD-held at the standing pose with the harness off: the robot cannot balance passively and tips over in about a second. Shows the capture point leaving the feet, the fall analysis and a slow replay.",
+  "course": "flat",
+  "mode": "free_hold",
+  "seed": 0,
+  "difficulty": 0.5,
+  "duration_s": 6,
+  "steps": [
+    {"t": 2.5, "do": "replay", "seconds": 3, "speed": 0.25},
+    {"t": 3.0, "do": "reset"}
+  ]
+}

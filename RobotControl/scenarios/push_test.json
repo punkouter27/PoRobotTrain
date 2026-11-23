@@ -1,0 +1,18 @@
+{
+  "id": "push_test",
+  "name": "Ball from the left",
+  "target": "walk",
+  "description": "Free-standing PD hold on the flat floor; a ball hits it from the left, then a box from the front. Each fall is analysed and replayed at quarter speed.",
+  "course": "flat",
+  "mode": "free_hold",
+  "seed": 0,
+  "difficulty": 0.5,
+  "duration_s": 10,
+  "steps": [
+    {"t": 0.3, "do": "throw", "kind": "ball", "speed": 6, "from_deg": 90},
+    {"t": 2.5, "do": "replay", "seconds": 3, "speed": 0.25},
+    {"t": 3.0, "do": "reset"},
+    {"t": 3.3, "do": "throw", "kind": "box", "speed": 5, "from_deg": 0},
+    {"t": 5.5, "do": "replay", "seconds": 3, "speed": 0.25}
+  ]
+}

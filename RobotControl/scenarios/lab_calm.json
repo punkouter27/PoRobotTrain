@@ -1,0 +1,16 @@
+{
+  "id": "lab_calm",
+  "name": "Look-at, calm",
+  "target": "lab",
+  "description": "Look At through four targets with no disturbances (the baseline for lab_stress).",
+  "skill": "look_at",
+  "size_deg": 15,
+  "duration_s": 12,
+  "seed": 1,
+  "steps": [
+    {"t": 0, "do": "target", "yaw_deg": 20, "pitch_deg": 5},
+    {"t": 3, "do": "target", "yaw_deg": 0, "pitch_deg": 0},
+    {"t": 6, "do": "target", "yaw_deg": -15, "pitch_deg": -5},
+    {"t": 9, "do": "target", "yaw_deg": 10, "pitch_deg": 8}
+  ]
+}

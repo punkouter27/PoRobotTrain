@@ -43,6 +43,14 @@ struct R1TWIN_API FR1SkillDef
 	float GlanceMove = 0.4f;
 	TArray<FVector2D> GlanceKeys;   // (yaw, pitch) fractions of the size
 
+	/** Taught pose (docs/sim_features.md #14, skill id pose_<id>): hold the head at a fixed angle.
+	 *  Angles from deploy.json pose_yaw_deg / pose_pitch_deg (top level; metadata.* and a "pose" object are accepted
+	 *  too). Command = deploy.json pose_command [3] if present, else [0, 0, 0] (held like Hold Centre). */
+	bool bPose = false;
+	float PoseYawRad = 0.f;     // yaw left +
+	float PosePitchRad = 0.f;   // pitch down +
+	float PoseCommand[3] = {0.f, 0.f, 0.f};
+
 	/** Validation headline (mean error of the Jetson code path on the realistic MuJoCo twin), deg. */
 	float TrackErrDeg = -1.f;
 	FString ValidatedAt;

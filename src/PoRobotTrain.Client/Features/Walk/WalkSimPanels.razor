@@ -1,0 +1,347 @@
+@using System.Globalization
+
+@* Read-outs of the walk sandbox's simulation features (docs/sim_features.md), drawn from GET /walk/state:
+   physics (#2, top-down inset + optional 3D overlay), props (#9), motors / heat / battery (#5), action filter (#15) and
+   fall analysis (#19). Display only. *@
+<div class="walk-panels">
+    <section class="walk-panel" aria-label="Physics, top-down">
+        <div class="sec-hdr">
+            <b>Physics (top-down)</b>
+            <RadzenButton class="@($"po-plain po-chip {(_overlay ? "active" : string.Empty)}")" aria-pressed="@_overlay" title="Draw the centre of mass, capture point, support polygon and contact forces on the 3D view" Click="ToggleOverlayAsync">Show on 3D view</RadzenButton>
+        </div>
+        @if (Physics is null)
+        {
+            <div class="po-muted">No physics yet: start the sandbox (any mode).</div>
+        }
+        else
+        {
+            @PhysicsInset()
+            <div class="walk-facts">
+                <span>Capture point margin: <b class="@MarginClass">@(Physics.CpMarginM is double m ? $"{m * 100:+0.0;-0.0;0.0} cm" : "no support")</b></span>
+                <span>Contacts: <b>@(Physics.Contacts?.Count ?? 0)</b></span>
+                <span>Props: <b>@(State?.Props?.Count ?? 0)</b></span>
+            </div>
+            <div class="twin-legend">
+                <span><i style="background:#52d984"></i>support polygon</span>
+                <span><i style="background:#ffe066"></i>centre of mass</span>
+                <span><i style="background:#ff5c57"></i>capture point</span>
+                <span><i style="background:#3dc7f2"></i>contact force</span>
+                <span><i style="background:#e8505b"></i>thrown prop</span>
+            </div>
+        }
+    </section>
+
+    <section class="walk-panel" aria-label="Motors and heat">
+        <div class="sec-hdr"><b>Motors · heat</b><span class="po-pill @ThermalPill.Cls">@ThermalPill.Text</span></div>
+        @if (State?.Thermal is not { } th)
+        {
+            <div class="po-muted">No motor model yet: start the sandbox.</div>
+        }
+        else
+        {
+            <div class="walk-facts">
+                <span>Hottest: <b>@(Short(th.Hottest))</b> <b>@(th.HottestC is double hc ? $"{hc:0.0} °C" : "—")</b></span>
+            </div>
+            @if (th.Limit is { Count: > 0 } lim)
+            {
+                <div class="status-msg bad">At limit (90 °C): @string.Join(", ", lim.Select(Short))</div>
+            }
+            @if (th.Warn is { Count: > 0 } warn)
+            {
+                <div class="status-msg warn">Warm (70 °C): @string.Join(", ", warn.Select(Short))</div>
+            }
+            @foreach (var (name, frac, temp) in TopMotors)
+            {
+                <div class="walk-bar" title="@($"{name}: {frac * 100:0} % of its torque limit")">
+                    <span class="walk-bar__lbl">@Short(name)</span>
+                    <span class="walk-bar__track"><span class="walk-bar__fill" style="width:@(Math.Min(100, frac * 100).ToString("0.#", Inv))%;background:@(frac > 0.8 ? "#ff5c57" : frac > 0.5 ? "#ffbd42" : "#52d984")"></span></span>
+                    <span class="walk-bar__val">@((frac * 100).ToString("0", Inv))% · @(temp is double t ? $"{t:0} °C" : "—")</span>
+                </div>
+            }
+            <div class="po-muted">Torque as a share of each joint's limit (top 5), modelled winding temperature. Display only: nothing is derated.</div>
+        }
+    </section>
+
+    <section class="walk-panel" aria-label="Battery">
+        <div class="sec-hdr"><b>Battery (model)</b></div>
+        @if (State?.Battery is not { } bat)
+        {
+            <div class="po-muted">No battery model yet: start the sandbox.</div>
+        }
+        else
+        {
+            var soc = Math.Clamp(bat.SocPct ?? 0, 0, 100);
+            <div class="rb-progress" role="progressbar" aria-label="Battery charge" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@soc.ToString("0", Inv)">
+                <div class="rb-progress__bar" style="width:@soc.ToString("0.#", Inv)%;background:@(soc < 20 ? "#ff5c57" : "#52d984")"></div>
+            </div>
+            <div class="walk-facts">
+                <span>Charge: <b>@(bat.SocPct is double s ? $"{s:0.0} %" : "—")</b></span>
+                <span>Power: <b>@(bat.PowerW is double p ? $"{p:0} W" : "—")</b></span>
+                <span>Left: <b>@(bat.MinutesLeft is double ml ? $"{ml:0} min" : "—")</b></span>
+            </div>
+            <div class="po-muted">Placeholder 500 Wh pack, not the R1 datasheet value.</div>
+        }
+    </section>
+
+    <section class="walk-panel" aria-label="Action filter">
+        <div class="sec-hdr"><b>Action filter</b><span class="po-muted">jitter @(Filter?.Jitter is double j ? j.ToString("0.000", Inv) : "—")</span></div>
+        @if (Filter is not { Raw.Length: > 0 })
+        {
+            <div class="po-muted">No policy action yet (hold modes have none).</div>
+        }
+        else
+        {
+            @FilterChart()
+            <div class="twin-legend">
+                <span><i style="background:#9aa3b5"></i>raw action</span>
+                <span><i style="background:#8ab8ff"></i>filtered (alpha @Filter.Alpha.ToString("0.##", Inv))</span>
+                <span><i style="background:#ffbd42"></i>jitter, last @_jitter.Count samples</span>
+            </div>
+        }
+    </section>
+
+    <section class="walk-panel walk-panel--wide" aria-label="Fall analysis">
+        <div class="sec-hdr"><b>Fall analysis</b><span class="po-muted">falls: @(State?.Falls ?? 0)</span></div>
+        @if (State?.FallAnalysis is not { } fa)
+        {
+            <div class="po-muted">No fall yet. Try "Hold without harness (topples)" or throw a box.</div>
+        }
+        else
+        {
+            <div class="walk-facts">
+                <span>Why: <b>@(fa.Reason ?? SimFeatureMath.FallCauseText(fa.Cause))</b></span>
+                <span>Unstable at <b>@T(fa.TUnstable)</b>, fell at <b>@T(fa.TFall)</b></span>
+                <span>Warning time: <b>@(fa.LeadS is double l ? $"{l:0.00} s" : "—")</b></span>
+            </div>
+            @FallStrip(fa)
+            <div class="twin-legend">
+                <span><i style="background:#8ab8ff"></i>capture point margin (+ inside the feet)</span>
+                <span><i style="background:#b18cff"></i>tilt</span>
+                <span><i style="background:#ffbd42"></i>unstable</span>
+                <span><i style="background:#ff5c57"></i>fall</span>
+            </div>
+        }
+        @if (State?.FallsLog is { Count: > 0 } log)
+        {
+            <table class="diag-table walk-falls">
+                <thead><tr><th>#</th><th>Fell at</th><th>Unstable at</th><th>Warning</th><th>Cause</th></tr></thead>
+                <tbody>
+                    @foreach (var (f, i) in log.Select((f, i) => (f, i)).Reverse())
+                    {
+                        <tr><td>@(i + 1)</td><td>@T(f.TFall)</td><td>@T(f.TUnstable)</td><td>@(f.LeadS is double l ? $"{l:0.00} s" : "—")</td><td>@SimFeatureMath.FallCauseText(f.Cause)</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+    private const double ViewM = 0.8; // half width of the top-down inset, metres
+    private const double Px = 100; // svg units per half width
+
+    [Parameter] public WalkStateDto? State { get; set; }
+    [Parameter] public EventCallback<bool> OnOverlay { get; set; }
+
+    private bool _overlay;
+    private readonly List<double> _jitter = [];
+    private double? _lastT;
+
+    private WalkPhysicsDto? Physics => State?.Physics;
+    private WalkActionFilterDto? Filter => State?.ActionFilter;
+
+    private string MarginClass => Physics?.CpMarginM is double m ? m >= 0 ? "pass" : "fail" : string.Empty;
+
+    private (string Text, string Cls) ThermalPill => State?.Thermal switch
+    {
+        { Limit.Count: > 0 } => ("LIMIT", "po-pill--bad"),
+        { Warn.Count: > 0 } => ("WARM", "po-pill--orange"),
+        null => ("—", string.Empty),
+        _ => ("OK", "po-pill--ok"),
+    };
+
+    private IEnumerable<(string Name, double Frac, double? Temp)> TopMotors
+    {
+        get
+        {
+            var m = State?.Motors;
+            if (m?.Names is not { } names || m.TorqueFrac is not { } frac)
+            {
+                return [];
+            }
+            var temps = State?.Thermal?.TempC;
+            return names.Select((n, i) => (n, i < frac.Length ? frac[i] : 0, temps is not null && i < temps.Length ? temps[i] : (double?)null))
+                .OrderByDescending(x => x.Item2).Take(5).ToList();
+        }
+    }
+
+    private static string Short(string? joint) => string.IsNullOrEmpty(joint) ? "—" : joint.Replace("_joint", string.Empty).Replace('_', ' ');
+
+    private static string T(double? t) => t is double v ? $"{v:0.00} s" : "—";
+
+    private static string F(double v) => v.ToString("0.#", Inv);
+
+    protected override void OnParametersSet()
+    {
+        if (Filter?.Jitter is double j && State?.T is double t && t != _lastT)
+        {
+            _lastT = t;
+            _jitter.Add(j);
+            if (_jitter.Count > 120)
+            {
+                _jitter.RemoveAt(0);
+            }
+        }
+    }
+
+    private async Task ToggleOverlayAsync()
+    {
+        _overlay = !_overlay;
+        await OnOverlay.InvokeAsync(_overlay);
+    }
+
+    /// <summary>World-aligned top-down view centred on the centre of mass (or the pelvis): +x right, +y up.</summary>
+    private RenderFragment PhysicsInset() => __builder =>
+    {
+        var ph = Physics!;
+        double cx = ph.Com is { Length: >= 2 } c ? c[0] : State?.Base?.Pos is { Length: >= 2 } bp ? bp[0] : 0;
+        double cy = ph.Com is { Length: >= 2 } c2 ? c2[1] : State?.Base?.Pos is { Length: >= 2 } bp2 ? bp2[1] : 0;
+        double X(double x) => (x - cx) / ViewM * Px;
+        double Y(double y) => -(y - cy) / ViewM * Px;
+        string Pt(double x, double y) => $"{F(X(x))},{F(Y(y))}";
+        <svg class="walk-inset" viewBox="-100 -100 200 200" role="img" aria-label="Top-down physics view: support polygon, centre of mass, capture point and contact forces">
+            <rect x="-100" y="-100" width="200" height="200" fill="#0a0c10" />
+            @for (var r = 0.25; r <= ViewM; r += 0.25)
+            {
+                <circle cx="0" cy="0" r="@F(r / ViewM * Px)" fill="none" stroke="#1d2638" />
+            }
+            <text x="-96" y="96" fill="#9aa3b5" font-size="9">rings 25 cm</text>
+            @if (ph.Support is { Count: > 1 } hull)
+            {
+                <polygon points="@string.Join(' ', hull.Where(p => p.Length >= 2).Select(p => Pt(p[0], p[1])))" fill="rgba(82,217,132,.18)" stroke="#52d984" stroke-width="1.5" />
+            }
+            @foreach (var ct in ph.Contacts ?? [])
+            {
+                if (ct.Pos is not { Length: >= 2 } p)
+                {
+                    continue;
+                }
+                var fz = ct.Force is { Length: >= 3 } fv ? Math.Abs(fv[2]) : 0;
+                <circle cx="@F(X(p[0]))" cy="@F(Y(p[1]))" r="@F(2 + Math.Min(6, Math.Sqrt(fz) / 3))" fill="rgba(61,199,242,.35)" stroke="#3dc7f2" />
+                @if (ct.Force is { Length: >= 2 } f && Math.Abs(f[0]) + Math.Abs(f[1]) > 1)
+                {
+                    var k = 0.6; // svg units per N of horizontal force
+                    var len = Math.Min(60, Math.Sqrt(f[0] * f[0] + f[1] * f[1]) * k);
+                    var ang = Math.Atan2(-f[1], f[0]);
+                    <line x1="@F(X(p[0]))" y1="@F(Y(p[1]))" x2="@F(X(p[0]) + len * Math.Cos(ang))" y2="@F(Y(p[1]) + len * Math.Sin(ang))" stroke="#3dc7f2" stroke-width="1.5" />
+                }
+            }
+            @foreach (var pr in State?.Props ?? [])
+            {
+                if (pr.Pos is not { Length: >= 2 } pp)
+                {
+                    continue;
+                }
+                var s = pr.Size is { Length: > 0 } sz ? sz[0] : 0.1;
+                if (pr.Kind == "box")
+                {
+                    var hw = s / ViewM * Px;
+                    <rect x="@F(X(pp[0]) - hw)" y="@F(Y(pp[1]) - hw)" width="@F(2 * hw)" height="@F(2 * hw)" fill="#d9822b" />
+                }
+                else
+                {
+                    <circle cx="@F(X(pp[0]))" cy="@F(Y(pp[1]))" r="@F(s / ViewM * Px)" fill="#e8505b" />
+                }
+            }
+            @if (State?.Base is { Pos.Length: >= 2 } b)
+            {
+                var hx = X(b.Pos[0]);
+                var hy = Y(b.Pos[1]);
+                <line x1="@F(hx)" y1="@F(hy)" x2="@F(hx + 22 * Math.Cos(b.Yaw))" y2="@F(hy - 22 * Math.Sin(b.Yaw))" stroke="#c9d1e0" stroke-width="2" />
+            }
+            @if (ph.Com is { Length: >= 2 } com && ph.CapturePoint is { Length: >= 2 } cp)
+            {
+                <line x1="@F(X(com[0]))" y1="@F(Y(com[1]))" x2="@F(X(cp[0]))" y2="@F(Y(cp[1]))" stroke="#ff5c57" stroke-dasharray="3 2" />
+            }
+            @if (ph.Com is { Length: >= 2 } com2)
+            {
+                <circle cx="@F(X(com2[0]))" cy="@F(Y(com2[1]))" r="5" fill="#ffe066" />
+            }
+            @if (ph.CapturePoint is { Length: >= 2 } cp2)
+            {
+                <circle cx="@F(X(cp2[0]))" cy="@F(Y(cp2[1]))" r="4.5" fill="#ff5c57" />
+            }
+        </svg>
+    };
+
+    /// <summary>Raw vs filtered action per policy output (index on x) plus the jitter history.</summary>
+    private RenderFragment FilterChart() => __builder =>
+    {
+        var raw = Filter!.Raw!;
+        var filt = Filter.Filtered ?? [];
+        const double W = 300, H = 90, Mid = 45;
+        var max = Math.Max(0.2, raw.Concat(filt).Where(double.IsFinite).Select(Math.Abs).DefaultIfEmpty(1).Max());
+        string Line(double[] v) => string.Join(' ', v.Select((a, i) => $"{F(6 + (W - 12) * i / Math.Max(1, v.Length - 1))},{F(Mid - (Mid - 6) * (double.IsFinite(a) ? a : 0) / max)}"));
+        <svg class="walk-chart" viewBox="0 0 @W @(H + 40)" role="img" aria-label="Raw and filtered policy action, and the jitter history">
+            <line x1="6" y1="@Mid" x2="@(W - 6)" y2="@Mid" stroke="#2c3954" />
+            <polyline fill="none" stroke="#9aa3b5" stroke-width="1.5" points="@Line(raw)" />
+            @if (filt.Length > 0)
+            {
+                <polyline fill="none" stroke="#8ab8ff" stroke-width="2" points="@Line(filt)" />
+            }
+            <text x="6" y="12" fill="#9aa3b5" font-size="9">±@max.ToString("0.0#", Inv) · action index 0..@(raw.Length - 1)</text>
+            @if (_jitter.Count > 1)
+            {
+                var jm = Math.Max(1e-3, _jitter.Max());
+                var pts = string.Join(' ', _jitter.Select((j, i) => $"{F(6 + (W - 12) * i / (_jitter.Count - 1))},{F(H + 34 - 26 * j / jm)}"));
+                <polyline fill="none" stroke="#ffbd42" stroke-width="1.5" points="@pts" />
+                <text x="6" y="@(H + 4)" fill="#9aa3b5" font-size="9">jitter (max @jm.ToString("0.000", Inv))</text>
+            }
+        </svg>
+    };
+
+    /// <summary>The last 3 s before the fall: capture point margin and tilt over time, markers at unstable and fall.</summary>
+    private static RenderFragment FallStrip(WalkFallAnalysisDto fa) => __builder =>
+    {
+        var h = fa.History ?? [];
+        if (h.Count < 2)
+        {
+            <div class="po-muted">No history recorded for this fall.</div>
+            return;
+        }
+        const double W = 600, H = 110, Pad = 30;
+        var t0 = h[0].T;
+        var t1 = Math.Max(h[^1].T, fa.TFall);
+        var span = Math.Max(1e-3, t1 - t0);
+        double X(double t) => Pad + (W - Pad - 8) * (t - t0) / span;
+        var margins = h.Where(s => s.CpMarginM is double m && double.IsFinite(m)).Select(s => Math.Abs(s.CpMarginM!.Value)).DefaultIfEmpty(0.05).Max();
+        var mMax = Math.Max(0.02, margins);
+        double Ym(double m) => H / 2 - (H / 2 - 8) * Math.Clamp(m / mMax, -1, 1);
+        var tiltMax = Math.Max(10, h.Where(s => s.TiltDeg is double d && double.IsFinite(d)).Select(s => s.TiltDeg!.Value).DefaultIfEmpty(0).Max());
+        double Yt(double d) => H - 6 - (H - 14) * Math.Clamp(d / tiltMax, 0, 1);
+        var marginPts = string.Join(' ', h.Where(s => s.CpMarginM is double m && double.IsFinite(m)).Select(s => $"{X(s.T).ToString("0.#", Inv)},{Ym(s.CpMarginM!.Value).ToString("0.#", Inv)}"));
+        var tiltPts = string.Join(' ', h.Where(s => s.TiltDeg is double d && double.IsFinite(d)).Select(s => $"{X(s.T).ToString("0.#", Inv)},{Yt(s.TiltDeg!.Value).ToString("0.#", Inv)}"));
+        <svg class="walk-chart" viewBox="0 0 @W @(H + 16)" role="img" aria-label="@($"Fall history: unstable at {fa.TUnstable:0.00} s, fell at {fa.TFall:0.00} s")">
+            <line x1="@Pad" y1="@(H / 2)" x2="@(W - 8)" y2="@(H / 2)" stroke="#2c3954" />
+            <text x="2" y="12" fill="#9aa3b5" font-size="10">+@((mMax * 100).ToString("0", Inv)) cm</text>
+            <text x="2" y="@(H / 2 + 4)" fill="#9aa3b5" font-size="10">0</text>
+            @if (tiltPts.Length > 0)
+            {
+                <polyline fill="none" stroke="#b18cff" stroke-width="1.5" points="@tiltPts" />
+            }
+            @if (marginPts.Length > 0)
+            {
+                <polyline fill="none" stroke="#8ab8ff" stroke-width="2" points="@marginPts" />
+            }
+            @if (fa.TUnstable is double tu)
+            {
+                <line x1="@(X(tu).ToString("0.#", Inv))" y1="4" x2="@(X(tu).ToString("0.#", Inv))" y2="@H" stroke="#ffbd42" stroke-width="2" />
+                <text x="@((X(tu) + 3).ToString("0.#", Inv))" y="@(H + 12)" fill="#ffbd42" font-size="10">unstable</text>
+            }
+            <line x1="@(X(fa.TFall).ToString("0.#", Inv))" y1="4" x2="@(X(fa.TFall).ToString("0.#", Inv))" y2="@H" stroke="#ff5c57" stroke-width="2" />
+            <text x="@((X(fa.TFall) - 22).ToString("0.#", Inv))" y="@(H + 12)" fill="#ff8a80" font-size="10">fall</text>
+            <text x="@Pad" y="@(H + 12)" fill="#9aa3b5" font-size="10">@t0.ToString("0.0", Inv) s</text>
+        </svg>
+    };
+}

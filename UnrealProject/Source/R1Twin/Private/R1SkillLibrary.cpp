@@ -131,6 +131,41 @@ namespace
 		}
 		for (const FName& N : S.Joints) S.Actuators.Add(ActuatorFor(N));
 		for (const FName& N : S.HoldJoints) S.HoldActuators.Add(ActuatorFor(N));
+		if (S.Id.StartsWith(TEXT("pose_")))
+		{
+			// taught pose: where to hold the head (the contract field names, plus the likely alternatives)
+			S.bPose = true;
+			double Yaw = 0.0, Pitch = 0.0;
+			bool bYaw = J->TryGetNumberField(TEXT("pose_yaw_deg"), Yaw), bPitch = J->TryGetNumberField(TEXT("pose_pitch_deg"), Pitch);
+			auto FromObj = [&](const TCHAR* Field, const TCHAR* YawKey, const TCHAR* PitchKey)
+			{
+				const TSharedPtr<FJsonObject>* O = nullptr;
+				if (J->TryGetObjectField(Field, O) && O && O->IsValid())
+				{
+					if (!bYaw) bYaw = (*O)->TryGetNumberField(YawKey, Yaw);
+					if (!bPitch) bPitch = (*O)->TryGetNumberField(PitchKey, Pitch);
+				}
+			};
+			FromObj(TEXT("metadata"), TEXT("pose_yaw_deg"), TEXT("pose_pitch_deg"));
+			FromObj(TEXT("metadata"), TEXT("target_yaw_deg"), TEXT("target_pitch_deg"));
+			FromObj(TEXT("pose"), TEXT("yaw_deg"), TEXT("pitch_deg"));
+			if (!bYaw || !bPitch)
+			{
+				S.Reason = TEXT("taught pose without pose_yaw_deg / pose_pitch_deg in deploy.json");
+				return true;
+			}
+			S.PoseYawRad = FMath::DegreesToRadians(static_cast<float>(Yaw));
+			S.PosePitchRad = FMath::DegreesToRadians(static_cast<float>(Pitch));
+			TArray<float> Cmd;
+			if (FloatArray(J, TEXT("pose_command"), Cmd) && Cmd.Num() == R1Skills::NumCmd)
+			{
+				for (int32 c = 0; c < R1Skills::NumCmd; ++c) S.PoseCommand[c] = Cmd[c];
+			}
+			if (S.Desc.IsEmpty())
+			{
+				S.Desc = FString::Printf(TEXT("Taught pose: holds the head at yaw %+.0f, pitch %+.0f deg."), Yaw, Pitch);
+			}
+		}
 		const TArray<TSharedPtr<FJsonValue>>* Keys = nullptr;
 		if (J->TryGetArrayField(TEXT("glance_keys"), Keys) && Keys)
 		{
@@ -273,6 +308,12 @@ void R1Skills::Reference(const FR1SkillDef& Skill, const float Cmd[NumCmd], floa
 	const int32 IP = Skill.JointIndex(HeadPitch), IY = Skill.JointIndex(HeadYaw);
 	if (Skill.Id == TEXT("hold_centre"))
 	{
+		return;
+	}
+	if (Skill.bPose)
+	{
+		if (IY >= 0) Out[IY] = Skill.PoseYawRad;
+		if (IP >= 0) Out[IP] = Skill.PosePitchRad;
 		return;
 	}
 	if (Skill.Id == TEXT("look_at"))

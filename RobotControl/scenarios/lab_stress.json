@@ -1,0 +1,18 @@
+{
+  "id": "lab_stress",
+  "name": "Look-at under stress",
+  "target": "lab",
+  "description": "Look At with a head shove, sensor noise, extra action delay and weakened motors.",
+  "skill": "look_at",
+  "size_deg": 15,
+  "duration_s": 12,
+  "seed": 1,
+  "steps": [
+    {"t": 0, "do": "target", "yaw_deg": 20, "pitch_deg": 5},
+    {"t": 3, "do": "push", "yaw": 1, "pitch": 0},
+    {"t": 5, "do": "noise", "deg": 1.0},
+    {"t": 6, "do": "delay", "steps": 2},
+    {"t": 8, "do": "strength", "pct": 70},
+    {"t": 9, "do": "target", "yaw_deg": -15, "pitch_deg": -5}
+  ]
+}

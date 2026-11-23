@@ -282,8 +282,252 @@ bool R1Panel::ParseWalkState(const FString& Json, FR1WalkState& Out)
 	{
 		S.bPuppetConnected = Bool(P, TEXT("connected"));
 	}
+
+	// ---------------------------------------------------------------- docs/sim_features.md additions
+	float Tmp = 0.f;
+	if (OptNum(J, TEXT("seed"), Tmp)) S.Seed = FMath::RoundToInt(Tmp);
+	OptNum(J, TEXT("difficulty"), S.Difficulty);
+	if (const TSharedPtr<FJsonObject> Ph = Obj(J, TEXT("physics")))
+	{
+		FR1WalkPhysics& P = S.Physics;
+		P.bValid = true;
+		ReadVec(Arr(Ph, TEXT("com")), P.ComMj);
+		ReadVec(Arr(Ph, TEXT("com_vel")), P.ComVelMj);
+		ReadVec2(Arr(Ph, TEXT("capture_point")), P.CapturePointMj);
+		if (const TArray<TSharedPtr<FJsonValue>>* Sup = Arr(Ph, TEXT("support")))
+		{
+			for (const TSharedPtr<FJsonValue>& V : *Sup)
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Pt = nullptr;
+				FVector2D XY;
+				if (V.IsValid() && V->TryGetArray(Pt) && ReadVec2(Pt, XY)) P.SupportMj.Add(XY);
+			}
+		}
+		P.bHasMargin = OptNum(Ph, TEXT("cp_margin_m"), P.CpMarginM);
+		if (const TArray<TSharedPtr<FJsonValue>>* Cs = Arr(Ph, TEXT("contacts")))
+		{
+			for (const TSharedPtr<FJsonValue>& V : *Cs)
+			{
+				if (const TSharedPtr<FJsonObject>* C = ObjValue(V))
+				{
+					FR1WalkContact Ct;
+					ReadVec(Arr(*C, TEXT("pos")), Ct.PosMj);
+					ReadVec(Arr(*C, TEXT("force")), Ct.ForceMj);
+					Ct.A = Str(*C, TEXT("a"));
+					Ct.B = Str(*C, TEXT("b"));
+					P.Contacts.Add(Ct);
+				}
+			}
+		}
+	}
+	if (const TSharedPtr<FJsonObject> M = Obj(J, TEXT("motors")))
+	{
+		FR1MotorReadout& R = S.Motors;
+		R.bValid = true;
+		Strings(M, TEXT("names"), R.Names);
+		Floats(M, TEXT("speed"), R.Speed);
+		Floats(M, TEXT("torque"), R.Torque);
+		Floats(M, TEXT("torque_frac"), R.TorqueFrac);
+		const int32 N = R.Names.Num();
+		R.Speed.SetNumZeroed(N);
+		R.Torque.SetNumZeroed(N);
+		R.TorqueFrac.SetNumZeroed(N);
+	}
+	if (const TSharedPtr<FJsonObject> Th = Obj(J, TEXT("thermal")))
+	{
+		FR1MotorReadout& R = S.Motors;
+		Floats(Th, TEXT("temp_c"), R.TempC);
+		R.Hottest = Str(Th, TEXT("hottest"));
+		R.HottestC = Num(Th, TEXT("hottest_c"), R.HottestC);
+		Strings(Th, TEXT("warn"), R.Warn);
+		Strings(Th, TEXT("limit"), R.Limit);
+	}
+	if (const TSharedPtr<FJsonObject> Bt = Obj(J, TEXT("battery")))
+	{
+		FR1MotorReadout& R = S.Motors;
+		R.SocPct = Num(Bt, TEXT("soc_pct"), R.SocPct);
+		R.PowerW = Num(Bt, TEXT("power_w"), R.PowerW);
+		R.MinutesLeft = Num(Bt, TEXT("minutes_left"), -1.f);
+	}
+	if (const TSharedPtr<FJsonObject> Af = Obj(J, TEXT("action_filter")))
+	{
+		FR1WalkActionFilter& A = S.ActionFilter;
+		A.bValid = true;
+		A.Alpha = Num(Af, TEXT("alpha"), A.Alpha);
+		A.bApply = Bool(Af, TEXT("apply"));
+		Floats(Af, TEXT("raw"), A.Raw);
+		Floats(Af, TEXT("filtered"), A.Filtered);
+		A.Jitter = Num(Af, TEXT("jitter"), 0.f);
+	}
+	if (const TArray<TSharedPtr<FJsonValue>>* Props = Arr(J, TEXT("props")))
+	{
+		for (const TSharedPtr<FJsonValue>& V : *Props)
+		{
+			if (const TSharedPtr<FJsonObject>* P = ObjValue(V))
+			{
+				FR1WalkProp Pr;
+				Pr.Id = FMath::RoundToInt(Num(*P, TEXT("id"), 0.f));
+				Pr.Kind = Str(*P, TEXT("kind"));
+				ReadVec(Arr(*P, TEXT("pos")), Pr.PosMj);
+				if (const TArray<TSharedPtr<FJsonValue>>* Q = Arr(*P, TEXT("quat")); Q && Q->Num() >= 4)
+				{
+					Pr.QuatW = (*Q)[0]->AsNumber();
+					Pr.QuatX = (*Q)[1]->AsNumber();
+					Pr.QuatY = (*Q)[2]->AsNumber();
+					Pr.QuatZ = (*Q)[3]->AsNumber();
+				}
+				Floats(*P, TEXT("size"), Pr.Size);
+				S.Props.Add(MoveTemp(Pr));
+			}
+		}
+	}
+	if (const TSharedPtr<FJsonObject> F = Obj(J, TEXT("fall_analysis")))
+	{
+		ReadFall(F, S.FallAnalysis);
+	}
+	if (const TArray<TSharedPtr<FJsonValue>>* Log = Arr(J, TEXT("falls_log")))
+	{
+		for (const TSharedPtr<FJsonValue>& V : *Log)
+		{
+			if (const TSharedPtr<FJsonObject>* P = ObjValue(V))
+			{
+				FR1FallAnalysis E;
+				ReadFall(*P, E);
+				S.FallsLog.Add(MoveTemp(E));
+			}
+		}
+	}
+	if (const TSharedPtr<FJsonObject> R = Obj(J, TEXT("replay")))
+	{
+		S.Replay.bValid = true;
+		S.Replay.bActive = Bool(R, TEXT("active"));
+		S.Replay.Speed = Num(R, TEXT("speed"), 0.25f);
+		S.Replay.T = Num(R, TEXT("t"), 0.f);
+		S.Replay.DurationS = Num(R, TEXT("duration_s"), 3.f);
+		S.Replay.bAutoOnFall = Bool(R, TEXT("auto_on_fall"));
+	}
+	if (const TSharedPtr<FJsonObject> Sc = Obj(J, TEXT("scenario")))
+	{
+		S.Scenario.bValid = true;
+		S.Scenario.Id = Str(Sc, TEXT("id"));
+		S.Scenario.T = Num(Sc, TEXT("t"), 0.f);
+		S.Scenario.Step = FMath::RoundToInt(Num(Sc, TEXT("step"), 0.f));
+		S.Scenario.Steps = FMath::RoundToInt(Num(Sc, TEXT("steps"), 0.f));
+		S.Scenario.bDone = Bool(Sc, TEXT("done"));
+	}
 	Out = MoveTemp(S);
 	return true;
+}
+
+bool R1Panel::ParseScenarioList(const FString& Json, TArray<FR1ScenarioInfo>& Out)
+{
+	const TSharedPtr<FJsonObject> J = ParseObject(Json);
+	const TArray<TSharedPtr<FJsonValue>>* List = Arr(J, TEXT("scenarios"));
+	if (!List)
+	{
+		return false;
+	}
+	Out.Reset();
+	for (const TSharedPtr<FJsonValue>& V : *List)
+	{
+		if (const TSharedPtr<FJsonObject>* P = ObjValue(V))
+		{
+			FR1ScenarioInfo I;
+			I.Id = Str(*P, TEXT("id"));
+			I.Name = Str(*P, TEXT("name"));
+			I.Target = Str(*P, TEXT("target"));
+			I.Description = Str(*P, TEXT("description"));
+			I.DurationS = Num(*P, TEXT("duration_s"), 0.f);
+			if (!I.Id.IsEmpty())
+			{
+				if (I.Name.IsEmpty()) I.Name = I.Id;
+				Out.Add(MoveTemp(I));
+			}
+		}
+	}
+	return true;
+}
+
+bool R1Panel::ParseLabScenario(const FString& Json, FR1LabScenario& Out, FString& OutWhy)
+{
+	const TSharedPtr<FJsonObject> J = ParseObject(Json);
+	if (!J.IsValid())
+	{
+		OutWhy = TEXT("not valid JSON");
+		return false;
+	}
+	if (Str(J, TEXT("target")) != TEXT("lab"))
+	{
+		OutWhy = TEXT("not a lab scenario (target must be lab)");
+		return false;
+	}
+	FR1LabScenario S;
+	S.Id = Str(J, TEXT("id"));
+	S.Name = Str(J, TEXT("name"));
+	S.Description = Str(J, TEXT("description"));
+	S.Skill = Str(J, TEXT("skill"));
+	S.SizeDeg = Num(J, TEXT("size_deg"), S.SizeDeg);
+	S.DurationS = FMath::Max(1.f, Num(J, TEXT("duration_s"), S.DurationS));
+	S.Seed = FMath::RoundToInt(Num(J, TEXT("seed"), 0.f));
+	if (S.Name.IsEmpty()) S.Name = S.Id;
+	if (S.Skill.IsEmpty())
+	{
+		OutWhy = TEXT("the scenario names no skill");
+		return false;
+	}
+	if (const TArray<TSharedPtr<FJsonValue>>* Steps = Arr(J, TEXT("steps")))
+	{
+		for (const TSharedPtr<FJsonValue>& V : *Steps)
+		{
+			if (const TSharedPtr<FJsonObject>* P = ObjValue(V))
+			{
+				FR1LabScenarioStep St;
+				St.T = Num(*P, TEXT("t"), 0.f);
+				St.Do = Str(*P, TEXT("do"));
+				St.YawDeg = Num(*P, TEXT("yaw_deg"), 0.f);
+				St.PitchDeg = Num(*P, TEXT("pitch_deg"), 0.f);
+				St.Yaw = Num(*P, TEXT("yaw"), 0.f);
+				St.Pitch = Num(*P, TEXT("pitch"), 0.f);
+				St.Deg = Num(*P, TEXT("deg"), 0.f);
+				St.Steps = FMath::RoundToInt(Num(*P, TEXT("steps"), 0.f));
+				St.Pct = Num(*P, TEXT("pct"), 100.f);
+				S.Steps.Add(MoveTemp(St));
+			}
+		}
+	}
+	S.Steps.StableSort([](const FR1LabScenarioStep& A, const FR1LabScenarioStep& B) { return A.T < B.T; });
+	Out = MoveTemp(S);
+	return true;
+}
+
+FString R1Panel::ScenariosDir()
+{
+	FString Dir;
+	if (FParse::Value(FCommandLine::Get(), TEXT("R1ScenariosDir="), Dir))
+	{
+		return FPaths::ConvertRelativePathToFull(Dir);
+	}
+	return FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectDir(), TEXT(".."), TEXT("RobotControl"), TEXT("scenarios")));
+}
+
+TArray<FR1LabScenario> R1Panel::LoadLabScenarios()
+{
+	TArray<FR1LabScenario> Out;
+	const FString Dir = ScenariosDir();
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *FPaths::Combine(Dir, TEXT("*.json")), /*Files*/ true, /*Dirs*/ false);
+	Files.Sort();
+	for (const FString& F : Files)
+	{
+		FString Text, Why;
+		FR1LabScenario S;
+		if (FFileHelper::LoadFileToString(Text, *FPaths::Combine(Dir, F)) && ParseLabScenario(Text, S, Why))
+		{
+			if (S.Id.IsEmpty()) S.Id = FPaths::GetBaseFilename(F);
+			Out.Add(MoveTemp(S));
+		}
+	}
+	return Out;
 }
 
 FString R1Panel::WalkCommandJson(const FVector& Cmd)

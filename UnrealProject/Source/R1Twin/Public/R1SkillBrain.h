@@ -14,6 +14,10 @@
 #include "NNERuntimeCPU.h"
 #include "R1ArticulationBridge.h"
 #include "R1SkillLibrary.h"
+#include "R1MotorModel.h"
+#include "R1PanelData.h"
+#include "Math/RandomStream.h"
+#include "Misc/Optional.h"
 #include "R1SkillBrain.generated.h"
 
 class UNNEModelData;
@@ -59,6 +63,26 @@ struct FR1BrainReadout
 	bool bLookClamped = false;
 	/** Empty = the real robot's safety envelope would let this run continue; else why the runner would stop it. */
 	FString RobotWouldStop;
+	// lab scenario script (docs/sim_features.md #18), empty when none plays
+	FString ScenarioName;
+	float ScenarioT = 0.f;
+	float ScenarioDurationS = 0.f;
+	int32 ScenarioStep = 0;     // steps applied so far
+	int32 ScenarioSteps = 0;
+	FString ScenarioLast;       // the last applied step, in words
+};
+
+/** Head-camera dataset recording (docs/sim_features.md #7): PNG frames + labels.json, simulation only. */
+struct FR1DatasetRecording
+{
+	bool bActive = false;
+	FString Dir;
+	int32 Frames = 0;
+	int32 Wanted = 0;
+	float IntervalS = 0.2f;
+	float NextS = 0.f;
+	FString LabelsJson;         // the frame entries, joined at the end
+	FString LastError;
 };
 
 /** The look-at ball and the head camera (spawned by the brain; transforms driven every tick). */
@@ -127,6 +151,23 @@ public:
 	// ------------------------------------------------------------------ head camera (picture-in-picture)
 	UTextureRenderTarget2D* GetHeadCamTexture() const;
 
+	// ------------------------------------------------------------------ simulation features (docs/sim_features.md)
+	/** #5 / #1 / #17: heat, battery, torque (PD estimate kp*(target-q) - kd*dq, clipped to effort) of the commanded joints. */
+	const FR1MotorReadout& GetMotorReadout() const { return Motor.GetReadout(); }
+	/** #15: raw vs EMA-filtered policy action of the running skill (powered joints) and the jitter score. */
+	const FR1ActionFilter& GetActionFilter() const { return ActionView; }
+	/** #2: world pose of a body (UE cm / UE rotation); false without the articulation. */
+	bool GetBodyPoseUe(FName Body, FVector& OutPosUe, FQuat& OutRotUe) const;
+
+	/** #18: play a lab scenario script (its skill at size_deg for duration_s, steps on its own clock). */
+	bool PlayScenario(const FR1LabScenario& Scenario, FString& OutWhy);
+	bool IsScenarioPlaying() const { return Scenario.IsSet(); }
+
+	/** #7: record Frames head-camera pictures (PNG) + labels.json under Dir; simulation only. */
+	bool StartRecording(const FString& Dir, int32 Frames, FString& OutWhy);
+	void StopRecording();
+	const FR1DatasetRecording& GetRecording() const { return Recording; }
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -180,4 +221,29 @@ private:
 	float PushLeftS = 0.f;
 	float OrbitPhase = 0.f;
 	FR1BrainReadout Readout;
+
+	// motor model (#5): commanded target + gains per bridge joint, mirrored from every SetActuator* call
+	void SetTarget(FName Actuator, float TargetRad);
+	void SetGains(FName Actuator, float Kp, float Kd);
+	void StepMotorModel(float DeltaTime);
+	TMap<FName, int32> ActuatorSlot;   // actuator -> BridgeJoints index
+	TArray<float> MotorTarget, MotorKp, MotorKd, MotorEffort, MotorTau, MotorDq;
+	FR1MotorModel Motor;
+	float MotorAccumulator = 0.f;
+	FR1ActionFilter ActionView;
+
+	// scenario script (#18)
+	void TickScenario(float DeltaTime);
+	void EndScenario();
+	TOptional<FR1LabScenario> Scenario;
+	int32 ScenarioNext = 0;
+	float ScenarioClock = 0.f;
+	int32 SavedDelay = 0;
+	float SavedNoise = 0.f, SavedStrength = 100.f;
+	ER1TargetMode SavedTargetMode = ER1TargetMode::Script;
+	FRandomStream NoiseRng;
+
+	// dataset recording (#7)
+	void TickRecording(float DeltaTime);
+	FR1DatasetRecording Recording;
 };
