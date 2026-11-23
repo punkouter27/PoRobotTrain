@@ -84,9 +84,8 @@ def _demo_command(skill: hs.HeadSkill, beh, t: float) -> np.ndarray:
 
 
 def render_clip(skill: hs.HeadSkill, policy, renderer, sim, caption: str, seconds: float) -> List:
-    from PIL import Image, ImageDraw
-
     import mujoco
+    from PIL import Image, ImageDraw
 
     sim.reset()
     beh = hs.SKILL_CLASSES[skill.id](
@@ -98,8 +97,8 @@ def render_clip(skill: hs.HeadSkill, policy, renderer, sim, caption: str, second
     cam = mujoco.MjvCamera()
     cam.type = mujoco.mjtCamera.mjCAMERA_FREE
     head = sim.d.xpos[sim.head_body].copy()
-    cam.lookat[:] = head + np.array([0.0, 0.0, -0.05])
-    cam.distance, cam.azimuth, cam.elevation = 1.1, 150.0, -12.0
+    cam.lookat[:] = head + np.array([0.0, 0.0, -0.15])
+    cam.distance, cam.azimuth, cam.elevation = 1.4, 150.0, -12.0
     every = max(1, int(round(1.0 / (FPS * 0.02))))
     frames = []
     for k in range(int(round(seconds / 0.02))):

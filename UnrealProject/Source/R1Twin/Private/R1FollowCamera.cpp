@@ -145,9 +145,56 @@ bool AR1FollowCamera::GetFocusTarget(FVector& OutFocusUe) const
 	return false;
 }
 
+void AR1FollowCamera::SetFreeFly(bool bOn)
+{
+	if (bOn == bFreeFly)
+	{
+		return;
+	}
+	bFreeFly = bOn;
+	if (bOn)
+	{
+		FlyLocation = GetActorLocation();
+		FlyRotation = GetActorRotation();
+	}
+	else
+	{
+		// glide back: start the orbit smoothing from the free-fly view direction
+		SmoothedYaw = FRotator::NormalizeAxis(FlyRotation.Yaw);
+		SmoothedPitch = FlyRotation.Pitch;
+		OrbitYawDeg = FRotator::NormalizeAxis(OrbitYawDeg);
+		if (FMath::Abs(SmoothedYaw - OrbitYawDeg) > 180.f)
+		{
+			SmoothedYaw += SmoothedYaw < OrbitYawDeg ? 360.f : -360.f;
+		}
+	}
+	UE_LOG(LogR1Twin, Log, TEXT("R1FollowCamera: free fly %s"), bOn ? TEXT("on") : TEXT("off (follow)"));
+}
+
+void AR1FollowCamera::TickFreeFly(float DeltaSeconds)
+{
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (PC)
+	{
+		auto Axis = [PC](const FKey& Pos, const FKey& Neg) { return (PC->IsInputKeyDown(Pos) ? 1.f : 0.f) - (PC->IsInputKeyDown(Neg) ? 1.f : 0.f); };
+		const float Fwd = Axis(EKeys::W, EKeys::S);
+		const float Right = Axis(EKeys::D, EKeys::A);
+		const float Up = Axis(EKeys::E, EKeys::Q);
+		const float Speed = FreeFlySpeed * (PC->IsInputKeyDown(EKeys::LeftShift) || PC->IsInputKeyDown(EKeys::RightShift) ? 3.f : 1.f);
+		const FRotationMatrix M(FlyRotation);
+		FlyLocation += (M.GetUnitAxis(EAxis::X) * Fwd + M.GetUnitAxis(EAxis::Y) * Right + FVector::UpVector * Up) * Speed * DeltaSeconds;
+	}
+	SetActorLocationAndRotation(FlyLocation, FlyRotation);
+}
+
 void AR1FollowCamera::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (bFreeFly)
+	{
+		TickFreeFly(DeltaSeconds);
+		return;
+	}
 
 	if (!PolicyComponent)
 	{
@@ -295,6 +342,13 @@ void AR1FollowCamera::OnOrbit(const FInputActionValue& Value)
 		return;
 	}
 	const FVector2D Delta = Value.Get<FVector2D>();
+	if (bFreeFly)
+	{
+		// right mouse look (free fly): turn the view itself
+		FlyRotation.Yaw += Delta.X * MouseSensitivity;
+		FlyRotation.Pitch = FMath::Clamp(FlyRotation.Pitch + (bInvertPitch ? -Delta.Y : Delta.Y) * MouseSensitivity, -89.f, 89.f);
+		return;
+	}
 	OrbitYawDeg += Delta.X * MouseSensitivity;
 	OrbitPitchDeg += (bInvertPitch ? -Delta.Y : Delta.Y) * MouseSensitivity;
 	OrbitPitchDeg = FMath::Clamp(OrbitPitchDeg, MinPitchDeg, MaxPitchDeg);
@@ -303,6 +357,11 @@ void AR1FollowCamera::OnOrbit(const FInputActionValue& Value)
 void AR1FollowCamera::OnZoom(const FInputActionValue& Value)
 {
 	const float Wheel = Value.Get<float>();
+	if (bFreeFly)
+	{
+		FlyLocation += FlyRotation.Vector() * Wheel * ZoomStep;   // free fly: the wheel dollies
+		return;
+	}
 	Distance = FMath::Clamp(Distance - Wheel * ZoomStep, MinDistance, MaxDistance);
 }
 

@@ -28,8 +28,28 @@
             <div class="po-muted">Training a new session on this PC: @pct.ToString("0", Inv)%. The active version stays until the new one passes its check.</div>
         }
         <div class="lib-status"><span>Unreal lab: <b>@UnrealText</b></span></div>
+        <div class="lib-tabs" role="tablist" aria-label="Library sections">
+            @foreach (var (id, label) in Tabs)
+            {
+                <RadzenButton class="@($"po-plain po-chip {(_tab == id ? "active" : string.Empty)}")" role="tab" aria-selected="@(_tab == id)" Click="() => _tab = id">@label</RadzenButton>
+            }
+        </div>
     </section>
 
+    @if (_tab == "duel")
+    {
+        <DuelPanel Skills="Skills" />
+    }
+    else if (_tab == "gap")
+    {
+        <GapCheckPanel />
+    }
+    else if (_tab == "montage")
+    {
+        <MontagePanel Skills="Skills" />
+    }
+    else
+    {
     @foreach (var s in Skills)
     {
         <section class="po-card lib-skill">
@@ -95,6 +115,7 @@
             </div>
         </section>
     }
+    }
 </div>
 
 @code {
@@ -106,6 +127,13 @@
     private string? _openSkill;
     private int _openVersion;
     private SkillDetailDto? _detail;
+    private string _tab = "skills";
+
+    /// <summary>Skills and sessions, plus the simulation-only skill tools (docs/sim_features.md #10, #4, #11).</summary>
+    private static readonly (string Id, string Label)[] Tabs =
+    [
+        ("skills", "Skills and sessions"), ("duel", "Duel"), ("gap", "Gap check (sim vs real)"), ("montage", "Training montage"),
+    ];
 
     private IReadOnlyList<SkillInfoDto> Skills => Ui.Status?.Skills ?? [];
     private bool IsIdle => Ui.Online && string.IsNullOrEmpty(Ui.Status?.Job);
@@ -234,6 +262,11 @@
     protected override async Task OnInitializedAsync()
     {
         Ui.Changed += OnChanged;
+        var tool = new Uri(Nav.Uri).Query.TrimStart('?').Split('&').FirstOrDefault(q => q.StartsWith("tool=", StringComparison.Ordinal))?[5..];
+        if (Tabs.Any(t => t.Id == tool))
+        {
+            _tab = tool!;
+        }
         await Ui.InitAsync();
     }
 

@@ -1,0 +1,310 @@
+@using System.Globalization
+@implements IAsyncDisposable
+@inject ConsoleApiClient ConsoleApi
+@inject IValidator<GapRequest> GapValidator
+@inject IJSRuntime JS
+
+@* #4 Sim-to-real gap check (docs/sim_features.md): two logged runs of a skill (logs/*.csv, e.g. sim vs real), per-joint
+   max / RMS difference, an error heatmap over time, and "Play as ghost": run A drives the virtual robot, run B the
+   ghost, joints more than 2° apart turn purple. Reads log files only; nothing moves. *@
+<section class="po-card lib-tool">
+    <div>
+        <h2 class="lib-title">Gap check</h2>
+        <span class="po-muted">Compare two logged runs of a skill, for example the virtual robot against the real one. Reads <code>logs/*.csv</code> only.</span>
+    </div>
+    @if (_runsError is not null)
+    {
+        <div class="why">Runs unavailable: @_runsError</div>
+    }
+    else if (_runs is null)
+    {
+        <div class="po-muted">Loading runs…</div>
+    }
+    else if (_runs.Count == 0)
+    {
+        <div class="po-muted">No logged runs yet. Play a skill on the virtual robot or the robot and its run is logged.</div>
+    }
+    else
+    {
+        <div class="lib-form">
+            <label>Skill <RadzenDropDown TValue="string" class="assist-input" Data="@SkillFilterOptions" TextProperty="Text" ValueProperty="Value" Value="@_skillFilter" Change="@(v => SetFilter(v as string))" aria-label="Filter runs by skill" /></label>
+            <label>Run A (virtual robot) <RadzenDropDown TValue="string" class="assist-input" Data="@RunOptions" TextProperty="Text" ValueProperty="Value" @bind-Value="_a" aria-label="Run A" /><FieldError Message="@Err("A")" /></label>
+            <label>Run B (ghost) <RadzenDropDown TValue="string" class="assist-input" Data="@RunOptions" TextProperty="Text" ValueProperty="Value" @bind-Value="_b" aria-label="Run B" /><FieldError Message="@Err("B")" /></label>
+            <label>Tolerance (°) <RadzenNumeric TValue="double" class="assist-input" ShowUpDown="false" Step="0.5" @bind-Value="_tol" /><FieldError Message="@Err("TolDeg")" /></label>
+        </div>
+        <div class="btn-row">
+            <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@_busy" Click="CompareAsync">@(_busy ? "Comparing…" : "Compare")</RadzenButton>
+        </div>
+    }
+    @if (_error is not null)
+    {
+        <div class="status-msg bad">@_error</div>
+    }
+    @if (_gap is { Ok: true } g)
+    {
+        <div class="sec-hdr">
+            <b>@(g.Joints?.Count ?? 0) joints · @(g.T?.Length ?? 0) samples</b>
+            <span class="po-pill @(g.Pass == true ? "po-pill--ok" : g.Pass == false ? "po-pill--bad" : string.Empty)">@(g.Pass == true ? $"WITHIN {_tolUsed:0.#}°" : g.Pass == false ? $"OVER {_tolUsed:0.#}°" : "—")</span>
+        </div>
+        <div class="lib-table-wrap">
+            <table class="diag-table">
+                <thead><tr><th>Joint</th><th>Max difference</th><th>RMS difference</th></tr></thead>
+                <tbody>
+                    @for (var i = 0; i < (g.Joints?.Count ?? 0); i++)
+                    {
+                        var max = g.MaxDeg is { } mx && i < mx.Length ? mx[i] : (double?)null;
+                        <tr>
+                            <td>@g.Joints![i].Replace("_joint", string.Empty).Replace('_', ' ')</td>
+                            <td class="@(max > _tolUsed ? "bad" : "ok")">@(max is double m ? $"{m:0.00}°" : "—")</td>
+                            <td>@(g.RmsDeg is { } rm && i < rm.Length ? $"{rm[i]:0.00}°" : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div>
+            <div class="po-muted">Error over time (rows: joints, columns: time; green 0°, amber @(_tolUsed.ToString("0.#", Inv))°, red @((2 * _tolUsed).ToString("0.#", Inv))° or more)@(_index >= 0 && g.T is { Length: > 0 } ? $" · cursor {g.T[_index]:0.00} s" : string.Empty)</div>
+            <canvas @ref="_heat" class="gap-heat" aria-label="Gap error heatmap: joints by time"></canvas>
+        </div>
+        <div class="btn-row">
+            <RadzenButton class="@($"po-plain po-btn {(_ghost ? "po-btn--blue" : "po-btn--blue-soft")}")" Click="ToggleGhost">@(_ghost ? "Hide ghost view" : "Play as ghost")</RadzenButton>
+        </div>
+        @if (_ghost && g.T is { Length: > 0 } times)
+        {
+            <div class="gap-scrub">
+                <RadzenButton class="po-plain po-btn" Click="TogglePlayAsync">@(_playing ? "Pause" : "Play")</RadzenButton>
+                <RadzenSlider TValue="int" Min="0" Max="@(times.Length - 1)" Value="@_index" ValueChanged="@((int v) => Seek(v))" aria-label="Scrub through the runs" />
+                <span class="po-muted">@($"{times[_index]:0.00} / {times[^1]:0.00} s")</span>
+            </div>
+            <div class="gap-stage">
+                <Twin3DView Actual="PoseA" Sim="PoseB" WantReal="true" RealConnected="false" Camera="front" Simple="true" />
+            </div>
+            <div class="twin-legend">
+                <span><i style="background:#c9d1e0"></i>run A (virtual robot)</span>
+                <span><i style="background:#3dc7f2"></i>run B (ghost)</span>
+                <span><i style="background:#b18cff"></i>A and B more than 2° apart</span>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private List<RunInfoDto>? _runs;
+    private string? _runsError;
+    private string _skillFilter = string.Empty;
+    private string? _a;
+    private string? _b;
+    private double _tol = 5.0;
+    private double _tolUsed = 5.0;
+    private bool _busy;
+    private string? _error;
+    private GapResultDto? _gap;
+    private Dictionary<string, string> _errors = [];
+    private ElementReference _heat;
+    private IJSObjectReference? _heatModule;
+    private bool _paintPending;
+    private bool _ghost;
+    private bool _playing;
+    private int _index;
+    private CancellationTokenSource? _playCts;
+
+    private IEnumerable<RunInfoDto> Filtered => (_runs ?? []).Where(r => _skillFilter.Length == 0 || r.Skill == _skillFilter);
+
+    private List<SelectOption> SkillFilterOptions =>
+    [
+        new(string.Empty, "All skills"),
+        .. (_runs ?? []).Select(r => r.Skill).OfType<string>().Distinct().Order().Select(s => new SelectOption(s, s.Replace('_', ' '))),
+    ];
+
+    private List<SelectOption> RunOptions => Filtered
+        .Select(r => new SelectOption(r.File, $"{r.Stamp ?? r.File} · {TargetText(r.Target)}{(_skillFilter.Length == 0 && r.Skill is { } s ? $" · {s}" : string.Empty)}"))
+        .ToList();
+
+    private static string TargetText(string? t) => t switch
+    {
+        "sim" => "virtual robot (built-in)",
+        "urlab" => "virtual robot (Unreal)",
+        "real" => "real robot",
+        _ => t ?? "?",
+    };
+
+    private string? Err(string field) => _errors.GetValueOrDefault(field);
+
+    private double[]? PoseA => Pose(_gap?.ADeg);
+    private double[]? PoseB => Pose(_gap?.BDeg);
+
+    private double[]? Pose(List<double[]>? series) =>
+        _gap?.Joints is { } joints && series is { Count: > 0 } && _index < series.Count
+            ? SimFeatureMath.PoseFromJoints(joints, series[_index])
+            : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (list, err) = await ConsoleApi.RunsAsync();
+        _runs = list?.Runs;
+        _runsError = _runs is null ? err ?? "no reply" : null;
+        PickDefaults();
+    }
+
+    private void SetFilter(string? skill)
+    {
+        _skillFilter = skill ?? string.Empty;
+        PickDefaults();
+    }
+
+    /// <summary>A = newest virtual-robot run, B = newest real run (or the second newest) of the filtered list.</summary>
+    private void PickDefaults()
+    {
+        var runs = Filtered.ToList();
+        _a = runs.FirstOrDefault(r => r.Target is "sim" or "urlab")?.File ?? runs.FirstOrDefault()?.File;
+        _b = runs.FirstOrDefault(r => r.Target == "real" && r.File != _a)?.File ?? runs.FirstOrDefault(r => r.File != _a)?.File;
+    }
+
+    private async Task CompareAsync()
+    {
+        var req = new GapRequest(_a ?? string.Empty, _b ?? string.Empty, _tol);
+        var check = await GapValidator.ValidateAsync(req);
+        _errors = check.Errors.GroupBy(e => e.PropertyName).ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+        if (!check.IsValid)
+        {
+            return;
+        }
+        StopPlay();
+        _busy = true;
+        _error = null;
+        _gap = null;
+        try
+        {
+            var (res, err) = await ConsoleApi.GapAsync(req);
+            _gap = res is { Ok: true } ? res : null;
+            _error = _gap is null ? err ?? res?.Error ?? "The gap check did not return a result." : null;
+            _tolUsed = _tol;
+            _index = 0;
+            _paintPending = _gap is not null;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_paintPending || _gap?.ErrDeg is not { Count: > 0 } err || _gap.Joints is not { Count: > 0 } joints)
+        {
+            return;
+        }
+        _paintPending = false;
+        // one pixel per (time, joint) cell, painted by js/heatmap.js and scaled up by CSS
+        var w = err.Count;
+        var h = joints.Count;
+        var rgba = new byte[w * h * 4];
+        for (var x = 0; x < w; x++)
+        {
+            for (var y = 0; y < h; y++)
+            {
+                var v = y < err[x].Length ? err[x][y] : double.NaN;
+                var (r, g, b, a) = double.IsFinite(v) ? SimFeatureMath.ErrorColour(v, _tolUsed) : ((byte)40, (byte)44, (byte)56, (byte)255);
+                var o = (y * w + x) * 4;
+                rgba[o] = r;
+                rgba[o + 1] = g;
+                rgba[o + 2] = b;
+                rgba[o + 3] = a;
+            }
+        }
+        try
+        {
+            _heatModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/heatmap.js");
+            await _heatModule.InvokeVoidAsync("paint", _heat, rgba, w, h);
+        }
+        catch (JSException)
+        {
+            // the heatmap is informational; the table above has the numbers
+        }
+    }
+
+    private void ToggleGhost()
+    {
+        _ghost = !_ghost;
+        if (!_ghost)
+        {
+            StopPlay();
+        }
+    }
+
+    private void Seek(int i)
+    {
+        StopPlay();
+        _index = Math.Clamp(i, 0, Math.Max(0, (_gap?.T?.Length ?? 1) - 1));
+    }
+
+    private void StopPlay()
+    {
+        _playing = false;
+        _playCts?.Cancel();
+        _playCts?.Dispose();
+        _playCts = null;
+    }
+
+    /// <summary>Plays both runs in real time from the cursor (wraps to the start at the end).</summary>
+    private async Task TogglePlayAsync()
+    {
+        if (_playing)
+        {
+            StopPlay();
+            return;
+        }
+        if (_gap?.T is not { Length: > 1 } t)
+        {
+            return;
+        }
+        _playing = true;
+        _playCts = new CancellationTokenSource();
+        var ct = _playCts.Token;
+        if (_index >= t.Length - 1)
+        {
+            _index = 0;
+        }
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var start = t[_index];
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                var now = start + clock.Elapsed.TotalSeconds;
+                if (now > t[^1])
+                {
+                    _index = t.Length - 1;
+                    StopPlay();
+                    StateHasChanged();
+                    break;
+                }
+                _index = SimFeatureMath.NearestIndex(t, now);
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // paused or closed
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        StopPlay();
+        try
+        {
+            if (_heatModule is not null)
+            {
+                await _heatModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // page is going away
+        }
+    }
+}

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PoRobotTrain.Api.Features.RobotControl;
 using PoRobotTrain.Shared.Contracts;
 using PoRobotTrain.Shared.Validation;
 using Xunit;
@@ -287,6 +288,15 @@ public sealed class SimFeatureTests
         Assert.Equal((0x2e, 0x7d, 0x4f, 255), ToInts(SimFeatureMath.ErrorColour(0, 5)));
         Assert.Equal((0xff, 0xbd, 0x42, 255), ToInts(SimFeatureMath.ErrorColour(5, 5)));
         Assert.Equal((0xff, 0x5c, 0x57, 255), ToInts(SimFeatureMath.ErrorColour(-50, 5)));
+    }
+
+    [Fact]
+    public void SkillToolsGetALongerServiceTimeout()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(5), RobotServiceTimeoutHandler.TimeoutFor("/walk/state"));
+        Assert.Equal(TimeSpan.FromSeconds(90), RobotServiceTimeoutHandler.TimeoutFor("/skills/duel"));
+        Assert.Equal(TimeSpan.FromSeconds(60), RobotServiceTimeoutHandler.TimeoutFor("/gap"));
+        Assert.True(RobotServiceTimeoutHandler.TimeoutFor("/skills/duel") < RobotServiceTimeoutHandler.Ceiling);
     }
 
     private static (int, int, int, int) ToInts((byte R, byte G, byte B, byte A) c) => (c.R, c.G, c.B, c.A);

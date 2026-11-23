@@ -713,14 +713,14 @@ void UR1SkillBrainComponent::StepMotorModel(float DeltaTime)
 
 bool UR1SkillBrainComponent::GetBodyPoseUe(FName Body, FVector& OutPosUe, FQuat& OutRotUe) const
 {
-	FVector P;
-	FQuat Q;
-	if (!Bridge || !Readout.bConnected || !Bridge->GetBodyPoseMj(Body, P, Q))
+	FVector PosMj;
+	FQuat RotMj;
+	if (!Bridge || !Readout.bConnected || !Bridge->GetBodyPoseMj(Body, PosMj, RotMj))
 	{
 		return false;
 	}
-	OutPosUe = MjUe::PositionToUe(P);
-	OutRotUe = MjUe::QuatToUe(Q);
+	OutPosUe = MjUe::PositionToUe(PosMj);
+	OutRotUe = MjUe::QuatToUe(RotMj);
 	return true;
 }
 

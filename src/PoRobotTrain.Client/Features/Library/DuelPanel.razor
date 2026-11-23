@@ -1,0 +1,152 @@
+@using System.Globalization
+@inject ConsoleApiClient ConsoleApi
+@inject IValidator<DuelRequest> DuelValidator
+
+@* #10 Policy-vs-policy duel (docs/sim_features.md): two versions of one skill play the same seeded lab scenario in
+   headless MuJoCo on the PC (same disturbances); lower score wins. Nothing moves on the robot. *@
+<section class="po-card lib-tool">
+    <div>
+        <h2 class="lib-title">Duel</h2>
+        <span class="po-muted">Two versions of a skill play the same lab scenario (same seed, same pushes and noise) in headless MuJoCo. Lower score wins.</span>
+    </div>
+    @if (Skills.Count == 0)
+    {
+        <div class="po-muted">No trained skills yet. Train one in step 3.</div>
+    }
+    else
+    {
+        <div class="lib-form">
+            <label>Skill <RadzenDropDown TValue="string" class="assist-input" Data="@SkillOptions" TextProperty="Text" ValueProperty="Value" Value="@_skill" Change="@(v => SetSkill(v as string))" aria-label="Duel skill" /><FieldError Message="@Err("Skill")" /></label>
+            <label>Version A <RadzenDropDown TValue="string" class="assist-input" Data="@VersionOptions" TextProperty="Text" ValueProperty="Value" @bind-Value="_a" aria-label="Version A" /></label>
+            <label>Version B <RadzenDropDown TValue="string" class="assist-input" Data="@VersionOptions" TextProperty="Text" ValueProperty="Value" @bind-Value="_b" aria-label="Version B" /><FieldError Message="@Err("B")" /></label>
+            <label>Lab scenario <RadzenDropDown TValue="string" class="assist-input" Data="@ScenarioOptions" TextProperty="Text" ValueProperty="Value" @bind-Value="_scenario" aria-label="Lab scenario" /><FieldError Message="@Err("Scenario")" /></label>
+        </div>
+        @if (_scenarioError is not null)
+        {
+            <div class="why">Lab scenarios unavailable: @_scenarioError</div>
+        }
+        <div class="btn-row">
+            <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@_busy" Click="RunAsync">@(_busy ? "Running the duel…" : "Run duel")</RadzenButton>
+            @if (_busy)
+            {
+                <span class="po-muted">Two headless rollouts on this PC; this can take a minute.</span>
+            }
+        </div>
+    }
+    @if (_error is not null)
+    {
+        <div class="status-msg bad">@_error</div>
+    }
+    @if (_result is { } r)
+    {
+        <div class="po-toast">
+            @(r.Winner switch { "a" => $"Version A ({VersionText(r.A)}) wins", "b" => $"Version B ({VersionText(r.B)}) wins", _ => "A tie" }) on @(r.Scenario ?? _scenario)@(string.IsNullOrEmpty(r.Why) ? "." : $": {r.Why}")
+        </div>
+        <div class="duel-grid">
+            @Side("A", r.A, r.Winner == "a")
+            @Side("B", r.B, r.Winner == "b")
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    [Parameter] public IReadOnlyList<SkillInfoDto> Skills { get; set; } = [];
+
+    private string? _skill;
+    private string _a = string.Empty;
+    private string _b = string.Empty;
+    private string? _scenario;
+    private List<ScenarioInfoDto> _scenarios = [];
+    private string? _scenarioError;
+    private bool _busy;
+    private string? _error;
+    private DuelResultDto? _result;
+    private Dictionary<string, string> _errors = [];
+
+    private SkillInfoDto? Skill => Skills.FirstOrDefault(s => s.Id == _skill);
+    private List<SelectOption> SkillOptions => Skills.Select(s => new SelectOption(s.Id, s.Label)).ToList();
+    private List<SelectOption> ScenarioOptions => _scenarios.Select(s => new SelectOption(s.Id, s.Name ?? s.Id)).ToList();
+
+    private List<SelectOption> VersionOptions =>
+    [
+        new(string.Empty, Skill?.Version is int v ? $"Active (v{v})" : "Active"),
+        .. (Skill?.Versions ?? []).Select(v => new SelectOption(v.Version.ToString(Inv), $"v{v.Version}{(v.Passed ? string.Empty : " (did not pass)")}")),
+    ];
+
+    private string? Err(string field) => _errors.GetValueOrDefault(field);
+
+    private static string VersionText(DuelScoreDto? s) => s?.Version is int v ? $"v{v}" : "active";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (list, err) = await ConsoleApi.ScenariosAsync();
+        _scenarios = list?.Scenarios?.Where(s => s.Target == "lab").ToList() ?? [];
+        _scenarioError = list is null ? err ?? "no reply" : _scenarios.Count == 0 ? "no lab scenarios in RobotControl/scenarios" : null;
+        _scenario = _scenarios.FirstOrDefault()?.Id;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_skill is null || Skills.All(s => s.Id != _skill))
+        {
+            SetSkill(Skills.FirstOrDefault(s => s.State == "ready")?.Id ?? Skills.FirstOrDefault()?.Id);
+        }
+    }
+
+    private void SetSkill(string? id)
+    {
+        _skill = id;
+        _a = string.Empty;
+        // B defaults to the newest version that is not the active one, so the first duel is "active vs previous"
+        _b = Skill?.Versions?.FirstOrDefault(v => !v.Active)?.Version.ToString(Inv) ?? string.Empty;
+        _result = null;
+    }
+
+    private static int? ParseVersion(string v) => int.TryParse(v, NumberStyles.Integer, Inv, out var n) ? n : null;
+
+    private async Task RunAsync()
+    {
+        var req = new DuelRequest(_skill ?? string.Empty, ParseVersion(_a), ParseVersion(_b), _scenario ?? string.Empty);
+        // "Active" and the active version's number are the same policy
+        var active = Skill?.Version;
+        var same = (req.A ?? active) is int a && (req.B ?? active) is int b && a == b;
+        var check = await DuelValidator.ValidateAsync(req);
+        _errors = check.Errors.GroupBy(e => e.PropertyName).ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+        if (same)
+        {
+            _errors["B"] = "Pick two different versions.";
+        }
+        if (_errors.Count > 0)
+        {
+            return;
+        }
+        _busy = true;
+        _error = null;
+        _result = null;
+        try
+        {
+            var (res, err) = await ConsoleApi.DuelAsync(req);
+            _result = res is { Ok: true } ? res.Result : null;
+            _error = _result is null ? err ?? res?.Error ?? "The duel did not return a result." : null;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static RenderFragment Side(string label, DuelScoreDto? s, bool win) => __builder =>
+    {
+        <div class="duel-side @(win ? "duel-side--win" : string.Empty)">
+            <b>@label · @VersionText(s) @(win ? "· winner" : string.Empty)</b>
+            <span>Score: <b>@(s?.Score is double sc ? sc.ToString("0.00", Inv) : "—")</b> (lower is better)</span>
+            <span>Tracking error: @(s?.ErrMeanDeg is double m ? $"{m:0.00}°" : "—") mean, @(s?.ErrMaxDeg is double mx ? $"{mx:0.0}°" : "—") max</span>
+            <span>Torque RMS: @(s?.TorqueRms is double t ? $"{t:0.00} Nm" : "—")</span>
+            <span>Jitter: @(s?.Jitter is double j ? j.ToString("0.000", Inv) : "—")</span>
+            <span>Energy: @(s?.EnergyJ is double e ? $"{e:0.0} J" : "—")</span>
+            <span class="@(string.IsNullOrEmpty(s?.WouldStop) ? "status-msg ok" : "status-msg warn")">@(string.IsNullOrEmpty(s?.WouldStop) ? "Safety checks: would not stop" : $"Safety would stop it: {s.WouldStop}")</span>
+        </div>
+    };
+}

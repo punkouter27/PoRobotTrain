@@ -13,7 +13,9 @@
 // safety envelope would have stopped the run) and the head-camera picture-in-picture (or the 26-joint matrix).
 //
 // Tabs: Lab (R1PanelLab.cpp, brain: UR1SkillBrainComponent) and Walk (R1PanelWalk.cpp: Level 2 walk sandbox,
-// simulation only, stepped by the behaviour service).
+// simulation only, stepped by the behaviour service). Simulation tools (docs/sim_features.md: motor sound, physics
+// overlay, heat + battery, dataset recording, throwables, replay + free camera, action filter view, scenario scripts,
+// fall timeline) live in R1PanelSim.cpp and draw a sim card in the right column (under the panel when narrow).
 //
 // Command line:
 //   -R1Service=<url>       behaviour service URL for the walk sandbox (default ServiceUrl, http://127.0.0.1:8765)
@@ -183,6 +185,47 @@ private:
 	void SyncCourse();
 	void DrawWalkTab(float X, float Inner, float& Y);
 	bool HandleWalkClick(FName Id);
+
+	// ---------------------------------------------------------------- simulation features (R1PanelSim.cpp, docs/sim_features.md)
+	/** Motor sound volume 0..1 (0 = muted); the header chip cycles Muted / 25 / 50 / 100 %. Remembered. */
+	UPROPERTY(Config) float SoundVolume = 0.5f;
+	/** Physics overlay (#2): contacts, forces, CoM, capture point, support polygon (Walk); head torque (Lab). Remembered. */
+	UPROPERTY(Config) bool bPhysicsOverlay = false;
+	/** Procedural terrain (#3): seed and difficulty sent with POST /walk/start. Remembered. */
+	UPROPERTY(Config) int32 WalkSeed = 0;
+	UPROPERTY(Config) float WalkDifficulty = 0.5f;
+	UPROPERTY(Transient) TObjectPtr<class UR1MotorSynth> MotorSynth;
+	TArray<float> PrevJointSpeed;      // click detection (velocity sign reversal)
+	bool bPrevSoundFromWalk = false;
+	double LastClickAt = 0.0;
+	TMap<FString, double> FootDown;    // thud detection: foot contact key -> when it landed
+	float LastContactT = -1.f;         // walk state time of the contacts last checked for thuds
+	bool bTorqueAlert = false;
+	double AlertSince = -1.0;          // torque above the alert fraction since (debounce 0.2 s)
+	FString TorqueAlertText;
+	int32 ThrowFrom = 0;               // 0 front, 1 left, 2 right, 3 back
+	bool bReplayCam = false;           // free-fly camera on while a replay plays
+	TArray<FR1ScenarioInfo> WalkScenarios;
+	TArray<FR1LabScenario> LabScenarios;
+	bool bLabScenariosLoaded = false;
+	double NextScenarioFetch = 0.0;
+	bool bScenarioFetchInFlight = false;
+	float LastCardH = 300.f;
+	void TickSim(double Now, float DeltaSeconds);
+	void FeedMotorSound(const FR1MotorReadout& M, bool bFromWalk, float SpeedRef);
+	void DrawSimCard(float X, float& Y, float W);
+	void DrawLabSimCard(float X, float& Y, float W);
+	void DrawWalkSimCard(float X, float& Y, float W);
+	void DrawMotorBlock(const FR1MotorReadout& M, float X, float& Y, float W);
+	void DrawLabActionPlot(float X, float& Y, float W);
+	void DrawWalkActionBars(float X, float& Y, float W);
+	void DrawFallStrip(float X, float& Y, float W);
+	void DrawReplayBanner();
+	void DrawPhysicsOverlay();
+	void DrawWalkSimControls(float X, float Inner, float& Y);
+	bool HandleSimClick(FName Id);
+	void StartWalk(const FString& Mode);
+	FString DatasetDir() const;
 
 	// ---------------------------------------------------------------- unattended capture (-PanelCapture=<dir>)
 	FString PanelCaptureDir;

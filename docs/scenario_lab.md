@@ -35,6 +35,31 @@ with a crosshair at the image centre. When Look At is working, the ball sits on 
 swaps the camera for the joint matrix. **STOP** stops the brain and the walk sandbox. **Details** shows URLab's
 debug panels.
 
+## Simulation tools (docs/sim_features.md)
+
+Everything below is simulation only. The contract with the service and the web app is `docs/sim_features.md`; the
+code is `R1PanelSim.cpp` (panel), `R1MotorModel.*`, `R1MotorAudio.*`, and the brain (`R1SkillBrain.cpp`).
+
+| Tool | Where | What it does |
+|---|---|---|
+| **Motor sound** (#1, #17) | header chip **Sound 50 %** (cycles off / 25 / 50 / 100 %, remembered) | A procedural synth (no sound assets): whine pitch and loudness from the fastest joint, a buzz from the largest torque fraction, gear clicks when a joint reverses, thuds when a walking foot lands. While a torque fraction stays above `torque_alert_fraction` (0.8) for 0.2 s it beeps and shows a red **TORQUE ALERT** row. The head yaw motor (0.86 Nm) reaches that on big Look At steps. |
+| **Physics overlay** (#2) | **Physics overlay** button on the sim card (remembered) | Lab: a ring around the head sized and coloured by the head torque, and one arrow per head joint showing which way it pushes. Walk: contacts and their forces (orange), CoM (white) and its ground point, the capture point (green inside the support polygon, red outside) and the support polygon (cyan). |
+| **Heat + battery** (#5) | sim card, MOTORS | Hottest joint with a bar (ambient to limit + 10 °C, amber tick at warn, red at limit), battery %, minutes left and power. Lab: the C++ port of the motor model on the brain's joints, torque = `kp·(target − q) − kd·dq` clipped to effort. Walk: the service's thermal and battery blocks. Display only. |
+| **Record dataset** (#7) | Lab sim card | Saves 60 head-camera frames (5 per second) to `datasets/unreal_head_cam/<stamp>/rgb/00000.png` with `labels.json` (head yaw / pitch, the ball's box projected into the 320×240 camera). |
+| **Action view** (#15) | sim card, ACTION | Lab: the brain's raw action against the EMA-filtered one (alpha from `motor_model.json`) per head joint, with the jitter score. Walk: raw against filtered bars for every joint and **Apply filter** (`POST /walk/filter`). |
+| **Scenario scripts** (#18) | Lab sim card, Walk tab **Scenario** row | Lab scripts are read straight from `RobotControl/scenarios/*.json` (`"target": "lab"`, or `-R1ScenariosDir=<path>`): the brain plays the skill at `size_deg` for `duration_s` and applies the `target`, `push`, `noise`, `delay` and `strength` steps on its own clock; the disturbances are restored at the end. Walk scripts come from `GET /scenarios` and run in the service (`POST /walk/scenario`). |
+| **Taught poses** (#14) | Brain chips | `pose_<id>` skills from the web app load like the others (validation gate, SHA-256). They hold the head at the pose in `deploy.json` `"pose": {"yaw", "pitch"}` (rad) with command `[0,0,0]`. |
+
+Walk tab additions: course **Procedural** with a seed (− / +), **New terrain** (fresh seed, restarts the sandbox) and
+a difficulty; **Let go** (`free_hold`, the robot tips over); **Throw** a ball or a box from the front / left / right /
+back; **Replay last 3 s** at 0.25× and **Auto replay on fall**. During a replay the camera flies free (WASD, Q / E
+down / up, right mouse to look, Shift faster) and a banner shows the replay clock; it returns to the follow view
+afterwards. The fall timeline plots the capture-point margin and the tilt of the last 3 s before the last fall, with
+markers where it became unstable and where it fell, and the reason.
+
+Layout: at 1600×900 the sim card sits in the right column (under the head camera on the Lab tab, at the top right on
+the Walk tab). In a narrow window (e.g. 450×800) it moves under the panel.
+
 ## Same brain as the robot
 
 `UR1SkillBrainComponent` (`R1SkillBrain.cpp`) mirrors `RobotControl/behaviours/head_skills.py`:

@@ -29,6 +29,7 @@ using namespace R1PanelStyle;
 namespace
 {
 	const FName IdWalkStart(TEXT("walk_start")), IdWalkHold(TEXT("walk_hold")), IdWalkReset(TEXT("walk_reset")), IdWalkStop(TEXT("walk_stop"));
+	const FName IdWalkFree(TEXT("walk_free"));
 	const TCHAR* CoursePrefix = TEXT("walk_course_");
 	const TCHAR* HoldLabel = TEXT("Hold pose: no walking policy (held by a virtual harness)");
 
@@ -130,7 +131,7 @@ void AR1BehaviourPanel::ReadWalkInput()
 {
 	InputWalkCmd = FVector::ZeroVector;
 	APlayerController* PC = GetOwningPlayerController();
-	if (!PC || Tab != ER1PanelTab::Walk || !WalkState.bRunning)
+	if (!PC || Tab != ER1PanelTab::Walk || !WalkState.bRunning || WalkState.Replay.bActive)
 	{
 		return;
 	}
@@ -220,7 +221,7 @@ void AR1BehaviourPanel::SetWalkRunningVisuals(bool bOn)
 
 void AR1BehaviourPanel::SyncCourse()
 {
-	const bool bHaveGeometry = WalkState.Boxes.Num() > 0 || WalkState.CheckpointsMj.Num() > 0;
+	const bool bHaveGeometry = WalkState.Boxes.Num() > 0 || WalkState.CheckpointsMj.Num() > 0 || WalkState.Props.Num() > 0;
 	const bool bWant = WalkState.bValid && bHaveGeometry && (WalkState.bRunning || Tab == ER1PanelTab::Walk);
 	AR1WalkCourse* Course = CourseActor.Get();
 	if (!bWant)
@@ -266,14 +267,16 @@ void AR1BehaviourPanel::DrawWalkTab(float X, float Inner, float& Y)
 		{
 			Courses = {TEXT("flat"), TEXT("loop")};
 		}
+		Courses.AddUnique(TEXT("procedural"));   // docs/sim_features.md #3 (the service may list it already)
 		DrawText(TEXT("Course"), DimCol, X, Y + 5.f, Font, 0.9f);
 		float CX = X + 70.f;
 		for (const FString& C : Courses)
 		{
 			const bool bSel = (S.bRunning && !S.Course.IsEmpty() ? S.Course : WalkCourse) == C;
 			const FString Label = C.Left(1).ToUpper() + C.Mid(1);
-			DrawButton({FName(*(FString(CoursePrefix) + C)), Label, {CX, Y}, {90.f, 28.f}, !S.bRunning || bSel, bSel ? ChipOnCol : ChipCol});
-			CX += 96.f;
+			const float CW = C.Len() > 6 ? 110.f : 90.f;
+			DrawButton({FName(*(FString(CoursePrefix) + C)), Label, {CX, Y}, {CW, 28.f}, !S.bRunning || bSel, bSel ? ChipOnCol : ChipCol});
+			CX += CW + 6.f;
 		}
 		Y += 36.f;
 	}
@@ -282,15 +285,17 @@ void AR1BehaviourPanel::DrawWalkTab(float X, float Inner, float& Y)
 	{
 		const bool bCanStart = bJobFree && !S.bRunning && S.bPolicyAvailable;
 		const bool bCanHold = bJobFree && !S.bRunning && S.bValid;
-		const float W1 = 172.f, W2 = 132.f, W3 = 100.f, G = 8.f;
+		// Let go = free_hold: every joint PD-held without the harness, so the robot tips over (fall analysis, replay)
+		const float W1 = 160.f, W2 = 104.f, WF = 104.f, W3 = 76.f, G = 6.f;
 		DrawButton({IdWalkStart, TEXT("Start walking"), {X, Y}, {W1, 42.f}, bCanStart, VirtualCol, true});
 		if (!bCanStart && bJobFree && !S.bRunning && !S.bPolicyAvailable)
 		{
 			DisabledWhy.Add(IdWalkStart, TEXT("no validated Level 2 policy yet - use Hold pose to test the scene"));
 		}
 		DrawButton({IdWalkHold, TEXT("Hold pose"), {X + W1 + G, Y}, {W2, 42.f}, bCanHold, ChipCol});
-		DrawButton({IdWalkReset, TEXT("Reset"), {X + W1 + W2 + 2.f * G, Y}, {W3, 42.f}, S.bRunning, ChipCol});
-		DrawButton({IdWalkStop, TEXT("Stop walk"), {X + W1 + W2 + W3 + 3.f * G, Y}, {Inner - W1 - W2 - W3 - 3.f * G, 42.f}, S.bRunning, StopCol * 0.85f});
+		DrawButton({IdWalkFree, TEXT("Let go"), {X + W1 + W2 + 2.f * G, Y}, {WF, 42.f}, bCanHold, ChipCol});
+		DrawButton({IdWalkReset, TEXT("Reset"), {X + W1 + W2 + WF + 3.f * G, Y}, {W3, 42.f}, S.bRunning, ChipCol});
+		DrawButton({IdWalkStop, TEXT("Stop walk"), {X + W1 + W2 + WF + W3 + 4.f * G, Y}, {Inner - W1 - W2 - WF - W3 - 4.f * G, 42.f}, S.bRunning, StopCol * 0.85f});
 		if (!S.bRunning)
 		{
 			DisabledWhy.Add(IdWalkReset, TEXT("the walk sandbox is not running"));
@@ -298,11 +303,17 @@ void AR1BehaviourPanel::DrawWalkTab(float X, float Inner, float& Y)
 		}
 		Y += 50.f;
 	}
+	DrawWalkSimControls(X, Inner, Y);   // R1PanelSim.cpp: terrain seed, throw, scenarios
 
 	// state line
 	if (!S.bValid)
 	{
 		DrawWrapped(bServiceOnline ? TEXT("Waiting for /walk/state...") : TEXT("Behaviour service offline."), X, Y, Inner, DimCol, 0.9f);
+	}
+	else if (S.bRunning && S.Mode == TEXT("free_hold"))
+	{
+		DrawWrapped(S.bFallen ? TEXT("Let go: the robot fell (no harness, no policy). Replay it or reset.")
+			: TEXT("Let go: joints held, no harness and no policy - it will tip over in about a second."), X, Y, Inner, WarnCol, 0.9f);
 	}
 	else if (S.bRunning && S.Mode == TEXT("hold"))
 	{
@@ -368,42 +379,44 @@ void AR1BehaviourPanel::DrawWalkTab(float X, float Inner, float& Y)
 		"Gamepad: left stick move, right stick turn. Needs the behaviour service (python -m robotcontrol.behaviours.service)."), X, Y, Inner, DimCol, 0.8f);
 }
 
+void AR1BehaviourPanel::StartWalk(const FString& Mode)
+{
+	FString Body = FString::Printf(TEXT("{\"course\":\"%s\",\"mode\":\"%s\""), *R1Panel::JsonEscape(WalkCourse), *R1Panel::JsonEscape(Mode));
+	if (WalkCourse == TEXT("procedural"))
+	{
+		Body += FString::Printf(TEXT(",\"seed\":%d,\"difficulty\":%.2f"), WalkSeed, WalkDifficulty);
+	}
+	Body += TEXT("}");
+	PostJson(TEXT("/walk/start"), Body, [this, Mode](int32 Code, TSharedPtr<FJsonObject> J)
+	{
+		FString Err, Reason;
+		if (J.IsValid())
+		{
+			J->TryGetStringField(TEXT("error"), Err);
+			J->TryGetStringField(TEXT("policy_reason"), Reason);
+		}
+		if (Code == 200)
+		{
+			ShowToast(Mode == TEXT("hold") ? TEXT("Walk sandbox started in hold pose.")
+				: Mode == TEXT("free_hold") ? TEXT("Let go: no harness, no policy - watch it tip over.")
+				: TEXT("Walk sandbox started: drive with WASD or a gamepad."), CyanCol);
+		}
+		else
+		{
+			const FString Why = Code == 0 ? FString(TEXT("service not reachable")) : !Reason.IsEmpty() ? Reason : !Err.IsEmpty() ? Err : FString::Printf(TEXT("HTTP %d"), Code);
+			ShowToast(FString::Printf(TEXT("Walk start refused: %s"), *Why), BadCol);
+		}
+		NextWalkPoll = 0.0;
+		NextPoll = 0.0;
+	});
+}
+
 bool AR1BehaviourPanel::HandleWalkClick(FName Id)
 {
 	const FString S = Id.ToString();
-	auto Start = [this](const TCHAR* Mode)
+	if (Id == IdWalkStart || Id == IdWalkHold || Id == IdWalkFree)
 	{
-		const FString Body = FString::Printf(TEXT("{\"course\":\"%s\",\"mode\":\"%s\"}"), *R1Panel::JsonEscape(WalkCourse), Mode);
-		const FString ModeStr(Mode);
-		PostJson(TEXT("/walk/start"), Body, [this, ModeStr](int32 Code, TSharedPtr<FJsonObject> J)
-		{
-			FString Err, Reason;
-			if (J.IsValid())
-			{
-				J->TryGetStringField(TEXT("error"), Err);
-				J->TryGetStringField(TEXT("policy_reason"), Reason);
-			}
-			if (Code == 200)
-			{
-				ShowToast(ModeStr == TEXT("hold") ? TEXT("Walk sandbox started in hold pose.") : TEXT("Walk sandbox started: drive with WASD or a gamepad."), CyanCol);
-			}
-			else
-			{
-				const FString Why = Code == 0 ? FString(TEXT("service not reachable")) : !Reason.IsEmpty() ? Reason : !Err.IsEmpty() ? Err : FString::Printf(TEXT("HTTP %d"), Code);
-				ShowToast(FString::Printf(TEXT("Walk start refused: %s"), *Why), BadCol);
-			}
-			NextWalkPoll = 0.0;
-			NextPoll = 0.0;
-		});
-	};
-	if (Id == IdWalkStart)
-	{
-		Start(TEXT("policy"));
-		return true;
-	}
-	if (Id == IdWalkHold)
-	{
-		Start(TEXT("hold"));
+		StartWalk(Id == IdWalkStart ? TEXT("policy") : Id == IdWalkHold ? TEXT("hold") : TEXT("free_hold"));
 		return true;
 	}
 	if (Id == IdWalkReset || Id == IdWalkStop)

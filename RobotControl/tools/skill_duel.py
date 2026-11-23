@@ -159,7 +159,9 @@ def _why(a: dict, b: dict, winner: str) -> str:
               "energy_j": "spends {:.2f} J less energy"}  # fmt: skip
     gains = sorted(((WEIGHTS[k] * (lo[k] - w[k]), k) for k in WEIGHTS), reverse=True)
     parts = [labels[k].format(lo[k] - w[k]) for g, k in gains[:2] if g > 0]
-    return f"{winner} " + (" and ".join(parts) if parts else "scores lower") + f" ({w['score']:.2f} vs {lo['score']:.2f})"
+    return (
+        f"{winner} " + (" and ".join(parts) if parts else "scores lower") + f" ({w['score']:.2f} vs {lo['score']:.2f})"
+    )
 
 
 def duel(skill_id: str, a: Optional[int], b: Optional[int], scenario: str = "lab_stress") -> dict:

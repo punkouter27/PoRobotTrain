@@ -224,6 +224,10 @@ class Twin {
     this.standGroup.visible = this.mode !== "walk";
     this.zUp.add(this.standGroup);
     const mat = new THREE.MeshStandardNodeMaterial({ color: "#5b6273", metalness: 0.6, roughness: 0.4 });
+    // the hook and the plate it latches onto on the back pack are yellow in the MJCF: show them, so the attachment
+    // point (the back, not the head) reads at a glance
+    const hookMat = new THREE.MeshStandardNodeMaterial({ color: "#e0b030", metalness: 0.3, roughness: 0.5 });
+    const isHook = (s) => Array.isArray(s.rgba) && s.rgba[0] > s.rgba[2] + 0.3;
     for (const s of stand) {
       let g = null;
       if (s.type === "box") g = new THREE.BoxGeometry(2 * s.size[0], 2 * s.size[1], 2 * s.size[2]);
@@ -231,7 +235,7 @@ class Twin {
       else if (s.type === "cylinder") g = new THREE.CylinderGeometry(s.size[0], s.size[0], 2 * s.size[1], 16).rotateX(Math.PI / 2);
       else if (s.type === "sphere") g = new THREE.SphereGeometry(s.size[0], 16, 12);
       if (!g) continue;
-      const mesh = new THREE.Mesh(g, mat);
+      const mesh = new THREE.Mesh(g, isHook(s) ? hookMat : mat);
       mesh.position.set(...s.pos);
       mesh.quaternion.set(...s.quat);
       mesh.castShadow = true;

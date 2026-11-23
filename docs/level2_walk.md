@@ -105,3 +105,19 @@ The gate's sim2sim scenarios exist because these differ:
   URLab puppet mode, the stand is hidden while walking, and the follow camera tracks the pelvis.
 
 API: `docs/service_api.md` section 3. Tests: `RobotControl/tests/test_walk_sandbox.py`.
+
+## Simulation-only extras (docs/sim_features.md)
+
+The sandbox also reports a physics overlay (CoM, capture point, foot support polygon and signed capture-point
+margin, up to 24 robot contacts with world forces), motor speed / torque with the display-only heat + battery model
+(`RobotControl/configs/motor_model.json`), and the action filter view (raw vs EMA, jitter score; applied only when the
+operator switches it on). Without a walking policy, mode `free_hold` (PD hold, no harness) topples in about a second:
+it exercises the fall analysis (`t_unstable` = start of the final run of capture point outside the feet; cause
+`cp_outside | tilt | height | prop_hit`) and the 10 s replay buffer (the simulation pauses while replaying).
+`POST /walk/throw` adds balls / boxes (MuJoCo free bodies pre-added at load, parked far away until thrown).
+
+Course `procedural` (`walk/course.py`) is generated from a seed and a difficulty; the same terrain can go into a
+training scene: `python -m robotcontrol.walk.course --export procedural --seed S --difficulty D --out terrain.xml`
+writes an MJCF fragment to `<include>`. Scenario scripts (`RobotControl/scenarios/*.json`, target `walk`) replay a
+fixed sequence of commands, throws, resets, replays and filter changes on sim time (`POST /walk/scenario`).
+

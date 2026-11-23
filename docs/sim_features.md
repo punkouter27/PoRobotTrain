@@ -167,3 +167,23 @@ Push button: 0.25 s), `noise` (deg), `delay` (steps 0..4), `strength` (pct 30..1
 - Synthetic camera data (CLI only): `python -m robotcontrol.tools.synth_camera --frames 200 --out datasets/head_cam`
   writes `rgb/00000.png`, `depth/00000.npy` (m), `seg/00000.png` (object id per pixel) and `labels.json`
   (per frame: head yaw/pitch, light, objects with class, colour, bbox [x0,y0,x1,y1]). `datasets/` is git-ignored.
+
+## Python implementation notes (clarifications, 2026-11-22)
+
+- `replay.t` = position inside the replay window (0..`duration_s`, sim seconds); the top-level `t` is the replayed
+  frame's sim time. `duration_s` is shorter than requested when less has been recorded. `/walk/state` also lists
+  `"modes": ["policy", "hold", "free_hold"]`.
+- Walk scenarios may carry `"fallback_mode"` (e.g. `procedural_walk`: `policy`, fallback `hold`): used when the mode is
+  `policy` and no validated Level 2 policy exists; the `/walk/scenario` reply then has a `note`.
+- `GET /poses` was already the operator console's preset-pose endpoint (`docs/service_api.md` section 5). It now
+  returns the presets unchanged followed by the taught poses; a taught entry has `id, name, yaw_deg, pitch_deg, skill`
+  plus the preset fields (`label, say, words, q_deg`) so both readers parse it. `POST /poses/preview` also accepts a
+  taught pose. A taught pose skill settles at its pose (not at centre) and uses the wide 15 deg / 1 s tracking window
+  (it starts with a move); validation bars 1.5 / 2.0 / 2.5 deg, 150 default training iterations.
+- `POST /gap` also returns `a, b, tol_deg, overlap_s, worst`; `GET /skills/montage` also `fps`, and on failure both
+  `error` and `reason`. `POST /skills/train` takes `"checkpoint_every": n`.
+- `train_head_skill.py --scratch DIR` trains + validates into DIR only (no version stored or activated).
+- Synthetic camera depth: pixels that hit nothing hold the far-plane distance.
+- Procedural course: only low planks (<= 2 cm) lie on the checkpoint path; every other piece keeps 0.35 m from it.
+- `sim_features/` and `scenarios/` are left out of the robot kit (simulation only).
+

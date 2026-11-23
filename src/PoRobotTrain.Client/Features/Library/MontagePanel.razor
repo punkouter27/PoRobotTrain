@@ -1,0 +1,85 @@
+@using System.Globalization
+@inject ConsoleApiClient ConsoleApi
+
+@* #11 Training montage (docs/sim_features.md): one GIF of the skill at each saved training checkpoint, made by
+   tools/training_montage.py. A skill trained without --checkpoint-every has none. *@
+<section class="po-card lib-tool">
+    <div>
+        <h2 class="lib-title">Training montage</h2>
+        <span class="po-muted">How a skill looked at each saved checkpoint while it learned.</span>
+    </div>
+    @if (Skills.Count == 0)
+    {
+        <div class="po-muted">No trained skills yet. Train one in step 3.</div>
+    }
+    else
+    {
+        <div class="lib-form">
+            <label>Skill <RadzenDropDown TValue="string" class="assist-input" Data="@SkillOptions" TextProperty="Text" ValueProperty="Value" Value="@_skill" Change="@(v => LoadAsync(v as string))" aria-label="Montage skill" /></label>
+        </div>
+    }
+    @if (_loading)
+    {
+        <div class="po-muted">Loading the montage…</div>
+    }
+    else if (_error is not null)
+    {
+        <div class="status-msg bad">@_error</div>
+    }
+    else if (_montage is { Ok: true, GifBase64.Length: > 0 } m)
+    {
+        <img class="montage-img" src="@($"data:image/gif;base64,{m.GifBase64}")" alt="@($"Training montage of {_skill}: {m.Frames ?? m.Checkpoints?.Count ?? 0} frames")" />
+        <div class="po-muted">
+            @(m.Frames ?? m.Checkpoints?.Count ?? 0) frames · checkpoints at iteration @string.Join(", ", (m.Checkpoints ?? []).Select(c => c.ToString(CultureInfo.InvariantCulture)))
+        </div>
+    }
+    else if (_montage is not null)
+    {
+        <div class="why">
+            No montage for this skill: @(_montage.Reason ?? _montage.Error ?? "no checkpoints saved").
+            Train it with checkpoints (<code>train_head_skill.py --checkpoint-every N</code>) to get one.
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<SkillInfoDto> Skills { get; set; } = [];
+
+    private string? _skill;
+    private bool _loading;
+    private string? _error;
+    private MontageDto? _montage;
+
+    private List<SelectOption> SkillOptions => Skills.Select(s => new SelectOption(s.Id, s.Label)).ToList();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_skill is null && Skills.Count > 0)
+        {
+            await LoadAsync(Skills.FirstOrDefault(s => s.State == "ready")?.Id ?? Skills[0].Id);
+        }
+    }
+
+    private async Task LoadAsync(string? skill)
+    {
+        if (string.IsNullOrEmpty(skill))
+        {
+            return;
+        }
+        _skill = skill;
+        _loading = true;
+        _error = null;
+        _montage = null;
+        try
+        {
+            var (res, err) = await ConsoleApi.MontageAsync(skill);
+            _montage = res;
+            // ok false with a reason is a normal answer (no checkpoints); only a missing reply is an error
+            _error = res is null ? err ?? "no reply" : null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

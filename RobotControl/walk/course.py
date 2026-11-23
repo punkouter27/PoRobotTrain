@@ -143,7 +143,7 @@ def _piece(kind: str, k: int, cx: float, cy: float, yaw_deg: float, d: float, rn
     return out
 
 
-PIECE_RADIUS = {"stairs": 0.65, "ramp": 0.75, "stones": 0.9, "clutter": 0.4, "plank": 0.62}
+PIECE_RADIUS = {"stairs": 0.7, "ramp": 0.76, "stones": 0.9, "clutter": 0.4, "plank": 0.62}  # bounding
 
 
 def procedural(seed: int = 0, difficulty: float = 0.5) -> dict:

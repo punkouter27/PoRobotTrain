@@ -34,9 +34,9 @@ try
     {
         var opts = sp.GetRequiredService<IOptions<RobotServiceOptions>>().Value;
         client.BaseAddress = new Uri(opts.BaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(5);
+        client.Timeout = RobotServiceTimeoutHandler.Ceiling; // per request: 5 s, longer for the skill tools (handler below)
         client.DefaultRequestHeaders.ConnectionClose = true; // Python BaseHTTPRequestHandler closes HTTP/1.0 sockets per response
-    });
+    }).AddHttpMessageHandler(() => new RobotServiceTimeoutHandler());
 
     var app = builder.Build();
 

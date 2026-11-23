@@ -41,11 +41,11 @@ namespace
 
 	FName Id(const TCHAR* Prefix, int32 I) { return FName(*FString::Printf(TEXT("%s%d"), Prefix, I)); }
 
-	/** 10 / 20 / 30 up to the skill's max, plus its max; none for Hold Centre (size does not apply). */
+	/** 10 / 20 / 30 up to the skill's max, plus its max; none for Hold Centre and taught poses (size does not apply). */
 	TArray<float> SizesFor(const FR1SkillDef& S)
 	{
 		TArray<float> Out;
-		if (S.Id == TEXT("hold_centre"))
+		if (S.Id == TEXT("hold_centre") || S.bPose)
 		{
 			return Out;
 		}
@@ -216,7 +216,9 @@ void AR1BehaviourPanel::DrawLabTab(float X, float Inner, float& Y)
 		return;
 	}
 	{
-		const float Gap = 6.f, W = (Inner - (Shown.Num() - 1) * Gap) / Shown.Num();
+		// five chips per row (taught poses, pose_<id>, add more rows)
+		const int32 PerRow = FMath::Min(Shown.Num(), 5);
+		const float Gap = 6.f, W = (Inner - (PerRow - 1) * Gap) / PerRow;
 		if (!Skills[LabSkill].bReady && !bExperiment)
 		{
 			LabSkill = Shown[0];
@@ -226,7 +228,11 @@ void AR1BehaviourPanel::DrawLabTab(float X, float Inner, float& Y)
 			const int32 i = Shown[k];
 			const FR1SkillDef& S = Skills[i];
 			const bool bSel = i == LabSkill;
-			DrawButton({Id(SkillPrefix, i), S.Label, {X + k * (W + Gap), Y}, {W, 30.f}, S.bReady && (!B->IsRunning() || bSel),
+			if (k > 0 && k % PerRow == 0)
+			{
+				Y += 36.f;
+			}
+			DrawButton({Id(SkillPrefix, i), S.Label, {X + (k % PerRow) * (W + Gap), Y}, {W, 30.f}, S.bReady && (!B->IsRunning() || bSel),
 				bSel ? ChipOnCol : ChipCol});
 			if (!S.bReady)
 			{
@@ -298,6 +304,12 @@ void AR1BehaviourPanel::DrawLabTab(float X, float Inner, float& Y)
 	}
 	else
 	{
+		if (!R.ScenarioName.IsEmpty())
+		{
+			// #18 lab scenario script: its own clock and the last applied step
+			DrawLine(FString::Printf(TEXT("Scenario %s  %.0f / %.0f s  step %d / %d  %s"), *R.ScenarioName, R.ScenarioT, R.ScenarioDurationS,
+				R.ScenarioStep, R.ScenarioSteps, *R.ScenarioLast), X, Y, CyanCol, 0.85f);
+		}
 		const FString State = R.bRunning ? (R.bSettling ? TEXT("finishing") : TEXT("playing")) : TEXT("done");
 		DrawLine(FString::Printf(TEXT("%s %s  %.0f / %.0f s   accuracy: %s (%.1f deg)"), *R.SkillLabel, *State, R.T, R.DurationS,
 			Grade(R.ErrMeanDeg), R.ErrMeanDeg), X, Y, R.bRunning ? TextCol : DimCol, 0.88f);
@@ -309,6 +321,10 @@ void AR1BehaviourPanel::DrawLabTab(float X, float Inner, float& Y)
 		{
 			DrawWrapped(FString::Printf(TEXT("On the real robot: %s"), *R.RobotWouldStop), X, Y, Inner, BadCol, 0.85f);
 		}
+	}
+	if (bTorqueAlert)
+	{
+		DrawLine(TorqueAlertText, X, Y, BadCol, 0.88f);   // #17: also beeps (motor sound)
 	}
 	Y += 4.f;
 	{
@@ -467,6 +483,7 @@ bool AR1BehaviourPanel::HandleLabClick(FName ClickId)
 	{
 		B->ReloadSkills();
 		LabSkill = -1;
+		bLabScenariosLoaded = false;   // re-read RobotControl/scenarios too
 		ShowToast(FString::Printf(TEXT("Reloaded %d trained skill(s) from the web app."), B->GetSkills().Num()), TextCol);
 		return true;
 	}

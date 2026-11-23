@@ -13,6 +13,9 @@ Endpoints (JSON):
   GET  /robustness             latest robustness sweep report (logs/robustness/latest.json)
   POST /robustness/run         run the robustness sweep as job "robustness"
   GET  /walk/state, POST /walk/start|command|reset|stop   Level 2 walk sandbox (simulation only)
+  POST /walk/throw|replay|filter|scenario, GET /scenarios   walk sandbox extras (docs/sim_features.md)
+  POST /skills/duel, GET /runs, POST /gap, GET /skills/montage?skill=   skill tools (simulation / log files only)
+  GET  /poses, POST /poses, POST /poses/delete   taught head poses -> skills pose_<id> (+ the console's presets)
   GET  /skills                 trained head skills: state (untrained|unvalidated|failed|ready), validation metrics
   POST /skills/train {"behaviour": id | "all", "iters": n?}
                                train + export + validate on this PC (job "train", "@progress k/n"); never the robot
@@ -78,7 +81,7 @@ ROBOT_COPIES = (
 PUSHED_RE = re.compile(r"^@pushed (\w+) v(\d+) ([0-9a-f]{64})")
 PROGRESS_RE = re.compile(r"^@progress (\d+)/(\d+)")
 LIMITS = {"amplitude": (1.0, 30.0), "freq": (0.05, 0.5), "duration": (2.0, 60.0)}
-BEHAVIOURS = tuple(BEHAVIOUR_SPECS.keys())
+BEHAVIOURS = tuple(BEHAVIOUR_SPECS.keys())  # at import; parse_params checks BEHAVIOUR_SPECS live (taught poses)
 
 
 def parse_params(body: dict) -> dict:
@@ -88,7 +91,7 @@ def parse_params(body: dict) -> dict:
         "freq": float(body.get("freq", 0.2)),
         "duration": float(body.get("duration", 20.0)),
     }
-    if p["behaviour"] not in BEHAVIOURS:
+    if p["behaviour"] not in BEHAVIOUR_SPECS:
         raise ValueError(f"unknown behaviour {p['behaviour']!r}")
     if body.get("version") is not None:  # a stored training session (virtual robot only, see preview())
         if p["behaviour"] not in head_skills.SKILLS:
@@ -878,6 +881,13 @@ class Service:
             if not 1 <= n <= 3000:
                 return {"ok": False, "error": "iters must be in [1, 3000]", "_code": 400}
             cmd += ["--iters", str(n)]
+        ce = body.get("checkpoint_every")
+        if ce is not None:
+            n = int(ce)
+            if not 0 <= n <= 3000:
+                return {"ok": False, "error": "checkpoint_every must be in [0, 3000]", "_code": 400}
+            if n:
+                cmd += ["--checkpoint-every", str(n)]
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running", "_code": 409}
@@ -967,13 +977,41 @@ class Service:
                 if self.job and self.job != "walk":
                     return {"ok": False, "error": f"{self.job} is running", "_code": 409}
                 self.job = "walk"  # reserve URLab + the job slot while the scene loads
-            res = w.start(str(body.get("course", "loop")), str(body.get("mode", "policy")))
-            if not res.get("ok"):
-                with self.lock:
-                    self.job = None
+            try:
+                seed, difficulty = int(body.get("seed", 0)), float(body.get("difficulty", 0.5))
+            except (TypeError, ValueError):
+                seed, difficulty = None, None
+            if seed is None:
+                res = {"ok": False, "error": "seed must be an integer and difficulty a number"}
             else:
-                self.last_result = ""
-            return res
+                res = w.start(str(body.get("course", "loop")), str(body.get("mode", "policy")), seed, difficulty)
+            return self._walk_started(res)
+        if action == "scenario":
+            if body.get("stop"):
+                return w.stop_scenario()
+            from ..sim_features import scenarios
+
+            try:
+                sc = scenarios.load(str(body.get("id", "")))
+            except ValueError as e:
+                return {"ok": False, "error": str(e), "_code": 404}
+            if sc["target"] != "walk":
+                return {"ok": False, "error": f"scenario {sc['id']!r} is a {sc['target']} scenario", "_code": 400}
+            with self.lock:
+                if self.job and self.job != "walk":
+                    return {"ok": False, "error": f"{self.job} is running", "_code": 409}
+                self.job = "walk"
+            return self._walk_started(w.run_scenario(sc))
+        if action == "throw":
+            try:
+                speed, from_deg = float(body.get("speed", 4.0)), float(body.get("from_deg", 0.0))
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "speed and from_deg must be numbers"}
+            return w.throw(str(body.get("kind", "ball")), speed, from_deg)
+        if action == "replay":
+            return w.replay_post(body)
+        if action == "filter":
+            return w.set_filter(body.get("alpha"), body.get("apply"))
         if action == "command":
             vx, vy, wz = self.console.limits.scale_walk(
                 float(body.get("vx", 0.0)), float(body.get("vy", 0.0)), float(body.get("wz", 0.0))
@@ -984,6 +1022,94 @@ class Service:
         if action == "stop":
             return self.walk_stop()
         return {"ok": False, "error": f"unknown walk action {action!r}", "_code": 404}
+
+    def _walk_started(self, res: dict) -> dict:
+        if not res.get("ok"):
+            with self.lock:
+                if self.job == "walk" and not (self.walk and self.walk.running):
+                    self.job = None
+        else:
+            self.last_result = ""
+        return res
+
+    # ------------------------------------------------------------------ skill tools + taught poses (simulation only)
+    def skill_duel(self, body: dict) -> dict:
+        from ..tools.skill_duel import duel
+
+        sid = str(body.get("skill") or "")
+        if sid not in head_skills.SKILLS:
+            return {"ok": False, "error": f"{sid!r} is not a trained skill", "_code": 400}
+        try:
+            a = None if body.get("a") is None else int(body["a"])
+            b = None if body.get("b") is None else int(body["b"])
+            return {"ok": True, "result": duel(sid, a, b, str(body.get("scenario") or "lab_stress"))}
+        except (TypeError, ValueError) as e:
+            return {"ok": False, "error": str(e), "_code": 400}
+
+    def runs(self) -> dict:
+        from ..tools.gap_check import list_runs
+
+        return {"ok": True, "runs": list_runs()}
+
+    def gap(self, body: dict) -> dict:
+        from ..tools.gap_check import gap
+
+        try:
+            return gap(str(body.get("a") or ""), str(body.get("b") or ""), float(body.get("tol_deg", 5.0)))
+        except (TypeError, ValueError) as e:
+            return {"ok": False, "error": str(e), "_code": 400}
+
+    def montage(self, skill_id: str) -> dict:
+        from ..tools.training_montage import montage_status
+
+        res = montage_status(skill_id)
+        if not res.get("ok"):
+            res.setdefault("reason", res.get("error"))
+        return res
+
+    def poses_get(self) -> dict:
+        """The console's preset poses (unchanged) followed by the taught poses; a taught entry carries both shapes
+        (id, yaw_deg, pitch_deg, skill + the preset fields label, say, words, q_deg)."""
+        from . import taught_poses
+
+        presets = self.console.library.poses()
+        taught = [dict(p, label=f"{p['name']} (taught)", say="", words=[],
+                       q_deg={"head_yaw_joint": p["yaw_deg"], "head_pitch_joint": p["pitch_deg"]})
+                  for p in taught_poses.list_poses()]  # fmt: skip
+        return {"ok": True, "poses": presets + taught}
+
+    def poses_post(self, body: dict) -> dict:
+        from . import taught_poses
+
+        try:
+            pose = taught_poses.add_pose(body.get("name"), body.get("yaw_deg"), body.get("pitch_deg"))
+        except ValueError as e:
+            return {"ok": False, "error": str(e), "_code": 400}
+        self._skills_at = 0.0
+        self.log(f"taught pose {pose['name']!r} saved as skill {pose['skill']} (train it to use it)")
+        return {"ok": True, "pose": pose}
+
+    def poses_delete(self, body: dict) -> dict:
+        from . import taught_poses
+
+        pid = str(body.get("id") or "")
+        if not taught_poses.delete_pose(pid):
+            return {"ok": False, "error": f"no taught pose {pid!r}", "_code": 404}
+        self._skills_at = 0.0
+        return {"ok": True}
+
+    def taught_pose_preview(self, body: dict):
+        """POST /poses/preview for a taught pose (by name, id or skill id); None = not a taught pose (console's)."""
+        from . import taught_poses
+
+        key = str(body.get("name", ""))
+        p = next((p for p in taught_poses.list_poses() if key in (p["name"], p["id"], p["skill"])), None)
+        if p is None:
+            return None
+        q = {"head_yaw_joint": p["yaw_deg"], "head_pitch_joint": p["pitch_deg"]}
+        clip = {"name": p["skill"][:40], "title": f"Pose: {p['name']}", "loop": False,
+                "keyframes": [{"t": 0.0, "q_deg": q}, {"t": 0.6, "q_deg": q}]}  # fmt: skip
+        return self.console._r(self.console.play(clip, str(body.get("target", "practice")), False, "pose"))
 
     def stop(self) -> dict:
         with self.lock:
@@ -1084,6 +1210,8 @@ def make_handler(svc: Service):
             return True
 
         def do_GET(self):
+            if urlparse(self.path).path == "/poses":  # console presets + taught poses
+                return self._send(200, svc.poses_get())
             try:
                 if self._console(svc.console.handle_get(self.path)):
                     return
@@ -1102,6 +1230,15 @@ def make_handler(svc: Service):
                 self._send(200, svc.status())
             elif self.path.startswith("/robustness"):
                 self._send(200, svc.robustness_report())
+            elif self.path.startswith("/skills/montage"):
+                skill = (parse_qs(urlparse(self.path).query).get("skill") or [""])[0]
+                self._reply(svc.montage(skill))
+            elif self.path.startswith("/scenarios"):
+                from ..sim_features.scenarios import list_scenarios
+
+                self._send(200, {"ok": True, "scenarios": list_scenarios()})
+            elif urlparse(self.path).path == "/runs":
+                self._send(200, svc.runs())
             elif self.path.startswith("/skills/detail"):
                 qs = parse_qs(urlparse(self.path).query)
                 ver = (qs.get("version") or [None])[0]
@@ -1136,6 +1273,12 @@ def make_handler(svc: Service):
                 body = json.loads(self._read_body() or b"{}")
                 if not isinstance(body, dict):
                     raise ValueError("body must be a JSON object")
+                if self.path == "/poses":
+                    return self._reply(svc.poses_post(body))
+                if self.path == "/poses/delete":
+                    return self._reply(svc.poses_delete(body))
+                if self.path == "/poses/preview" and self._console(svc.taught_pose_preview(body)):
+                    return
                 if self._console(svc.console.handle_post(self.path, body)):
                     return
                 if self.path == "/stop":
@@ -1150,6 +1293,10 @@ def make_handler(svc: Service):
                     return self._reply(svc.activate_skill(body))
                 if self.path == "/skills/push":
                     return self._reply(svc.push_skill(body))
+                if self.path == "/skills/duel":
+                    return self._reply(svc.skill_duel(body))
+                if self.path == "/gap":
+                    return self._reply(svc.gap(body))
                 if self.path == "/lab/play":
                     return self._reply(svc.lab_play(body))
                 if self.path.startswith("/walk/"):

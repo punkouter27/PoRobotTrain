@@ -28,8 +28,10 @@ from typing import List, Optional
 from .. import PACKAGE_DIR, PROJECT_ROOT
 from .deploy_pack import verify_bundle
 
-# walk: the Level 2 walk sandbox is simulation only and must never reach the robot
-EXCLUDE_DIRS = {"__pycache__", "training", "models", "tests", ".pytest_cache", "robot_kit_files", "walk"}
+# walk: the Level 2 walk sandbox is simulation only and must never reach the robot; sim_features + scenarios are
+# simulation-only display tools (docs/sim_features.md)
+EXCLUDE_DIRS = {"__pycache__", "training", "models", "tests", ".pytest_cache", "robot_kit_files", "walk",
+                "sim_features", "scenarios"}  # fmt: skip
 FILES_DIR = PACKAGE_DIR / "tools" / "robot_kit_files"
 
 

@@ -33,6 +33,7 @@ packages = [
     "robotcontrol.training",
     "robotcontrol.behaviours",
     "robotcontrol.walk",
+    "robotcontrol.sim_features",
     "robotcontrol.tests",
 ]
 

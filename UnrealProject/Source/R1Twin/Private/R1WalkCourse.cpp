@@ -23,9 +23,11 @@ AR1WalkCourse::AR1WalkCourse()
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cyl(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sph(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Mat(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	CubeMesh = Cube.Object;
 	CylinderMesh = Cyl.Object;
+	SphereMesh = Sph.Object;
 	BaseMaterial = Mat.Object;
 }
 
@@ -70,8 +72,62 @@ void AR1WalkCourse::Clear()
 	bBuilt = false;
 }
 
+void AR1WalkCourse::SyncProps(const TArray<FR1WalkProp>& Props)
+{
+	TSet<int32> Seen;
+	for (const FR1WalkProp& P : Props)
+	{
+		const bool bBall = P.Kind == TEXT("ball");
+		Seen.Add(P.Id);
+		TObjectPtr<UStaticMeshComponent>* Found = PropParts.Find(P.Id);
+		UStaticMeshComponent* C = Found ? Found->Get() : nullptr;
+		if (C && PropKinds.FindRef(P.Id) != P.Kind)
+		{
+			C->DestroyComponent();   // the id was recycled for another kind
+			C = nullptr;
+		}
+		if (!C)
+		{
+			C = NewObject<UStaticMeshComponent>(this);
+			C->SetStaticMesh(bBall ? SphereMesh : CubeMesh);
+			C->SetMobility(EComponentMobility::Movable);
+			C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			C->SetSimulatePhysics(false);   // visual only: the prop flies in MuJoCo (behaviour service)
+			C->SetCastShadow(true);
+			C->SetupAttachment(Root);
+			C->RegisterComponent();
+			if (BaseMaterial)
+			{
+				UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+				Mid->SetVectorParameterValue(ColorParam, bBall ? Hex(TEXT("f97316")) : Hex(TEXT("a16207")));
+				C->SetMaterial(0, Mid);
+			}
+			PropParts.Add(P.Id, C);
+			PropKinds.Add(P.Id, P.Kind);
+		}
+		// engine sphere and cube are 100 cm across: scale = diameter / edge in metres
+		const float R = P.Size.Num() > 0 ? P.Size[0] : 0.1f;
+		const FVector Scale = bBall ? FVector(2.0 * R)
+			: FVector(2.0 * (P.Size.Num() > 0 ? P.Size[0] : 0.125f), 2.0 * (P.Size.Num() > 1 ? P.Size[1] : R), 2.0 * (P.Size.Num() > 2 ? P.Size[2] : R));
+		C->SetRelativeTransform(FTransform(MjUe::QuatToUe(P.QuatW, P.QuatX, P.QuatY, P.QuatZ), MjUe::PositionToUe(P.PosMj), Scale));
+	}
+	for (auto It = PropParts.CreateIterator(); It; ++It)
+	{
+		if (!Seen.Contains(It.Key()))
+		{
+			if (It.Value())
+			{
+				It.Value()->DestroyComponent();
+			}
+			PropKinds.Remove(It.Key());
+			It.RemoveCurrent();
+		}
+	}
+}
+
 void AR1WalkCourse::Sync(const FR1WalkState& State)
 {
+	SyncProps(State.Props);
 	const uint32 Hash = State.GeometryHash();
 	if (!bBuilt || Hash != BuiltHash)
 	{

@@ -44,8 +44,8 @@ struct R1TWIN_API FR1SkillDef
 	TArray<FVector2D> GlanceKeys;   // (yaw, pitch) fractions of the size
 
 	/** Taught pose (docs/sim_features.md #14, skill id pose_<id>): hold the head at a fixed angle.
-	 *  Angles from deploy.json pose_yaw_deg / pose_pitch_deg (top level; metadata.* and a "pose" object are accepted
-	 *  too). Command = deploy.json pose_command [3] if present, else [0, 0, 0] (held like Hold Centre). */
+	 *  Angles from deploy.json "pose": {"yaw", "pitch"} in rad (validate_head_skill.py); pose_yaw_deg / pose_pitch_deg
+	 *  are accepted as a fallback. Command [0, 0, 0] like Hold Centre (head_skills.py), or deploy.json pose_command [3]. */
 	bool bPose = false;
 	float PoseYawRad = 0.f;     // yaw left +
 	float PosePitchRad = 0.f;   // pitch down +

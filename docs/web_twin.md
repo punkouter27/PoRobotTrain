@@ -55,3 +55,22 @@ GL/AL alongside three.js and Tone.js, which already cover rendering and audio.
 .venv\Scripts\python.exe -m pytest RobotControl/tests/test_web_twin.py
 dotnet test tests/PoRobotTrain.Unit          # Silk.NET FK vs MuJoCo, twin joint order vs RobotJointCatalog
 ```
+
+## Simulation features in the web app (`docs/sim_features.md`)
+
+All of these talk to the headless MuJoCo sandbox or read log files; none reaches the robot.
+
+| where | what | service endpoint (through `/api/robot/...`) |
+|---|---|---|
+| Walk page, left column | course **Procedural terrain** (seed, difficulty 0-1, **New terrain** = random seed); mode **Hold without harness (topples)** (`free_hold`) | `POST /walk/start` |
+| Walk page, left column | **Throw** a ball or box (1-8 m/s, direction it comes from); **Replay** the last 1-10 s at 0.1-1x, **Auto replay on fall**; **Action filter** alpha + apply; **Scenario** picker (walk scripts) with progress | `/walk/throw`, `/walk/replay`, `/walk/filter`, `/walk/scenario`, `GET /scenarios` |
+| Walk page, under the 3D view | physics top-down inset (support polygon, CoM, capture point, contacts with horizontal force arrows, props) and a **Show on 3D view** toggle (CoM, capture point, support polygon, contact force lines drawn in `twin.js`); thrown props are drawn in 3D; motors / heat, battery, action filter (raw vs filtered + jitter history), fall analysis strip (markers at unstable and fall) + falls log; replay banner on the 3D view | `GET /walk/state` |
+| Library, **Duel** tab | skill + version A + version B + lab scenario, side-by-side scores and the winner | `POST /skills/duel` |
+| Library, **Gap check** tab | two runs from `logs/` (filter by skill), per-joint max / RMS table, error heatmap (`js/heatmap.js`), **Play as ghost**: run A drives the 3D virtual robot, run B the ghost, joints more than 2° apart turn purple; scrub / play | `GET /runs`, `POST /gap` |
+| Library, **Training montage** tab | the GIF at each training checkpoint, or why there is none | `GET /skills/montage?skill=` |
+| Train (step 3) and Skills, **Taught poses** | head yaw / pitch sliders (the 3D virtual robot follows on release), name, save, list with show / play on the virtual robot / train (`pose_<id>`, same train flow) / delete | `GET /poses`, `POST /poses`, `POST /poses/delete`, `POST /poses/preview`, `POST /skills/train` |
+
+Form rules (FluentValidation, `PoRobotTrain.Shared/Validation/SimFeatureValidators.cs`) match the service; the API also
+checks the walk requests before forwarding. The API gives the duel 90 s and the gap check / montage 60 s
+(`RobotServiceTimeoutHandler`); every other call keeps the 5 s timeout. `GET /poses` serves both the console's preset
+poses and the taught ones; the client keeps entries that have an `id` and both angles.

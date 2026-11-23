@@ -23,7 +23,7 @@ class R1TWIN_API AR1WalkCourse : public AActor
 public:
 	AR1WalkCourse();
 
-	/** Rebuilds the course when the geometry changed; updates checkpoint colours every call. */
+	/** Rebuilds the course when the geometry changed; updates checkpoint colours and the thrown props every call. */
 	void Sync(const FR1WalkState& State);
 
 	uint32 GetGeometryHash() const { return BuiltHash; }
@@ -31,10 +31,15 @@ public:
 private:
 	UStaticMeshComponent* AddMesh(UStaticMesh* Mesh, const FTransform& Xf, const FLinearColor& Color, UMaterialInstanceDynamic*& OutMid);
 	void Clear();
+	/** Thrown objects (docs/sim_features.md #9): engine sphere / cube posed from /walk/state props, visual only. */
+	void SyncProps(const TArray<FR1WalkProp>& Props);
 
 	UPROPERTY(Transient) TObjectPtr<USceneComponent> Root;
 	UPROPERTY(Transient) TObjectPtr<UStaticMesh> CubeMesh;
 	UPROPERTY(Transient) TObjectPtr<UStaticMesh> CylinderMesh;
+	UPROPERTY(Transient) TObjectPtr<UStaticMesh> SphereMesh;
+	UPROPERTY(Transient) TMap<int32, TObjectPtr<UStaticMeshComponent>> PropParts;   // prop id -> mesh
+	TMap<int32, FString> PropKinds;
 	UPROPERTY(Transient) TObjectPtr<UMaterialInterface> BaseMaterial;
 	UPROPERTY(Transient) TArray<TObjectPtr<UStaticMeshComponent>> Parts;
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> CheckpointMids;

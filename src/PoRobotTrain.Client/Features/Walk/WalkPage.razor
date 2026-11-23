@@ -163,7 +163,7 @@
             @if (_state?.Replay is { Active: true } rp)
             {
                 <div class="walk-banner walk-banner--replay" role="status">
-                    REPLAY @(rp.Speed?.ToString("0.##", CultureInfo.InvariantCulture) ?? "?")x · @(_state.T is double rt ? $"{rt:0.00} s" : "—")@(rp.DurationS is double rd ? $" · last {rd:0.#} s" : string.Empty) · simulation paused
+                    REPLAY @(rp.Speed?.ToString("0.##", CultureInfo.InvariantCulture) ?? "?")x · @(rp.T is double rp0 ? rp0.ToString("0.0", CultureInfo.InvariantCulture) : "0.0") / @(rp.DurationS?.ToString("0.0", CultureInfo.InvariantCulture) ?? "?") s · frame at @(_state.T is double rt ? $"{rt:0.00} s" : "—") · simulation paused
                 </div>
             }
             else if (_state?.Fallen == true)

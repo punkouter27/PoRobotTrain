@@ -5,6 +5,8 @@
 #include "R1Showcase.h"
 #include "R1SkillBrain.h"
 #include "R1WalkCourse.h"
+#include "R1FollowCamera.h"
+#include "R1MotorAudio.h"
 #include "MjUeConvert.h"
 
 #include "Blueprint/UserWidget.h"
@@ -43,6 +45,7 @@ namespace
 	const FLinearColor OffCol(0.24f, 0.24f, 0.26f, 1.f);
 	const FName IdStop(TEXT("stop")), IdDetails(TEXT("details")), IdJoints(TEXT("joints"));
 	const FName IdTabLab(TEXT("tab_lab")), IdTabWalk(TEXT("tab_walk"));
+	const FName IdSoundChip(TEXT("sim_sound"));   // handled in R1PanelSim.cpp
 
 	/** Sees every left mouse press before Slate routes it; never consumes it (the camera keeps right-drag orbit). */
 	class FPanelClickProcessor : public IInputProcessor
@@ -135,6 +138,19 @@ void AR1BehaviourPanel::EndPlay(const EEndPlayReason::Type Reason)
 		FSlateApplication::Get().UnregisterInputPreProcessor(ClickProcessor);
 	}
 	ClickProcessor.Reset();
+	if (MotorSynth)
+	{
+		MotorSynth->Stop();
+	}
+	if (bReplayCam)
+	{
+		APlayerController* PC = GetOwningPlayerController();
+		if (AR1FollowCamera* Cam = PC ? Cast<AR1FollowCamera>(PC->GetPawn()) : nullptr)
+		{
+			Cam->SetFreeFly(false);
+		}
+		bReplayCam = false;
+	}
 	if (bWalkVisualsOn)
 	{
 		SetWalkRunningVisuals(false);
@@ -152,6 +168,7 @@ void AR1BehaviourPanel::Tick(float DeltaSeconds)
 	const double Now = FPlatformTime::Seconds();
 	TickWalk(Now);
 	TickLab(Now);
+	TickSim(Now, DeltaSeconds);
 	TickPanelCapture(Now);
 }
 
@@ -533,6 +550,9 @@ void AR1BehaviourPanel::HandleClick(FName BoxName)
 	{
 		bShowJoints = !bShowJoints;
 	}
+	else if (HandleSimClick(BoxName))
+	{
+	}
 	else if (Tab == ER1PanelTab::Walk && HandleWalkClick(BoxName))
 	{
 	}
@@ -706,6 +726,9 @@ void AR1BehaviourPanel::DrawTabStrip(float X0, float X, float Inner, float Panel
 {
 	DrawText(TEXT("R1 VIRTUAL ROBOT"), TextCol, X, Y + 2.f, GEngine->GetMediumFont(), 1.4f);
 	DrawButton({IdStop, TEXT("STOP"), {X0 + PanelW - 18.f - 110.f, Y}, {110.f, 30.f}, true, StopCol, false});
+	// motor sound (docs/sim_features.md #1): cycles Muted / 25 / 50 / 100 %, remembered
+	DrawButton({IdSoundChip, SoundVolume <= 0.f ? FString(TEXT("Sound: off")) : FString::Printf(TEXT("Sound %.0f%%"), SoundVolume * 100.f),
+		{X0 + PanelW - 18.f - 110.f - 8.f - 104.f, Y}, {104.f, 30.f}, true, SoundVolume <= 0.f ? ChipCol : FLinearColor(0.26f, 0.29f, 0.40f, 1.f)});
 	Y += 38.f;
 	if (bExperiment)
 	{
@@ -743,6 +766,7 @@ void AR1BehaviourPanel::DrawHUD()
 	ViewW = Canvas->ClipX / PanelScale;
 	ViewH = Canvas->ClipY / PanelScale;
 	const bool bScaled = PanelScale < 0.999f && Canvas->Canvas;
+	DrawPhysicsOverlay();   // R1PanelSim.cpp: world-anchored, in screen pixels (before the panel scale)
 	if (bScaled)
 	{
 		Canvas->Canvas->PushRelativeTransform(FScaleMatrix(FVector(PanelScale, PanelScale, 1.f)));
@@ -837,6 +861,9 @@ void AR1BehaviourPanel::DrawHUD()
 			DrawWrapped(Toast, X, Y, Inner, C, 0.92f);
 		}
 	}
+	// simulation card (docs/sim_features.md, R1PanelSim.cpp): right column when there is room, else under the panel
+	const bool bCardWanted = Tab == ER1PanelTab::Walk || bExperiment;
+	bool bCardDrawn = false;
 	if (bRoomRight)
 	{
 		if (bShowJoints)
@@ -848,8 +875,27 @@ void AR1BehaviourPanel::DrawHUD()
 		{
 			const float CamW = bExperiment ? FMath::Clamp(ViewW - (X0 + PanelW + 60.f), 320.f, 480.f) : 320.f;
 			DrawHeadCamera(ViewW - CamW - 28.f, Y0 + 8.f, CamW);
+			if (bCardWanted)
+			{
+				float CardY = Y0 + 8.f + CamW * 0.75f + 46.f + 18.f;
+				DrawSimCard(ViewW - CamW - 28.f, CardY, CamW);
+				bCardDrawn = true;
+			}
+		}
+		else if (Tab == ER1PanelTab::Walk)
+		{
+			const float CardW = FMath::Clamp(ViewW - (X0 + PanelW + 80.f), 320.f, 460.f);
+			float CardY = Y0 + 8.f;
+			DrawSimCard(ViewW - CardW - 28.f, CardY, CardW);
+			bCardDrawn = true;
 		}
 	}
+	if (bCardWanted && !bCardDrawn)
+	{
+		Y += 14.f;
+		DrawSimCard(X, Y, Inner);
+	}
+	DrawReplayBanner();
 	LastPanelH = FMath::Max(200.f, Y - Y0 + 8.f);
 	ButtonRects = MoveTemp(NextRects);
 	if (bScaled)

@@ -1,6 +1,7 @@
 .venv/
 external/
 logs/
+datasets/
 __pycache__/
 *.pyc
 UnrealProject/Binaries/

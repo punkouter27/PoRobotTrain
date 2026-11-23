@@ -158,8 +158,10 @@ while Unreal is not reachable, and `puppet.connected` reports it). Unreal never 
   "policy_available": true,
   "policy_reason": null,          // e.g. "no validated Level 2 policy in RobotControl/models/r1_level2_velocity"
   "running": true,
-  "mode": "policy",               // "policy" | "hold"
-  "course": "loop",               // "flat" | "loop"
+  "mode": "policy",               // "policy" | "hold" | "free_hold"
+  "course": "loop",               // "flat" | "loop" | "procedural"
+  "courses": ["flat", "loop", "procedural"], "modes": ["policy", "hold", "free_hold"],
+  "seed": null, "difficulty": null,   // procedural only
   "t": 12.34,                     // sim time, s
   "cmd": [0.5, 0.0, 0.0],         // applied velocity command vx, vy (m/s), wz (rad/s), after clamping
   "cmd_limits": {"vx": [-0.5, 1.0], "vy": [-0.5, 0.5], "wz": [-0.5, 0.5]},   // from the policy's deploy.yaml
@@ -175,9 +177,20 @@ while Unreal is not reachable, and `puppet.connected` reports it). Unreal never 
     "checkpoint_radius": 0.5,
     "boxes": [{"name": "ramp", "pos": [6, 0, 0.05], "size": [1.0, 0.6, 0.05], "quat": [0.999, 0, 0.035, 0], "rgba": [0.4, 0.45, 0.55, 1]}]
   },
-  "puppet": {"connected": true}   // whether the Unreal twin is receiving the poses
+  "puppet": {"connected": true},  // whether the Unreal twin is receiving the poses
+  // simulation-only extras, docs/sim_features.md (null before Start):
+  "physics": {"com", "com_vel", "capture_point", "support", "cp_margin_m", "contacts"},
+  "motors": {"names", "speed", "torque", "torque_frac"}, "thermal": {"temp_c", "hottest", "hottest_c", "warn", "limit"},
+  "battery": {"soc_pct", "power_w", "minutes_left"}, "action_filter": {"alpha", "apply", "raw", "filtered", "jitter"},
+  "props": [], "fall_analysis": null, "falls_log": [],
+  "replay": {"active": false, "speed": 0.25, "t": 0.0, "duration_s": 3.0, "auto_on_fall": false},
+  "scenario": null
 }
 ```
+
+The extras are specified field by field in `docs/sim_features.md` (walk sandbox section). While a replay is active,
+`t`, `base`, `q`, `props` and `physics` are the replayed frame, and `replay.t` is the position inside the replay
+window (0..`duration_s`, sim seconds).
 
 Before Start (`running: false`) the state still carries `policy_available`, `policy_reason`, `courses`, `course`,
 `geometry` and `mode: null`, so clients can draw the course; the live fields appear once it runs.
@@ -193,6 +206,12 @@ Unreal converts with `MjUeConvert.h` (`pos_ue = (x, -y, z) * 100`).
 | `POST /walk/command` | `{"vx": 0.5, "vy": 0, "wz": 0}` | set the velocity command (clamped to `cmd_limits`). **Watchdog:** with no command for 0.5 s the command decays to zero, so a lost client stops the robot |
 | `POST /walk/reset` | `{}` | back to the start pose, lap timer reset |
 | `POST /walk/stop` | `{}` | stop stepping and release URLab puppet mode |
+| `POST /walk/start` (extras) | `{"course": "procedural", "mode": "free_hold", "seed": 0, "difficulty": 0.5}` | `free_hold` = the PD hold WITHOUT the harness: the robot tips over in about a second (physics overlay, fall analysis, replay without a walking policy). `seed` / `difficulty` (0..1) only matter for `procedural` |
+| `POST /walk/throw` | `{"kind": "ball\|box", "speed": 4.0, "from_deg": 0.0}` | a prop 2 m from the pelvis at pelvis height, flying at it (speed 1..8 m/s; from_deg 0 = in front, 90 = robot's left). Ball r 0.10 m 0.45 kg, box 0.25 m 2 kg; at most 4 (oldest recycled). Not running -> ok false |
+| `POST /walk/replay` | `{"seconds": 3, "speed": 0.25}` \| `{"stop": true}` \| `{"auto_on_fall": true}` | replay the last 1..10 s at 0.1..1x; the simulation pauses meanwhile (the Unreal puppet gets the replayed frames). `auto_on_fall` replays 3 s at 0.25x one second after every fall |
+| `POST /walk/filter` | `{"alpha": 0.5, "apply": false}` | action low-pass (EMA); applied to the walk sim only when `apply` is on |
+| `POST /walk/scenario` | `{"id": "push_test"}` \| `{"stop": true}` | (re)start with the scenario's course / mode / seed and play its steps on sim time (`RobotControl/scenarios/`, target `walk`); 404 unknown id, 400 a lab scenario. A `"fallback_mode"` in the file is used when its mode is `policy` and no validated policy exists |
+| `GET /scenarios` | | `{"ok", "scenarios": [{"id", "name", "target", "description", "duration_s"}]}` |
 
 Clients send `/walk/command` at about 20 Hz while a key or stick is held, and once with zeros on release. Falls
 (pelvis below 0.45 m or tilted more than 60°) count up `falls` and auto-reset after 1 s.
@@ -559,6 +578,20 @@ replaces a working skill (`behaviours/skill_versions.py`).
 | `POST /skills/push {"behaviour"}` | job `push`: copy the active version to the robot (`skill_push.py`); moves nothing. Its `@pushed <id> v<N> <sha>` line updates `robot` |
 | `POST /lab/play {"behaviour", "size"}` | ask the Unreal scenario lab to play a skill; `unreal_running` says whether the lab polled in the last 5 s |
 | `GET /lab/poll?seen=<seq>` | the Unreal lab's 1 s poll: the latest request; records the lab as running and `seen` as acknowledged (`/status.lab`) |
+
+### Skill tools and taught poses (docs/sim_features.md #4, #10, #11, #14)
+
+| Endpoint | What it does |
+|---|---|
+| `POST /skills/duel {"skill", "a", "b", "scenario"}` | two versions (number, `null` = current) under the same seeded lab scenario in headless MuJoCo (`tools/skill_duel.py`) -> `{"ok", "result": {"skill", "scenario", "a", "b", "winner": "a\|b\|tie", "why"}}`; each side `{"version", "err_mean_deg", "err_max_deg", "torque_rms", "jitter", "energy_j", "would_stop", "score"}` (lower wins) |
+| `GET /runs` | run logs in `logs/` (`<skill>_<sim\|urlab\|real>_<stamp>.csv`), newest first, max 100 |
+| `POST /gap {"a", "b", "tol_deg"}` | joint-by-joint comparison of two run logs (plain names inside `logs/` only; 400 otherwise): `joints, t (<= 400), a_deg, b_deg, err_deg, max_deg, rms_deg, pass` (+ `overlap_s`, `worst`) |
+| `GET /skills/montage?skill=<id>` | training montage GIF (`tools/training_montage.py`, rebuilt when a checkpoint is newer): `{"ok", "frames", "checkpoints", "fps", "gif_base64"}`, or ok false with `error` / `reason` (no checkpoints: train with `--checkpoint-every`) |
+| `POST /skills/train` | also takes `"checkpoint_every": n` (0..3000) -> `--checkpoint-every n` |
+| `GET /poses` | the console's preset poses (section 5, unchanged) followed by the taught poses `{"id", "name", "yaw_deg", "pitch_deg", "skill": "pose_<id>"}`; a taught entry also carries the preset fields (`label`, `say`, `words`, `q_deg`) so both readers work |
+| `POST /poses {"name", "yaw_deg", "pitch_deg"}` | save a taught head pose (name 1..32 `[A-Za-z0-9 _-]`, yaw -30..30, pitch -15..20, inside the head soft limits) -> `{"ok", "pose"}`; it becomes skill `pose_<id>` (train + validate like any skill). 400 on a bad or duplicate pose |
+| `POST /poses/delete {"id"}` | remove it (404 unknown); its trained files stay in `models/` but the skill is no longer listed |
+| `POST /poses/preview {"name"}` | also accepts a taught pose (name, id or skill id): moves the head there on the simulated stand |
 
 `/preview` accepts `"version": n` for a trained skill to play a stored session on the virtual robot (the runner's
 `--skill-version`, refused for target `real`). `/check` and `/run` refuse a `version`: the real robot always runs the

@@ -101,6 +101,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "R1|Follow")
 	void SetLockToStand(bool bLock) { bLockToStand = bLock; }
 
+	/** Free-fly camera (walk replay, docs/sim_features.md #12): WASD move, Q/E down/up, Shift faster, right mouse
+	 *  look. Starts where the orbit view is; switching it off glides back to the follow view. */
+	void SetFreeFly(bool bOn);
+	bool IsFreeFly() const { return bFreeFly; }
+
+	/** cm/s (Shift x3). */
+	UPROPERTY(EditAnywhere, Category = "R1|FreeFly")
+	float FreeFlySpeed = 250.f;
+
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
@@ -159,4 +168,9 @@ private:
 	float ManualHeadYawAxis = 0.f;
 	float ManualShoulderAxis = 0.f;
 	float ResolveRetryTimer = 0.f;
+	// free fly
+	bool bFreeFly = false;
+	FVector FlyLocation = FVector::ZeroVector;
+	FRotator FlyRotation = FRotator::ZeroRotator;
+	void TickFreeFly(float DeltaSeconds);
 };

@@ -1,0 +1,221 @@
+@using System.Globalization
+@inject ConsoleApiClient ConsoleApi
+@inject IValidator<TaughtPoseRequest> PoseValidator
+@inject UiState Ui
+
+@* #14 Teach a pose by demonstration, head only (docs/sim_features.md): set the head with the two sliders (the
+   virtual robot follows when a slider is released), name it and save. Each taught pose becomes the head skill
+   pose_<id>, trained and validated by the same train flow and gate as every other skill. Head pitch + yaw only. *@
+<section class="po-card sk-card">
+    <div class="ctrl-top">
+        <div>
+            <b class="sk-title">Teach a pose (head only)</b>
+            <div class="po-muted">Turn the virtual robot's head where you want it, name the pose and save it. Training turns it into a skill that holds that head angle.</div>
+        </div>
+        <span class="po-pill @(_poses is null ? string.Empty : "po-pill--blue")">@(_poses is null ? "…" : $"{_poses.Count} TAUGHT")</span>
+    </div>
+    <div class="pose-grid">
+        <div class="ctrl-row">
+            @* each slider moves the virtual robot's head once, when it is released (pointer up / key up), like the joint sliders *@
+            <div class="pose-slider" @onpointerup="Commit" @onkeyup="Commit">
+                <span>Head yaw <b>@Deg(_dragYaw ?? _yaw)</b> (-30° right … +30° left)</span>
+                <RadzenSlider TValue="double" Min="-30" Max="30" Step="0.5" Value="@(_dragYaw ?? _yaw)" ValueChanged="@((double v) => _dragYaw = v)" aria-label="Head yaw (degrees)" />
+                <FieldError Message="@Err("YawDeg")" />
+            </div>
+            <div class="pose-slider" @onpointerup="Commit" @onkeyup="Commit">
+                <span>Head pitch <b>@Deg(_dragPitch ?? _pitch)</b> (-15° … +20°)</span>
+                <RadzenSlider TValue="double" Min="-15" Max="20" Step="0.5" Value="@(_dragPitch ?? _pitch)" ValueChanged="@((double v) => _dragPitch = v)" aria-label="Head pitch (degrees)" />
+                <FieldError Message="@Err("PitchDeg")" />
+            </div>
+            <div class="lib-form">
+                <label>Pose name <RadzenTextBox class="assist-input" @bind-Value="_name" aria-label="Pose name" Placeholder="e.g. Look at the door" /><FieldError Message="@Err("Name")" /></label>
+            </div>
+            <div class="btn-row">
+                <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!Online || _busy)" Click="SaveAsync">Save pose</RadzenButton>
+                <RadzenButton class="po-plain po-btn" Disabled="@_busy" Click="Centre">Centre</RadzenButton>
+            </div>
+            @if (!string.IsNullOrEmpty(_toast))
+            {
+                <div class="po-toast">@_toast</div>
+            }
+
+            <div class="pose-list">
+                @if (_listError is not null)
+                {
+                    <div class="why">Taught poses unavailable: @_listError</div>
+                }
+                else if (_poses is null)
+                {
+                    <div class="po-muted">Loading taught poses…</div>
+                }
+                else if (_poses.Count == 0)
+                {
+                    <div class="po-muted">No taught poses yet.</div>
+                }
+                else
+                {
+                    @foreach (var p in _poses)
+                    {
+                        var skill = SkillState(p);
+                        <div class="pose-row">
+                            <span><b>@p.Name</b> <span class="po-muted">yaw @Deg(p.YawDeg ?? 0) · pitch @Deg(p.PitchDeg ?? 0) · @p.SkillId</span></span>
+                            <span class="po-pill @(skill == "ready" ? "po-pill--ok" : skill == "failed" ? "po-pill--bad" : string.Empty)">@StateText(skill)</span>
+                            <span class="btn-row">
+                                <RadzenButton class="po-plain po-chip" title="Show this pose on the 3D view" Click="() => Show(p)">Show</RadzenButton>
+                                <RadzenButton class="po-plain po-chip" Disabled="@(!IsIdle || _busy)" title="Move the simulated stand robot's head there (POST /poses/preview, virtual robot only)" Click="() => PlayAsync(p)">Play on virtual robot</RadzenButton>
+                                <RadzenButton class="po-plain po-chip" Disabled="@(!IsIdle)" title="@($"Train and validate skill {p.SkillId} on this PC")" Click="() => OnTrain.InvokeAsync(p.SkillId)">@(skill is "untrained" or null ? "Train" : "Retrain")</RadzenButton>
+                                @if (_confirmDelete == p.IdText)
+                                {
+                                    <span class="po-muted">Delete @p.Name?</span>
+                                    <RadzenButton class="po-plain po-chip" Disabled="@_busy" Click="() => DeleteAsync(p)">Yes, delete</RadzenButton>
+                                    <RadzenButton class="po-plain po-chip" Click="() => _confirmDelete = null">Keep</RadzenButton>
+                                }
+                                else
+                                {
+                                    <RadzenButton class="po-plain po-chip" Disabled="@_busy" Click="() => _confirmDelete = p.IdText">Delete</RadzenButton>
+                                }
+                            </span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+        <div>
+            <Twin3DView Actual="_pose" WantReal="false" RealConnected="false" Camera="front" Simple="true" />
+            <div class="po-muted">Virtual robot only: teaching never moves the robot. Only head pitch and head yaw are part of a pose.</div>
+        </div>
+    </div>
+</section>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    [Parameter] public IReadOnlyList<SkillInfoDto> Skills { get; set; } = [];
+    [Parameter] public bool Online { get; set; }
+    [Parameter] public bool IsIdle { get; set; }
+    /// <summary>The page's train flow (POST /skills/train) for skill pose_&lt;id&gt;.</summary>
+    [Parameter] public EventCallback<string> OnTrain { get; set; }
+
+    private double _yaw;
+    private double _pitch;
+    private double? _dragYaw;
+    private double? _dragPitch;
+    private double[] _pose = SimFeatureMath.HeadPose(0, 0);
+    private string _name = string.Empty;
+    private bool _busy;
+    private string? _toast;
+    private string? _listError;
+    private string? _confirmDelete;
+    private List<TaughtPoseDto>? _poses;
+    private Dictionary<string, string> _errors = [];
+
+    private string? Err(string field) => _errors.GetValueOrDefault(field);
+
+    private static string Deg(double v) => v.ToString("+0.0;-0.0;0.0", Inv) + "°";
+
+    private string? SkillState(TaughtPoseDto p) => Skills.FirstOrDefault(s => s.Id == p.SkillId)?.State;
+
+    private static string StateText(string? state) => state switch
+    {
+        "ready" => "READY",
+        "failed" => "DIDN'T PASS",
+        "unvalidated" => "NEEDS CHECKING",
+        _ => "NEEDS TRAINING",
+    };
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var (res, err) = await ConsoleApi.TaughtPosesAsync();
+        _poses = res?.Taught.ToList();
+        _listError = _poses is null ? err ?? "no reply" : null;
+    }
+
+    /// <summary>Slider released: the virtual robot's head moves to the new angle.</summary>
+    private void Commit()
+    {
+        _yaw = _dragYaw ?? _yaw;
+        _pitch = _dragPitch ?? _pitch;
+        _dragYaw = _dragPitch = null;
+        _pose = SimFeatureMath.HeadPose(_yaw, _pitch);
+    }
+
+    private void Centre()
+    {
+        _yaw = _pitch = 0;
+        _dragYaw = _dragPitch = null;
+        _pose = SimFeatureMath.HeadPose(0, 0);
+    }
+
+    private void Show(TaughtPoseDto p)
+    {
+        _yaw = p.YawDeg ?? 0;
+        _pitch = p.PitchDeg ?? 0;
+        _dragYaw = _dragPitch = null;
+        _pose = SimFeatureMath.HeadPose(_yaw, _pitch);
+    }
+
+    private async Task SaveAsync()
+    {
+        Commit();
+        var req = new TaughtPoseRequest(_name.Trim(), _yaw, _pitch);
+        var check = await PoseValidator.ValidateAsync(req);
+        _errors = check.Errors.GroupBy(e => e.PropertyName).ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+        if (!check.IsValid)
+        {
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var (res, err) = await ConsoleApi.SaveTaughtPoseAsync(req);
+            if (res is { Ok: true })
+            {
+                _toast = $"Saved \"{req.Name}\" as skill {res.Pose?.SkillId ?? "pose_…"}. Press Train to learn it.";
+                _name = string.Empty;
+                await LoadAsync();
+            }
+            else
+            {
+                _toast = err ?? res?.Error ?? "The pose was not saved.";
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>The service moves the virtual robot (practice twin or Unreal, never the robot) to the taught pose.</summary>
+    private async Task PlayAsync(TaughtPoseDto p)
+    {
+        Show(p);
+        _busy = true;
+        try
+        {
+            var (res, err) = await ConsoleApi.PreviewPoseAsync(p.SkillId, Ui.PlayTarget);
+            _toast = res is { Ok: true } ? $"Moving the virtual robot's head to \"{p.Name}\"." : err ?? res?.Error ?? "Not played.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(TaughtPoseDto p)
+    {
+        _busy = true;
+        try
+        {
+            var (res, err) = await ConsoleApi.DeleteTaughtPoseAsync(p);
+            _toast = res is { Ok: true } ? $"Deleted \"{p.Name}\"." : err ?? res?.Error ?? "Not deleted.";
+            _confirmDelete = null;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

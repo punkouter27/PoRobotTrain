@@ -146,6 +146,8 @@ public sealed record WalkGeometryDto(
 public sealed record WalkPuppetDto(
     [property: JsonPropertyName("connected")] bool Connected);
 
+/// <summary>GET /walk/state. Seed .. Scenario are the simulation features (docs/sim_features.md): null when no sim
+/// exists or the service predates them.</summary>
 public sealed record WalkStateDto(
     [property: JsonPropertyName("ok")] bool Ok,
     [property: JsonPropertyName("policy_available")] bool PolicyAvailable,
@@ -167,7 +169,6 @@ public sealed record WalkStateDto(
     [property: JsonPropertyName("geometry")] WalkGeometryDto? Geometry = null,
     [property: JsonPropertyName("puppet")] WalkPuppetDto? Puppet = null,
     [property: JsonPropertyName("error")] string? Error = null,
-    // simulation features (docs/sim_features.md); null when no sim exists or the service predates them
     [property: JsonPropertyName("seed")] long? Seed = null,
     [property: JsonPropertyName("difficulty")] double? Difficulty = null,
     [property: JsonPropertyName("physics")] WalkPhysicsDto? Physics = null,

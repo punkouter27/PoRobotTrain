@@ -136,7 +136,18 @@ namespace
 			// taught pose: where to hold the head (the contract field names, plus the likely alternatives)
 			S.bPose = true;
 			double Yaw = 0.0, Pitch = 0.0;
-			bool bYaw = J->TryGetNumberField(TEXT("pose_yaw_deg"), Yaw), bPitch = J->TryGetNumberField(TEXT("pose_pitch_deg"), Pitch);
+			bool bYaw = false, bPitch = false;
+			// validate_head_skill.py export: "pose": {"yaw": rad, "pitch": rad}
+			const TSharedPtr<FJsonObject>* PoseRad = nullptr;
+			if (J->TryGetObjectField(TEXT("pose"), PoseRad) && PoseRad && PoseRad->IsValid())
+			{
+				bYaw = (*PoseRad)->TryGetNumberField(TEXT("yaw"), Yaw);
+				bPitch = (*PoseRad)->TryGetNumberField(TEXT("pitch"), Pitch);
+				Yaw = FMath::RadiansToDegrees(Yaw);
+				Pitch = FMath::RadiansToDegrees(Pitch);
+			}
+			if (!bYaw) bYaw = J->TryGetNumberField(TEXT("pose_yaw_deg"), Yaw);
+			if (!bPitch) bPitch = J->TryGetNumberField(TEXT("pose_pitch_deg"), Pitch);
 			auto FromObj = [&](const TCHAR* Field, const TCHAR* YawKey, const TCHAR* PitchKey)
 			{
 				const TSharedPtr<FJsonObject>* O = nullptr;
@@ -151,7 +162,7 @@ namespace
 			FromObj(TEXT("pose"), TEXT("yaw_deg"), TEXT("pitch_deg"));
 			if (!bYaw || !bPitch)
 			{
-				S.Reason = TEXT("taught pose without pose_yaw_deg / pose_pitch_deg in deploy.json");
+				S.Reason = TEXT("taught pose without its angles in deploy.json (pose.yaw / pose.pitch)");
 				return true;
 			}
 			S.PoseYawRad = FMath::DegreesToRadians(static_cast<float>(Yaw));

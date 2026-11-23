@@ -116,14 +116,14 @@ def build_robot(jm: dict, pelvis_z: float, with_stand: bool) -> ET.Element:
     ET.SubElement(head_yaw, "camera", name="head_rgbd", pos=cam_pos, xyaxes="0 -1 0 0.34202 0 0.93969", fovy="58")
 
     if with_stand:
-        # The R1 EDU stand: two posts and a crossbar BEHIND the robot at mid-back height (below the shoulders), an
+        # The R1 EDU stand: two posts and a crossbar BEHIND the robot at mid-back height (well below the shoulders), an
         # arm straight forward, and a hook that latches onto a mounting plate on the back pack, where the Jetson
         # computer sits (torso back surface about x -0.035 m, 0.10-0.25 m above the pelvis in the home pose). Nothing
         # is at head height, so the head pitches and yaws freely. Visual only (no collision): the robot is held by
         # the pelvis weld below, exactly as before.
         stand = ET.SubElement(wb, "body", name="stand", pos="0 0 0")
-        post_x, bar_h = -0.40, pelvis_z + 0.20
-        mount_z, back_x = pelvis_z + 0.17, -0.037
+        post_x, bar_h = -0.40, pelvis_z + 0.10  # 15 cm below the shoulders, 30 cm below the head
+        mount_z, back_x = pelvis_z + 0.12, -0.035
         nocol = {"contype": "0", "conaffinity": "0", "rgba": STAND_RGBA}
         for y in (-0.45, 0.45):
             ET.SubElement(

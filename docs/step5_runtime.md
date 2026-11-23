@@ -48,6 +48,14 @@ Unreal frame time in Play (12 s capture, `csvprofile`):
 Physics runs on URLab's own thread, so the render rate does not change the simulation. The frame is render-bound;
 the robot head camera re-renders the scene every frame, and Lumen runs in the editor viewport.
 
+## Simulation features (2026-11-22)
+
+`docs/sim_features.md` adds a procedural motor sound (`UR1MotorSynth`, an `ISoundGenerator` on the audio render thread
+fed through atomics; module dependency `AudioMixer`), a C++ motor model in the lab brain (`R1MotorModel.h`, its
+defaults checked against `RobotControl/configs/motor_model.json` by a pytest), a Canvas physics overlay, head-camera
+dataset recording, lab scenario scripts and a free-fly replay camera. Nothing new simulates in Chaos: thrown props
+and terrain are plain meshes posed from `/walk/state`. See `docs/scenario_lab.md`.
+
 ## Known issues
 
 * **Background throttling.** With the editor not in the foreground the game thread drops to a few frames per second and
