@@ -18,6 +18,10 @@ Stand-safe behaviours (`RobotControl/behaviours/stand_behaviours.py`):
 - `arm_raise`: `right_shoulder_pitch_joint` gentle forward/up lift (10 / 20 / 30 deg from resting pose, with `right_elbow_joint` held gently so gravity does not swing the forearm).
 - `hand_wave`: `right_shoulder_pitch_joint`, `right_shoulder_roll_joint`, `right_elbow_joint` gentle stand-safe wave (capped at 20 deg).
 
+Trained head skills (`behaviours/head_skills.py`, docs/head_skills.md): `hold_centre`, `look_at` (head pitch + yaw),
+`nod_yes` (pitch only), `shake_no` (yaw only), `glance_around` (pitch + yaw). They are ONNX policies trained in
+MuJoCo, run through the same runner, targets and checks, and are locked until their validation gate passed.
+
 ## Command line
 
 ```powershell
@@ -27,27 +31,22 @@ ssh -t unitree@192.168.123.164 "cd ~/porobot && ./run.sh robotcontrol.behaviours
 ssh -t unitree@192.168.123.164 "cd ~/porobot && ./run.sh robotcontrol.behaviours.runner neck_turn --target real --go"   # powered
 ```
 
-## Unreal panel + live mirror
+## Unreal twin + live mirror
 
-1. Start the service on the PC: `.venv\Scripts\python.exe -m robotcontrol.behaviours.service`
-2. Start the twin: open `UnrealProject\R1Twin.uproject` and press **Play** (`R1_Stand` is the startup map), or
-   run it as a standalone window from PowerShell (Git Bash rewrites `/Game/...` into a file path):
-   `& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
-   With `bRunLevel0PolicyOnPlay=False` (Config/DefaultGame.ini) the twin holds its pose. The panel is top left;
-   URLab's debug panels are hidden (**Details** or Tab shows them, plus the raw service output and 26-joint telemetry matrix).
-3. Pick a behaviour (**Neck Turn**, **Neck Nod**, **Arm Raise**, **Hand Wave**) and turn/sweep size (10 / 20 / 30 deg).
-   * **VIRTUAL ROBOT** (blue): **Move VIRTUAL robot** runs the behaviour on the Unreal twin. Nothing real moves.
-   * **REAL ROBOT** (orange): **Check connection** runs it read-only on the robot (nothing published: robot
-     reachable, joint state ready). **Monitor (Mirror)** streams live read-only telemetry (IMU, motor temps, bus voltage,
-     26 joints) and mirrors measured angles onto the twin without powering any motors. **Move REAL robot** unlocks only
-     when both checklist steps are green for the selected behaviour and size (a clean virtual move, and a check less than
-     5 minutes old). It then asks for confirmation (robot on stand, clear workspace, remote in hand). During the run the
-     twin switches to **live mirror**: it shows the robot's measured joint angles (read-only `stream_state` on the Jetson,
-     URLab puppet mode).
-   Each section shows the active joint readout and gauge (-30..+30 deg), other-joint drift, IMU R/P/Y, motor temp,
-   and bus voltage. Sources: the runner's 5 Hz `@telemetry`/`@head` lines, the 1 Hz progress line, and live mirror streams.
-4. **STOP** sends Ctrl-C to whatever is running (robot: the head is released to damping, then disabled). It goes
-   over the network; the **remote (L2+B for 5 s) is the emergency stop**.
+The real-robot steps live in the web app (Control page): twin preview, read-only check, pre-flight, confirm.
+Unreal is the simulation-only scenario lab (docs/scenario_lab.md). It has no robot buttons, but the service still
+uses its twin:
+
+* **Twin preview in Unreal**: choose *Twin engine: Unreal* in the web app. The runner drives the Unreal twin
+  (`--target urlab`, URLab direct mode). The lab's in-engine brain lets go of the actuators while it runs.
+* **Live mirror**: during a powered run, or *Live view*, the service streams the robot's measured joint angles
+  into the Unreal twin (read-only `stream_state` on the Jetson, URLab puppet mode).
+* **STOP** in the web app sends Ctrl-C to whatever is running (robot: the head is released to damping, then
+  disabled). It goes over the network. The **remote (L2+B for 5 s) is the emergency stop**.
+
+Start Unreal with `UnrealProject\R1Twin.uproject` and press **Play** (`R1_Stand`), or run it standalone from
+PowerShell (Git Bash rewrites `/Game/...` into a file path):
+`& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
 
 On the twin the legs have no stiffness (the URLab MJCF is built for the upper-body Level 0 policy), so they hang
 and creep. The urlab backend lets them settle for 2 s before taking the start pose and leaves joints with model

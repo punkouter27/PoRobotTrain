@@ -3,6 +3,7 @@
 Contents (unpacked into ~/porobot on the robot):
   robotcontrol/        the runner package (interfaces, safety guard, policy runner, tools) - no training code
   bundle/              policy.onnx + deploy.yaml + r1_joint_map.yaml + MANIFEST.json (from deploy_pack)
+  head_skills/<id>/    validated trained head skills (policy.onnx + deploy.yaml); unvalidated ones are left out
   wheels/cp38|cp310    offline Python wheels for linux aarch64 (numpy, pyyaml, onnxruntime)
   src/                 CycloneDDS C source + Python sdist 0.10.2, unitree_sdk2_python
   setup_robot.sh       offline install into ./.venv, then a software-only preflight
@@ -62,6 +63,21 @@ def _add_tree(tar: tarfile.TarFile, src: Path, arc: str, exclude=frozenset()) ->
     return n
 
 
+def _add_head_skills(tar: tarfile.TarFile) -> List[str]:
+    """Only skills whose validation passed for their exact ONNX file (the robot re-checks the sha256)."""
+    from ..behaviours.head_skills import SKILLS, SKILLS_SUBDIR, skill_status
+
+    added = []
+    for sid in SKILLS:
+        st = skill_status(sid)
+        if st["state"] != "ready":
+            continue
+        for name in ("policy.onnx", "deploy.yaml"):
+            tar.add(Path(st["dir"]) / name, arcname=f"{SKILLS_SUBDIR}/{sid}/{name}", recursive=False)
+        added.append(sid)
+    return added
+
+
 def build(bundle: Path, out_dir: Path, vendor: Path) -> Path:
     problems = verify_bundle(bundle)
     if problems:
@@ -76,6 +92,7 @@ def build(bundle: Path, out_dir: Path, vendor: Path) -> Path:
     with tarfile.open(out, "w:gz") as tar:
         n_pkg = _add_tree(tar, PACKAGE_DIR, "robotcontrol", EXCLUDE_DIRS)
         _add_tree(tar, bundle, "bundle")
+        skills = _add_head_skills(tar)
         _add_tree(tar, vendor / "wheels", "wheels")
         _add_tree(tar, vendor / "src", "src", {"build", "install"})
         for script in ("setup_robot.sh", "run.sh"):
@@ -86,6 +103,7 @@ def build(bundle: Path, out_dir: Path, vendor: Path) -> Path:
             "bundle_files": manifest["files"],
             "built": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "robotcontrol_files": n_pkg,
+            "head_skills": skills,
         }
         _add_text(tar, "KIT_MANIFEST.json", json.dumps(kit_manifest, indent=2))
     return out

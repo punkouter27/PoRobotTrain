@@ -13,10 +13,20 @@ Endpoints (JSON):
   GET  /robustness             latest robustness sweep report (logs/robustness/latest.json)
   POST /robustness/run         run the robustness sweep as job "robustness"
   GET  /walk/state, POST /walk/start|command|reset|stop   Level 2 walk sandbox (simulation only)
+  GET  /skills                 trained head skills: state (untrained|unvalidated|failed|ready), validation metrics
+  POST /skills/train {"behaviour": id | "all", "iters": n?}
+                               train + export + validate on this PC (job "train", "@progress k/n"); never the robot
+  GET  /skills/detail?id=<skill>&version=<n>   training curve (train_log.csv) + the full validation report
+  POST /skills/activate {"behaviour", "version"}   make a stored version that passed the gate the active one
+  POST /skills/push {"behaviour"}  copy the active version to the robot (job "push"); moves nothing
+  POST /lab/play {"behaviour", "size"}   ask the Unreal scenario lab to play a skill (simulation only)
+  GET  /lab/poll?seen=<seq>    the Unreal lab's poll: the latest play request (and proof that Unreal is running)
   Operator console (health, events, history, power, IMU, camera, versions, e-stop, limits, modes, poses, motions,
   store, calibration, network, pre-flight, docs, chat): behaviours/console.py
   Contract for the last four groups: docs/service_api.md
 params: {"behaviour": "neck_turn", "amplitude": deg, "freq": Hz, "duration": s}
+A trained head skill (kind "trained") is refused everywhere until its validation passed for its exact ONNX file; its
+read-only /check first copies that file to the robot (behaviours/skill_push.py).
 
 Robot gating (all must hold, else /run is refused with the reason):
   * a preview with exactly these params finished cleanly (exit 0) in this service session
@@ -47,9 +57,12 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
+import yaml
+
 from .. import LOGS_DIR, PROJECT_ROOT
 from ..configs.joint_map import JointMap
 from ..configs.sim_calibration import SimCalibration
+from . import head_skills, skill_versions
 from .console import Console
 from .mirror import ROBOT, ROBOT_DIR, UnrealMirror, robot_stream
 from .move_joint import validate_move_request
@@ -59,6 +72,10 @@ from .voice_intent import interpret as interpret_intent
 
 CHECK_VALID_S = 300.0
 ROBUSTNESS_REPORT = PROJECT_ROOT / "logs/robustness/latest.json"
+ROBOT_COPIES = (
+    PROJECT_ROOT / "logs/head_skills/robot_copies.json"
+)  # which skill version the robot has (from skill_push)
+PUSHED_RE = re.compile(r"^@pushed (\w+) v(\d+) ([0-9a-f]{64})")
 PROGRESS_RE = re.compile(r"^@progress (\d+)/(\d+)")
 LIMITS = {"amplitude": (1.0, 30.0), "freq": (0.05, 0.5), "duration": (2.0, 60.0)}
 BEHAVIOURS = tuple(BEHAVIOUR_SPECS.keys())
@@ -73,6 +90,10 @@ def parse_params(body: dict) -> dict:
     }
     if p["behaviour"] not in BEHAVIOURS:
         raise ValueError(f"unknown behaviour {p['behaviour']!r}")
+    if body.get("version") is not None:  # a stored training session (virtual robot only, see preview())
+        if p["behaviour"] not in head_skills.SKILLS:
+            raise ValueError("version applies to trained skills only")
+        p["version"] = int(body["version"])
     for k, (lo, hi) in LIMITS.items():
         if not lo <= p[k] <= hi:
             raise ValueError(f"{k} must be in [{lo}, {hi}], got {p[k]}")
@@ -139,8 +160,89 @@ def parse_telemetry(line: str) -> Optional[dict]:
         return None
 
 
+def trained_why_not(behaviour: str) -> Optional[str]:
+    """Reason a trained head skill cannot run yet (None when it is validated, or not a trained skill)."""
+    if behaviour not in head_skills.SKILLS:
+        return None
+    st = head_skills.skill_status(behaviour)
+    return None if st["state"] == "ready" else f"{head_skills.SKILLS[behaviour].label}: {st['reason']} - train it first"
+
+
+# one training session (stored version) as the Library lists it
+SESSION_FIELDS = ("version", "active", "passed", "trained_at", "track_err_deg", "iters", "num_envs", "steps",
+                  "sim_hours", "train_time_s", "device", "onnx_bytes")  # fmt: skip
+
+
+def robot_copies() -> dict:
+    try:
+        return json.loads(ROBOT_COPIES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def skills_report() -> list:
+    out = []
+    copies = robot_copies()
+    for sid, sk in head_skills.SKILLS.items():
+        st = head_skills.skill_status(sid)
+        m = st.get("metrics") or {}
+        versions = skill_versions.list_versions(sid)
+        active = next((v for v in versions if v["active"]), None)
+        copy = copies.get(sid)
+        robot = None
+        if copy:
+            robot = dict(copy, current=bool(active) and copy.get("sha256") == active.get("sha256"))
+        out.append(
+            {
+                "id": sid,
+                "label": sk.label,
+                "desc": sk.desc,
+                "powered": [j.replace("_joint", "") for j in sk.powered],
+                "max_deg": sk.max_deg,
+                "state": st["state"],
+                "reason": st["reason"],
+                "trained_at": st.get("trained_at"),
+                "validated_at": st.get("validated_at"),
+                "track_err_deg": m.get("track_err_deg"),
+                "nominal_err_deg": (m.get("nominal") or {}).get("mean_err_deg"),
+                "randomised_err_deg": (m.get("randomised") or {}).get("mean_err_deg"),
+                "version": skill_versions.active_version(sid),
+                "versions": [{k: v[k] for k in SESSION_FIELDS} for v in versions],
+                "robot": robot,
+            }
+        )
+    return out
+
+
+def skill_detail(skill_id: str, version: Optional[int]) -> dict:
+    """Training curve and the full validation report of one version (default: the active one)."""
+    import csv as _csv
+
+    if skill_id not in head_skills.SKILLS:
+        return {"ok": False, "error": f"{skill_id!r} is not a trained skill", "_code": 404}
+    v = version or skill_versions.active_version(skill_id)
+    folder = skill_versions.versions_dir(skill_id) / f"v{v}" if v else None
+    if not folder or not folder.is_dir():
+        return {"ok": False, "error": "no such version", "_code": 404}
+    curve = {"iter": [], "track_err_deg": [], "reward": [], "time_s": []}
+    log = folder / "train_log.csv"
+    if log.exists():
+        with open(log, encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                curve["iter"].append(int(row["iter"]))
+                curve["track_err_deg"].append(float(row["track_err_deg"]))
+                curve["reward"].append(float(row["reward_mean"]))
+                curve["time_s"].append(float(row["time_s"]))
+    try:
+        validation = json.loads((folder / "validation.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        validation = {}
+    meta = (yaml.safe_load((folder / "deploy.yaml").read_text(encoding="utf-8")) or {}).get("metadata") or {}
+    return {"ok": True, "skill": skill_id, "version": v, "curve": curve, "validation": validation, "training": meta}
+
+
 def runner_args(p: dict) -> list:
-    return [
+    return (["--skill-version", str(p["version"])] if p.get("version") else []) + [
         p["behaviour"],
         "--amplitude",
         f"{p['amplitude']:g}",
@@ -181,6 +283,12 @@ class Service:
         self.calibration = SimCalibration.load(jm=self.jm)
         self.stand_renderer = StandRenderer(self.jm)
         self.console = Console(self)
+        self._skills: Optional[dict] = None
+        self._skills_at = 0.0
+        # web app -> Unreal scenario lab: the latest play request, and when the lab last polled for it
+        self.lab_request: Optional[dict] = None
+        self.lab_seen_at = 0.0
+        self.lab_ack_seq = 0
 
     # ------------------------------------------------------------------ helpers
     def log(self, s: str) -> None:
@@ -240,7 +348,16 @@ class Service:
             return self.console.preflight_why_not()
         return None
 
+    def _skills_cached(self) -> dict:
+        """Skill states for /status (polled ~3 Hz): re-read deploy.yaml at most once per second."""
+        now = time.time()
+        if self._skills is None or now - self._skills_at > 1.0:
+            self._skills = {s["id"]: s for s in skills_report()}
+            self._skills_at = now
+        return self._skills
+
     def status(self) -> dict:
+        skills = self._skills_cached()
         with self.lock:
             now = time.time()
             return {
@@ -264,9 +381,18 @@ class Service:
                         "desc": s.desc,
                         "primary_label": s.primary_label,
                         "max_deg": s.max_deg,
+                        "kind": s.kind,
+                        "ready": s.kind != "trained" or skills.get(s.id, {}).get("state") == "ready",
+                        "skill_state": skills.get(s.id, {}).get("state"),
                     }
                     for s in BEHAVIOUR_SPECS.values()
                 ],
+                "skills": list(skills.values()),
+                "lab": {
+                    "request": self.lab_request,
+                    "ack_seq": self.lab_ack_seq,
+                    "unreal_seen_s": round(now - self.lab_seen_at, 1) if self.lab_seen_at else None,
+                },
                 "joint_names": [n.replace("_joint", "") for n in self.jm.names],
                 "joint_limits_deg": [
                     [round(math.degrees(float(lo)), 1), round(math.degrees(float(hi)), 1)]
@@ -307,8 +433,15 @@ class Service:
 
     def _pump(self, job: str, proc: subprocess.Popen, p: dict) -> None:
         reason = ""
-        who = "practice" if p.get("_practice") else ("virtual" if job in ("preview", "move_virtual") else "real")
+        who = (
+            "practice"
+            if p.get("_practice")
+            else ("virtual" if job in ("preview", "move_virtual") else "pc" if job == "train" else "real")
+        )
         for line in proc.stdout:
+            pu = PUSHED_RE.match(line)
+            if pu:
+                self._record_robot_copy(pu.group(1), int(pu.group(2)), pu.group(3))
             pm = PROGRESS_RE.match(line)
             if pm:
                 self.progress = {"job": job, "done": int(pm.group(1)), "total": int(pm.group(2))}
@@ -363,16 +496,31 @@ class Service:
     def preview(self, p: dict, target: str = "urlab") -> dict:
         if target not in ("urlab", "sim"):
             raise ValueError(f"preview target must be 'urlab' or 'sim', got {target!r}")
+        if p.get("version"):
+            st = head_skills.skill_status(p["behaviour"], p["version"])
+            why = None if st["state"] == "ready" else f"v{p['version']}: {st['reason']}"
+        else:
+            why = trained_why_not(p["behaviour"])
+        if why:
+            return {"ok": False, "error": why}
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running"}
             cmd = [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"] + runner_args(p) + ["--target", target]
             if self.last_real_q_deg and len(self.last_real_q_deg) == self.jm.num_joints:
-                cmd += ["--start-q-deg", ",".join(f"{v:.2f}" for v in self.last_real_q_deg)]
+                cmd += ["--start-q-deg=" + ",".join(f"{v:.2f}" for v in self.last_real_q_deg)]
             self._start("preview", cmd, p)
         return {"ok": True}
 
     def check(self, p: dict, practice: bool = False) -> dict:
+        if p.get("version"):
+            return {
+                "ok": False,
+                "error": "the real robot runs the active version: make this session active in the Library first",
+            }
+        why = trained_why_not(p["behaviour"])
+        if why:
+            return {"ok": False, "error": why}
         with self.lock:
             if self.job:
                 return {"ok": False, "error": f"{self.job} is running"}
@@ -386,8 +534,7 @@ class Service:
                         "sim",
                         "--duration",
                         "2",
-                        "--start-q-deg",
-                        ",".join(f"{v:.2f}" for v in self.practice_q_deg),
+                        "--start-q-deg=" + ",".join(f"{v:.2f}" for v in self.practice_q_deg),
                     ]
                 )
                 self.log("practice check: simulating pre-run check on virtual stand twin")
@@ -398,10 +545,21 @@ class Service:
                 + " ".join(runner_args(p))
                 + " --target real"
             )
-            self._start("check", ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote], p)
+            ssh = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ROBOT, remote]
+            if p["behaviour"] in head_skills.SKILLS:  # copy the validated ONNX first; the robot re-checks its sha256
+                ssh = [sys.executable, "-u", "-m", "robotcontrol.behaviours.skill_push", p["behaviour"], "--"] + ssh
+            self._start("check", ssh, p)
         return {"ok": True}
 
     def run(self, p: dict, confirm: bool, practice: bool = False) -> dict:
+        if p.get("version"):
+            return {
+                "ok": False,
+                "error": "the real robot runs the active version: make this session active in the Library first",
+            }
+        why = trained_why_not(p["behaviour"])
+        if why:
+            return {"ok": False, "error": why}
         with self.lock:
             if not confirm:
                 return {"ok": False, "error": "confirmation required"}
@@ -414,7 +572,7 @@ class Service:
                 cmd = (
                     [sys.executable, "-u", "-m", "robotcontrol.behaviours.runner"]
                     + runner_args(p)
-                    + ["--target", "sim", "--start-q-deg", ",".join(f"{v:.2f}" for v in self.practice_q_deg)]
+                    + ["--target", "sim", "--start-q-deg=" + ",".join(f"{v:.2f}" for v in self.practice_q_deg)]
                 )
                 self.log(f"practice run: executing {p['behaviour']} on virtual stand twin")
                 self._start("run", cmd, meta)
@@ -479,12 +637,12 @@ class Service:
                     sim_tgt,
                 ]
                 if target == "practice":
-                    cmd += ["--start-q-deg", ",".join(f"{v:.2f}" for v in self.practice_q_deg)]
+                    cmd += ["--start-q-deg=" + ",".join(f"{v:.2f}" for v in self.practice_q_deg)]
                     job_name = "move_practice"
                 else:
                     virt_q = (self.telemetry.get("virtual") or {}).get("q_deg") or self.last_real_q_deg
                     if isinstance(virt_q, list) and len(virt_q) == self.jm.num_joints:
-                        cmd += ["--start-q-deg", ",".join(f"{float(v):.2f}" for v in virt_q)]
+                        cmd += ["--start-q-deg=" + ",".join(f"{float(v):.2f}" for v in virt_q)]
                     job_name = "move_virtual"
                 self._start(job_name, cmd, meta)
         return {"ok": True}
@@ -705,6 +863,83 @@ class Service:
             self._start("robustness", cmd, {"amplitude": 0.0})
         return {"ok": True}
 
+    # ------------------------------------------------------------------ trained head skills (this PC only)
+    def skills(self) -> dict:
+        return {"ok": True, "skills": skills_report()}
+
+    def train_skill(self, body: dict) -> dict:
+        sid = str(body.get("behaviour") or body.get("skill") or "")
+        if sid != "all" and sid not in head_skills.SKILLS:
+            return {"ok": False, "error": f"{sid!r} is not a trainable skill", "_code": 400}
+        cmd = [sys.executable, "-u", "-m", "robotcontrol.training.train_head_skill", sid]
+        iters = body.get("iters")
+        if iters is not None:
+            n = int(iters)
+            if not 1 <= n <= 3000:
+                return {"ok": False, "error": "iters must be in [1, 3000]", "_code": 400}
+            cmd += ["--iters", str(n)]
+        with self.lock:
+            if self.job:
+                return {"ok": False, "error": f"{self.job} is running", "_code": 409}
+            self.progress = {"job": "train", "done": 0, "total": 0}
+            self._start("train", cmd, {"amplitude": 0.0, "behaviour": sid})
+            self._skills_at = 0.0
+        return {"ok": True}
+
+    def _record_robot_copy(self, skill_id: str, version: int, sha: str) -> None:
+        copies = robot_copies()
+        copies[skill_id] = {"version": version, "sha256": sha, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        ROBOT_COPIES.parent.mkdir(parents=True, exist_ok=True)
+        ROBOT_COPIES.write_text(json.dumps(copies, indent=1), encoding="utf-8")
+        self._skills_at = 0.0
+
+    def activate_skill(self, body: dict) -> dict:
+        sid = str(body.get("behaviour") or "")
+        with self.lock:
+            if self.job:
+                return {"ok": False, "error": f"{self.job} is running", "_code": 409}
+            try:
+                info = skill_versions.activate(sid, int(body.get("version", 0)))
+            except ValueError as e:
+                return {"ok": False, "error": str(e), "_code": 400}
+            self._skills_at = 0.0
+            self.previewed = None  # the policy changed: the next robot run needs a fresh virtual preview
+            self.log(f"{sid}: v{info['version']} is now the active version")
+        return {"ok": True, "version": info["version"]}
+
+    def push_skill(self, body: dict) -> dict:
+        sid = str(body.get("behaviour") or "")
+        why = trained_why_not(sid) if sid in head_skills.SKILLS else f"{sid!r} is not a trained skill"
+        if why:
+            return {"ok": False, "error": why, "_code": 400}
+        with self.lock:
+            if self.job:
+                return {"ok": False, "error": f"{self.job} is running", "_code": 409}
+            self._start(
+                "push",
+                [sys.executable, "-u", "-m", "robotcontrol.behaviours.skill_push", sid],
+                {"amplitude": 0.0, "behaviour": sid},
+            )
+        return {"ok": True}
+
+    def lab_play(self, body: dict) -> dict:
+        sid = str(body.get("behaviour") or "")
+        why = trained_why_not(sid) if sid in head_skills.SKILLS else f"{sid!r} is not a trained skill"
+        if why:
+            return {"ok": False, "error": why, "_code": 400}
+        size = float(body.get("size", 10.0))
+        with self.lock:
+            seq = (self.lab_request or {}).get("seq", 0) + 1
+            self.lab_request = {"seq": seq, "behaviour": sid, "size": size, "at": time.time()}
+        alive = self.lab_seen_at and time.time() - self.lab_seen_at < 5.0
+        return {"ok": True, "seq": seq, "unreal_running": bool(alive)}
+
+    def lab_poll(self, seen: int) -> dict:
+        with self.lock:
+            self.lab_seen_at = time.time()
+            self.lab_ack_seq = max(self.lab_ack_seq, seen)
+            return {"ok": True, "request": self.lab_request}
+
     # ------------------------------------------------------------------ Level 2 walk sandbox (simulation only)
     def _walk(self):
         if self.walk is None:
@@ -867,6 +1102,15 @@ def make_handler(svc: Service):
                 self._send(200, svc.status())
             elif self.path.startswith("/robustness"):
                 self._send(200, svc.robustness_report())
+            elif self.path.startswith("/skills/detail"):
+                qs = parse_qs(urlparse(self.path).query)
+                ver = (qs.get("version") or [None])[0]
+                self._reply(skill_detail((qs.get("id") or [""])[0], int(ver) if ver and ver.isdigit() else None))
+            elif self.path.startswith("/skills"):
+                self._send(200, svc.skills())
+            elif self.path.startswith("/lab/poll"):
+                seen = (parse_qs(urlparse(self.path).query).get("seen") or ["0"])[0]
+                self._send(200, svc.lab_poll(int(seen) if seen.isdigit() else 0))
             elif self.path.startswith("/walk/state"):
                 self._send(200, svc.walk_state())
             elif self.path.startswith("/robot_view.png"):
@@ -900,6 +1144,14 @@ def make_handler(svc: Service):
                     return self._send(200, svc.interpret(body))
                 if self.path == "/robustness/run":
                     return self._reply(svc.robustness_run(quick=bool(body.get("quick", False))))
+                if self.path == "/skills/train":
+                    return self._reply(svc.train_skill(body))
+                if self.path == "/skills/activate":
+                    return self._reply(svc.activate_skill(body))
+                if self.path == "/skills/push":
+                    return self._reply(svc.push_skill(body))
+                if self.path == "/lab/play":
+                    return self._reply(svc.lab_play(body))
                 if self.path.startswith("/walk/"):
                     return self._reply(svc.walk_post(self.path[len("/walk/") :], body))
                 if self.path == "/monitor":

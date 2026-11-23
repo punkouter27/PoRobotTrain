@@ -28,8 +28,15 @@ motor slots, limits, gains, and defaults.
 - Operator console (`RobotControl/behaviours/console.py`, `docs/service_api.md` sections 4-7): poses, motions and
   modes power several joints, so they stay simulation-only (the service refuses target `real`); the pre-flight
   checklist and session limits may only add restrictions; zero offsets are stored, never applied to a controller.
-- New service endpoints (voice intent, robustness sweep, walk sandbox) are specified in `docs/service_api.md`; the
-  Blazor UI and the Unreal panel implement them at parity, so change both when the contract changes.
+- Two clients, two jobs (no feature parity; `docs/scenario_lab.md`):
+  | Web app (Blazor, `src/`) | Unreal app (`UnrealProject/`) |
+  |---|---|
+  | Debug and train with the R1 on its stand: train + validate skills, skill library, every real-robot path (preview, read-only check, pre-flight, confirm, mirror), health, setup, logs, assistant, robustness, walk page | Scenario lab, simulation only: hatch the web app's validated head skills in-engine (`UR1SkillBrainComponent`, NNE), look-at target, head camera, timeline, disturbances; Walk (sim) tab |
+  The web app is a five-step flow (1 Check, 2 Coded moves, 3 Train, 4 Virtual robot, 5 Real robot; a step opens when
+  the previous one is done) plus the Library (every trained skill and session). The service endpoints in
+  `docs/service_api.md` are implemented by the web app. Unreal never connects to the physical robot and never trains;
+  it calls the service only for the walk sandbox and the Library's play requests (`/lab/poll`), loads a skill only when its `deploy.json`
+  validation passed and the SHA-256 matches the ONNX, and lets go of the actuators while a Python client drives URLab.
 - Reward penalty weights (torque², joint angular velocity², action rate, foot slip) and the curriculum
   thresholds live in `RobotControl/configs/reward_config.json`; `Level0Config` reads them and the Unreal
   DataAsset mirrors them (a pytest checks parity). Level 0 hangs on a stand, so `foot_slip` is inactive there.
@@ -44,8 +51,8 @@ motor slots, limits, gains, and defaults.
   validation scripts for changed code.
   Report skipped Unreal, device, and hardware gates explicitly; the mock bridge
   is not evidence that URLab drives the robot.
-- For UI changes, retain the five HUD anchors and document before/after
-  screenshots and an HTML report under `SCREENSHOTS/`.
+- For UI changes, retain the Unreal lab's five HUD anchors (Brain, Target, Disturb, STOP, Details;
+  `R1BehaviourPanel.h`) and document before/after screenshots and an HTML report under `SCREENSHOTS/`.
 
 ## CI/CD and Azure
 

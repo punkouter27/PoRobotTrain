@@ -29,6 +29,7 @@ class BehaviourSpec:
     primary_label: str
     max_deg: float
     cls: type
+    kind: str = "scripted"  # "scripted" (code) | "trained" (validated ONNX policy, behaviours/head_skills.py)
 
 
 class JointSafetyChannel:
@@ -301,3 +302,22 @@ BEHAVIOUR_SPECS: Dict[str, BehaviourSpec] = {
         cls=HandWave,
     ),
 }
+
+
+def _register_trained_head_skills() -> None:
+    from .head_skills import SKILL_CLASSES, SKILLS
+
+    for sid, sk in SKILLS.items():
+        BEHAVIOUR_SPECS[sid] = BehaviourSpec(
+            id=sid,
+            label=sk.label,
+            desc=sk.desc,
+            primary_joint=sk.primary_joint,
+            primary_label=sk.primary_label,
+            max_deg=sk.max_deg,
+            cls=SKILL_CLASSES[sid],
+            kind="trained",
+        )
+
+
+_register_trained_head_skills()

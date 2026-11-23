@@ -4,6 +4,8 @@
 #include "R1FollowCamera.h"
 #include "R1BehaviourPanel.h"
 #include "R1PolicyComponent.h"
+#include "R1SkillBrain.h"
+#include "R1Room.h"
 #include "R1Level0SweepCommand.h"
 #include "R1ArticulationBridge.h"
 #include "R1DeployConfig.h"
@@ -34,6 +36,15 @@ void AR1TwinGameMode::StartPlay()
 	if (bAutoSpawnPolicyHost)
 	{
 		SpawnPolicyHostIfNeeded();
+	}
+	SpawnSkillBrain();
+	if (UWorld* World = GetWorld())
+	{
+		// the virtual robot's simple world: an empty room around the stand (spawned once, visual only)
+		FActorSpawnParameters P;
+		P.Name = TEXT("R1Room");
+		P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		World->SpawnActor<AR1Room>(AR1Room::StaticClass(), FTransform::Identity, P);
 	}
 
 	Super::StartPlay();
@@ -105,7 +116,7 @@ void AR1TwinGameMode::SpawnPolicyHostIfNeeded()
 	if (!bRunLevel0PolicyOnPlay)
 	{
 		DefaultPolicyModel = nullptr;
-		UE_LOG(LogR1Twin, Log, TEXT("R1TwinGameMode: bRunLevel0PolicyOnPlay=false - no in-engine policy; the twin holds the default pose until a Python client drives it."));
+		UE_LOG(LogR1Twin, Log, TEXT("R1TwinGameMode: bRunLevel0PolicyOnPlay=false - no in-engine policy; the virtual robot holds the default pose until a Python client drives it."));
 	}
 	else if (!DefaultPolicyModel && DefaultPolicyModelPath.IsValid())
 	{
@@ -146,4 +157,26 @@ void AR1TwinGameMode::DisableChaosOnAllActors()
 		}
 	}
 	UE_LOG(LogR1Twin, Log, TEXT("R1TwinGameMode: Chaos simulation disabled on %d primitive component(s); MuJoCo (URLab) is the physics authority."), NumDisabled);
+}
+
+void AR1TwinGameMode::SpawnSkillBrain()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	FActorSpawnParameters Params;
+	Params.Name = TEXT("R1ScenarioLab");
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AActor* Host = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, Params);
+	if (!Host)
+	{
+		return;
+	}
+	SkillBrain = NewObject<UR1SkillBrainComponent>(Host, TEXT("SkillBrain"));
+	SkillBrain->ArticulationActorTag = ArticulationActorTag;
+	Host->AddInstanceComponent(SkillBrain);
+	SkillBrain->RegisterComponent();
+	UE_LOG(LogR1Twin, Log, TEXT("R1TwinGameMode: scenario lab brain spawned (skills load on BeginPlay)."));
 }

@@ -18,6 +18,14 @@ namespace PoRobotTrain.Shared.Contracts;
 [JsonSerializable(typeof(WalkStartRequest))]
 [JsonSerializable(typeof(WalkCommandRequest))]
 [JsonSerializable(typeof(WalkStateDto))]
+// trained head skills (docs/head_skills.md)
+[JsonSerializable(typeof(SkillInfoDto))]
+[JsonSerializable(typeof(TrainSkillRequest))]
+[JsonSerializable(typeof(SkillRequest))]
+[JsonSerializable(typeof(ActivateSkillRequest))]
+[JsonSerializable(typeof(LabPlayRequest))]
+[JsonSerializable(typeof(LabPlayResultDto))]
+[JsonSerializable(typeof(SkillDetailDto))]
 // operator console (docs/service_api.md sections 4-7)
 [JsonSerializable(typeof(ConsoleStatusDto))]
 [JsonSerializable(typeof(HealthDto))]

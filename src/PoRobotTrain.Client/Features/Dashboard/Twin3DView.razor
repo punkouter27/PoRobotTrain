@@ -10,17 +10,20 @@
     @if (_failed)
     {
         <img class="stand-img" src="@FallbackUrl" alt="3D Unitree R1 on test stand (server render)" />
-        <div class="twin-note">Live 3D twin unavailable (@_error). Showing the server render instead.</div>
+        <div class="twin-note">Live 3D virtual robot unavailable (@_error). Showing the server render instead.</div>
     }
     else
     {
-        <canvas @ref="_canvas" class="twin-canvas" aria-label="Live 3D Unitree R1 twin on its test stand"></canvas>
+        <canvas @ref="_canvas" class="twin-canvas" aria-label="Live 3D Unitree R1 virtual robot on its test stand"></canvas>
+        @if (!Simple)
+        {
         <div class="twin-toolbar">
             <button type="button" class="po-chip @(_ghost ? "active" : string.Empty)" title="Show the virtual sim pose as a blue ghost over the physical / practice pose" @onclick="ToggleGhostAsync">Sim ghost</button>
             <button type="button" class="po-chip @(_reach ? "active" : string.Empty)" title="Reach cloud for the selected behaviour (dim: everything the chain can reach inside joint limits; bright: what this sweep covers)" @onclick="ToggleReachAsync">Reach</button>
             <button type="button" class="po-chip @(_sound ? "active" : string.Empty)" title="Spatial audio cues: job start/finish, faults, near-limit ticks while dragging, collision buzz, hot motors" @onclick="ToggleSoundAsync">Sound</button>
         </div>
-        @if (_info is not null)
+        }
+        @if (_info is not null && !Simple)
         {
             <div class="twin-badge">
                 @(_info.Backend == "webgpu" ? "WebGPU" : "WebGL2") · glTF @($"{_info.GlbBytes / 1024.0:0} KB")@(_info.Draco ? " Draco" : string.Empty) · FK @(_info.FkOk ? "✓ MuJoCo" : "✗")
@@ -28,12 +31,12 @@
         }
         @if (!_ready)
         {
-            <div class="twin-loading">Loading 3D twin…</div>
+            <div class="twin-loading">Loading 3D virtual robot…</div>
         }
     }
 </div>
 
-@if (!_failed)
+@if (!_failed && !Simple)
 {
     <div class="twin-legend">
         <span><i style="background:#ffbd42"></i>near limit</span>
@@ -46,7 +49,7 @@
     </div>
 }
 
-@if (_effectors is { Count: > 0 })
+@if (_effectors is { Count: > 0 } && !Simple)
 {
     <div class="twin-ee">
         @foreach (var p in _effectors)
@@ -74,6 +77,8 @@
     [Parameter] public double Amplitude { get; set; } = 10.0;
     [Parameter] public string FallbackUrl { get; set; } = "/api/robot/view.png";
     [Parameter] public EventCallback<TwinFeedback> OnFeedback { get; set; }
+    /// <summary>Just the robot: no toolbar, legend, renderer badge or end-effector coordinates (Advanced shows them).</summary>
+    [Parameter] public bool Simple { get; set; }
 
     private ElementReference _canvas;
     private IJSObjectReference? _module;

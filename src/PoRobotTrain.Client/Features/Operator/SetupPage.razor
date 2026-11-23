@@ -18,7 +18,7 @@
                 <span class="po-pill @(_pf.Complete ? "po-pill--ok" : "po-pill--orange")">@(_pf.Complete ? $"✓ COMPLETE · {_pf.ValidForS / 60:0} MIN LEFT" : $"{_pf.Missing.Count} OPEN")</span>
             }
         </div>
-        <p class="po-muted">Needed before anything moves the real robot (step 3 on Control). Practising on the twin doesn't need it. Each tick lasts 30 minutes.</p>
+        <p class="po-muted">Needed before anything moves the real robot (step 3 on Virtual | Real robot). Practising on the virtual robot doesn't need it. Each tick lasts 30 minutes.</p>
         @if (_pf is not null)
         {
             <h3 class="diag-sec">You confirm</h3>
@@ -66,7 +66,7 @@
                 <div class="ctrl-row ops-row">
                     @foreach (var s in new[] { "real", "practice" })
                     {
-                        <button type="button" class="po-chip @(_calSource == s ? "active" : string.Empty)" @onclick="() => _calSource = s">@(s == "real" ? "Real robot" : "Twin")</button>
+                        <button type="button" class="po-chip @(_calSource == s ? "active" : string.Empty)" @onclick="() => _calSource = s">@(s == "real" ? "Real robot" : "Virtual robot")</button>
                     }
                     @foreach (var r in new[] { "zero", "home" })
                     {
@@ -102,7 +102,7 @@
         @if (_capture?.Rows is { } rows)
         {
             <table class="diag-table">
-                <tr><th>Joint</th><th>Measured °</th><th>Reference °</th><th>Offset °</th><th>Twin assumes °</th><th></th></tr>
+                <tr><th>Joint</th><th>Measured °</th><th>Reference °</th><th>Offset °</th><th>Virtual robot assumes °</th><th></th></tr>
                 @foreach (var r in rows)
                 {
                     <tr>

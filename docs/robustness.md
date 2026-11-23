@@ -10,8 +10,9 @@ scored like the verification gate.
 .venv\Scripts\python.exe -m robotcontrol.tools.robustness_sweep --quick   # 56 twins, 5 s each, ~8 s
 ```
 
-The same run is available from both clients: the **Robustness** panel in the Blazor control UI and the
-**Robustness** tab in the Unreal twin's panel (service job `robustness`, see `docs/service_api.md` section 2).
+The run is available from the **Robustness** panel in the web app (service job `robustness`, see
+`docs/service_api.md` section 2). The Unreal app is the scenario lab and has no robustness tab
+(docs/scenario_lab.md: its Disturb section tests one trained brain live).
 
 ## What it varies
 

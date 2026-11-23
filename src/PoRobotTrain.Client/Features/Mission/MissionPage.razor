@@ -1,0 +1,524 @@
+@page "/mission"
+@page "/step/2"
+@page "/step/4"
+@page "/step/5"
+@using System.Globalization
+@implements IDisposable
+@inject RobotApiClient Api
+@inject UiState Ui
+@inject NavigationManager Nav
+
+<PageTitle>@PageTitleText — PoRobotTrain</PageTitle>
+
+@* The one place to run a skill. Virtual robot left; the real R1 right, drawn ONLY from its measured joint angles (all 26,
+   streamed read-only during the check, Live view and the powered run). One button below always shows the next step:
+   Play on virtual robot -> Check the robot -> Pre-flight -> Run on robot. The service enforces the same gates; nothing here
+   bypasses them. Advanced adds the virtual robot engine, Live view, the ghost overlay, the gate details and the joint sliders. *@
+<div class="mc-page">
+    <section class="po-card mc-bar">
+        <div class="mc-bar__row">
+            <div class="step-head">
+                @if (StepN > 0)
+                {
+                    <span class="step-head__n">STEP @StepN OF 5</span>
+                }
+                <h1 class="dash-h1">@HeadingText</h1>
+            </div>
+            <div class="mc-groups">
+                @foreach (var g in Groups)
+                {
+                    <div class="mc-group" role="group" aria-label="@g.Title">
+                        <span class="mc-group__title" title="@g.Hint">@g.Title</span>
+                        <div class="chip-grid">
+                            @foreach (var b in g.Items)
+                            {
+                                var sel = b.Id == _behaviour;
+                                var locked = b.Kind == "trained" && !b.Ready;
+                                <button type="button" class="po-chip @(sel ? "active" : string.Empty)" disabled="@(locked || (!IsIdle && !sel))"
+                                        title="@(locked ? "Needs training: open Skills" : PlainOf(b.Desc))" @onclick="() => SelectAsync(b.Id, _amp)">
+                                    @b.Label@(locked ? " (needs training)" : string.Empty)
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            @if (Sizes.Count > 0)
+            {
+                <div class="size-row" role="group" aria-label="Size">
+                    @foreach (var amp in Sizes)
+                    {
+                        var sel = Math.Abs(_amp - amp) < 0.01;
+                        <button type="button" class="po-chip @(sel ? "active" : string.Empty)" disabled="@(!IsIdle && !sel)" @onclick="() => SelectAsync(_behaviour, amp)">@($"{amp:0}°")</button>
+                    }
+                </div>
+            }
+        </div>
+        <div class="po-muted">@PlainDesc</div>
+    </section>
+
+    @* ---------------------------------------------------------------- the one next step *@
+    @if (Mode == "virtual")
+    {
+        <section class="po-card mc-next">
+            <div class="mc-next__row">
+                <button type="button" class="po-btn po-btn--blue mc-next__btn" disabled="@(!IsIdle || !Ready)" @onclick="PlayVirtualAsync">
+                    @(IsIdle ? $"▶ Play {Info?.Label}{(SessionVersion is int sv ? $" (session v{sv})" : string.Empty)} on the virtual robot" : Busy)
+                </button>
+                <div class="mc-next__why @StatusClass">@VirtualStatus</div>
+                @if (Ui.StepDone(4))
+                {
+                    <a class="po-btn po-btn--blue-soft step-next" href="/step/5">Next: step 5, real robot →</a>
+                }
+            </div>
+            <div class="po-muted">Want the camera, a moving target or pushes? Open the Library and press <b>View in Unreal</b>.</div>
+        </section>
+    }
+    else
+    {
+    <section class="po-card mc-next">
+        <ol class="mc-steps" aria-label="Steps to the robot">
+            @for (var i = 0; i < StepNames.Length; i++)
+            {
+                var n = i;
+                <li class="@(n < NextStep ? "done" : n == NextStep ? "now" : string.Empty)">@(n < NextStep ? "✓ " : $"{n + 1} ")@StepNames[n]</li>
+            }
+        </ol>
+        <div class="mc-next__row">
+            @if (NextStep == 2 && !PreflightOk)
+            {
+                <a class="po-btn po-btn--orange mc-next__btn" href="/setup">Open the pre-flight checklist</a>
+            }
+            else
+            {
+                <button type="button" class="po-btn @(NextStep >= 1 ? "po-btn--orange" : "po-btn--blue") mc-next__btn" disabled="@(!IsIdle || !Ready)" @onclick="NextAsync">
+                    @NextLabel
+                </button>
+            }
+            <div class="mc-next__why @StatusClass">@StatusText</div>
+        </div>
+        <div class="estop-note">Robot emergency stop: <b>remote L2 + B, hold 5 s</b>. E-STOP at the top stops this app.</div>
+        @if (Mode == "coded" && Ui.StepDone(2))
+        {
+            <a class="po-btn po-btn--blue-soft step-next" href="/step/3">Next: step 3, train skills →</a>
+        }
+    </section>
+    }
+
+
+    <div class="mc-grid @(Mode == "virtual" ? string.Empty : "mc-grid--two")">
+        <section class="po-card mc-side mc-side--twin" aria-label="Virtual robot">
+            <div class="mc-side__hdr">
+                <b class="mc-title mc-title--twin">VIRTUAL ROBOT · nothing physical moves</b>
+                @if (Ui.Advanced)
+                {
+                    <div class="mc-engine">
+                        <button type="button" class="po-chip @(Ui.Engine == "builtin" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("builtin")'>Built-in</button>
+                        <button type="button" class="po-chip @(Ui.Engine == "unreal" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("unreal")'>Unreal</button>
+                    </div>
+                }
+            </div>
+            <Twin3DView Actual="VirtualQ" WantReal="false" RealConnected="false" Camera="iso" Job="@_status?.Job" Results="@_status?.Results"
+                        PrimaryJoint="@Virtual?.PrimaryJoint" Behaviour="@_behaviour" Amplitude="EffAmp" Simple="@(!Ui.Advanced)" />
+            @Readout(Virtual, "#8ab8ff", "Plays here first.")
+        </section>
+
+        @if (Mode != "virtual")
+        {
+        <section class="po-card mc-side mc-side--real" aria-label="Real robot">
+            <div class="mc-side__hdr">
+                <b class="mc-title mc-title--real">@(RealConnected ? "REAL R1 · measured joints" : "REAL R1 · not connected (stand-in shown)")</b>
+                @if (Ui.Advanced)
+                {
+                    <span class="po-muted">@RealSourceText</span>
+                }
+            </div>
+            <Twin3DView Actual="RealQ" Sim="@(Ui.Advanced && _ghost ? VirtualQ : null)" Temps="@(RealConnected ? Real?.TempsC : null)" WantReal="true" RealConnected="RealConnected"
+                        Camera="iso" Job="@_status?.Job" Results="@_status?.Results" PrimaryJoint="@Real?.PrimaryJoint" Behaviour="@_behaviour" Amplitude="EffAmp"
+                        Simple="@(!Ui.Advanced)" />
+            @Readout(Real, "#ffb170", RealConnected ? "Shows the robot once it is checked." : "Until the R1 connects, the check and run practise on a virtual stand-in.")
+        </section>
+        }
+    </div>
+
+    @if (Ui.Advanced)
+    {
+        <section class="po-card mc-adv">
+            <div class="btn-row">
+                <button type="button" class="po-btn po-btn--teal" disabled="@(!IsIdle)" @onclick="MonitorAsync">@(IsJob("monitor") ? "Live view on…" : "Live view (no motor power)")</button>
+                <label class="po-muted"><input type="checkbox" @bind="_ghost" /> Virtual robot as a ghost over the real robot (purple = differs by more than 2°)</label>
+            </div>
+            <div class="mc-gates">
+                @Gate("Validated", Ready, Info?.Kind == "trained" ? (Ready ? "passed" : "train first") : "scripted")
+                @Gate("Virtual robot preview", PreviewMatched, PreviewMatched ? "OK" : "to do")
+                @Gate("Read-only check", CheckMatched, CheckMatched ? $"{_status?.CheckAgeS:0} s ago" : "to do")
+                @Gate("Pre-flight", PreflightOk, PracticeActive ? "practice" : PreflightOk ? "complete" : "open Setup")
+                @Gate("Confirm", false, CanRunRobot ? "ready" : "locked")
+            </div>
+        </section>
+        <JointTelemetryPanel Status="_status" IsIdle="IsIdle" PracticeActive="PracticeActive" OnReadPhysical="SnapshotAsync" OnMoveJoint="MoveJointAsync"
+                             SelectedBehaviour="@_behaviour" SelectedAmplitude="EffAmp" HighlightJoint="@QueryJoint" Simple="false" />
+    }
+    @if (!string.IsNullOrEmpty(_toast))
+    {
+        <div class="po-toast">@_toast</div>
+    }
+</div>
+
+@if (_confirmOpen)
+{
+    <div class="po-modal-bg">
+        <div class="po-modal">
+            <h2>@(PracticeActive ? "RUN THE PRACTICE STEP ON THE VIRTUAL ROBOT?" : "MOVE THE REAL ROBOT?")</h2>
+            <p>@(PracticeActive ? "The real robot is not connected, so this runs on the virtual robot. Nothing physical moves." : $"Only {PoweredText} will be powered. The right side shows the robot's measured joints while it moves.")</p>
+            <p>Skill: <b>@(Info?.Label)</b>@(Sizes.Count > 0 ? $" ({EffAmp:0}°)" : string.Empty). Robot hanging on its stand, area clear, remote in your hand?</p>
+            <div class="btn-row">
+                <button type="button" class="po-btn po-btn--orange" style="flex:1" @onclick="RunAsync">@(PracticeActive ? "Yes, run the practice step" : "Yes, move the REAL robot")</button>
+                <button type="button" class="po-btn" @onclick="() => _confirmOpen = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "behaviour")] public string? QueryBehaviour { get; set; }
+    [SupplyParameterFromQuery(Name = "amp")] public double? QueryAmp { get; set; }
+    [SupplyParameterFromQuery(Name = "joint")] public string? QueryJoint { get; set; }
+    /// <summary>Step 4 from the Library: play this stored training session instead of the active version.</summary>
+    [SupplyParameterFromQuery(Name = "version")] public int? QueryVersion { get; set; }
+
+    private int? SessionVersion => Mode == "virtual" && QueryVersion is int v && v > 0 && _behaviour == QueryBehaviour ? v : null;
+
+    private static readonly string[] StepNames = ["Play on virtual robot", "Check the robot", "Pre-flight", "Run on robot"];
+    private static readonly string[] ScriptedHead = ["neck_turn", "neck_nod"];
+
+    private RobotStatusDto? _status;
+    private bool _online;
+    private string _behaviour = "hold_centre";
+    private double _amp = 10.0;
+    private bool _ghost;
+    private bool _confirmOpen;
+    private string? _toast;
+    private CancellationTokenSource? _cts;
+
+    private IReadOnlyList<BehaviourInfoDto> All => _status?.Behaviours is { Count: > 0 } b ? b : [];
+    /// <summary>The trained head skills; the scripted head motions only with Advanced; arm motions never (stand: head only).</summary>
+    private sealed record PickGroup(string Title, string Hint, List<BehaviourInfoDto> Items);
+
+    /// <summary>Two sections: fixed coded moves (no training) and the RL-trained skills. Head only on the stand, so the
+    /// coded arm motions are not offered here.</summary>
+    /// <summary>"coded" (step 2), "virtual" (step 4: trained skills on the virtual robot only), "real" (step 5) or "all".</summary>
+    private string Mode => Path switch
+    {
+        "step/2" => "coded",
+        "step/4" => "virtual",
+        "step/5" => "real",
+        _ => "all",
+    };
+
+    private string Path => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+    private int StepN => Mode switch { "coded" => 2, "virtual" => 4, "real" => 5, _ => 0 };
+
+    private string HeadingText => Mode switch
+    {
+        "coded" => "TRY CODED MOVES",
+        "virtual" => "WATCH TRAINED SKILLS ON THE VIRTUAL ROBOT",
+        "real" => "RUN A TRAINED SKILL ON THE REAL ROBOT",
+        _ => "VIRTUAL | REAL ROBOT",
+    };
+
+    private string PageTitleText => StepN > 0 ? $"Step {StepN} · {UiState.Steps[StepN - 1].Title}" : "Virtual | Real robot";
+
+    private string VirtualStatus => !_online ? "Start the behaviour service: python -m robotcontrol.behaviours.service"
+        : !Ready ? $"{Info?.Label} needs training first (step 3 or the Library)."
+        : _status?.Results.GetValueOrDefault("preview") is { Ok: false } f && IsIdle ? $"Last try stopped: {f.Reason}"
+        : PreviewMatched ? "Played cleanly. Play it again, try another skill, or go on to step 5."
+        : "Runs on this PC only. Nothing physical moves.";
+
+    private IEnumerable<PickGroup> Groups
+    {
+        get
+        {
+            var coded = Mode is "virtual" or "real" ? [] : All.Where(b => b.Kind != "trained" && ScriptedHead.Contains(b.Id)).ToList();
+            var trained = Mode == "coded" ? [] : All.Where(b => b.Kind == "trained").ToList();
+            if (coded.Count > 0)
+            {
+                yield return new("CODED MOVES", "Fixed motions written in code: no training needed", coded);
+            }
+            if (trained.Count > 0)
+            {
+                yield return new("TRAINED SKILLS (RL)", "Learned by reinforcement learning on the virtual robot (Skills page)", trained);
+            }
+        }
+    }
+
+    private static string PlainOf(string d) => d.StartsWith("Trained: ", StringComparison.Ordinal) ? char.ToUpperInvariant(d[9]) + d[10..] : d;
+    private BehaviourInfoDto? Info => All.FirstOrDefault(b => b.Id == _behaviour);
+    private bool Ready => Info is null || Info.Ready;
+    private string PlainDesc => Info is null ? string.Empty : (Info.Kind == "trained" ? "Trained skill: " : "Coded move: ") + PlainOf(Info.Desc);
+
+    /// <summary>10 / 20 / 30 up to the skill's max, plus its max; none for Hold Centre (size does not apply).</summary>
+    private List<double> Sizes
+    {
+        get
+        {
+            if (_behaviour == "hold_centre" || Info is null)
+            {
+                return [];
+            }
+            var list = new[] { 10.0, 20.0, 30.0 }.Where(a => a <= Info.MaxDeg + 1e-6).ToList();
+            if (!list.Any(a => Math.Abs(a - Info.MaxDeg) < 0.01))
+            {
+                list.Add(Info.MaxDeg);
+            }
+            return list;
+        }
+    }
+
+    private double EffAmp => Math.Min(_amp, Info?.MaxDeg ?? _amp);
+    private string PoweredText => _status?.Skills?.FirstOrDefault(s => s.Id == _behaviour) is { } s
+        ? string.Join(" + ", s.Powered.Select(p => p.Replace('_', ' ')))
+        : Info?.PrimaryLabel.ToLowerInvariant() ?? "the selected joint";
+
+    private bool IsIdle => _online && string.IsNullOrEmpty(_status?.Job);
+    private bool IsJob(string j) => string.Equals(_status?.Job, j, StringComparison.OrdinalIgnoreCase);
+    private bool RealConnected => _status?.RealConnected ?? false;
+    private bool PracticeActive => !RealConnected;
+    private bool PreflightOk => PracticeActive || (_status?.Console?.Preflight?.Complete ?? false);
+    private bool PreviewMatched => _status?.Previewed is { } p && p.Behaviour == _behaviour && Math.Abs(p.Amplitude - _amp) < 0.01;
+    private bool CheckMatched => _status?.Checked is { } c && c.Behaviour == _behaviour && Math.Abs(c.Amplitude - _amp) < 0.01
+        && _status.CheckAgeS is >= 0 and < 300.0;
+    private bool CanRunRobot => IsIdle && Ready && PreviewMatched && CheckMatched && (PracticeActive || (_status?.CanRunRobot ?? false));
+
+    /// <summary>0 play on virtual robot, 1 check, 2 pre-flight, 3 run.</summary>
+    private int NextStep => !PreviewMatched ? 0 : !CheckMatched ? 1 : !PreflightOk ? 2 : 3;
+
+    private string NextLabel => !IsIdle ? Busy
+        : NextStep switch
+        {
+            0 => "▶ Play on virtual robot",
+            1 => RealConnected ? "Check the robot (no motor power)" : "Check (virtual robot)",
+            _ => RealConnected ? "Run on robot…" : "Run practice…",
+        };
+
+    private string Busy => !_online ? "Waiting for the behaviour service…"
+        : IsJob("preview") ? "Playing on the virtual robot…" : IsJob("check") ? "Checking…" : IsJob("run") ? "Running…"
+        : IsJob("train") ? "Training a skill…" : $"Busy ({_status?.Job})…";
+
+    private string StatusClass => _status?.Results.GetValueOrDefault(NextStep == 0 ? "preview" : NextStep == 1 ? "check" : "run") is { Ok: false } && IsIdle ? "bad"
+        : IsJob("run") ? "warn" : string.Empty;
+
+    private string StatusText
+    {
+        get
+        {
+            if (!_online)
+            {
+                return "Start the behaviour service: python -m robotcontrol.behaviours.service";
+            }
+            if (!Ready)
+            {
+                return $"{Info?.Label} needs training first: open Skills.";
+            }
+            if (IsJob("run"))
+            {
+                return PracticeActive ? "Virtual robot moving." : "REAL ROBOT MOVING: the right side shows its measured joints.";
+            }
+            var failed = _status?.Results.GetValueOrDefault(NextStep == 0 ? "preview" : NextStep == 1 ? "check" : "run");
+            if (IsIdle && failed is { Ok: false })
+            {
+                return $"Last try stopped: {failed.Reason}";
+            }
+            return NextStep switch
+            {
+                0 => "Runs on this PC only. Watch the left robot.",
+                1 => "Reads all 26 joints with no motor power.",
+                2 => "Tick the checklist on Setup, then come back.",
+                _ => "You will be asked to confirm: robot on its stand, area clear, remote in hand.",
+            };
+        }
+    }
+
+    private TelemetryReadoutDto? Virtual => _status?.Telemetry.GetValueOrDefault("virtual");
+    private TelemetryReadoutDto? Real => _status?.Telemetry.GetValueOrDefault("real")
+        ?? (PracticeActive ? _status?.Telemetry.GetValueOrDefault("practice") : null);
+    private double[]? VirtualQ => Virtual?.QDeg;
+    private double[]? RealQ => Real?.QDeg;
+    private string RealSourceText => Real is null ? "no reading yet" : $"{Real.Source} · {(Real.AgeS < 2 ? "live" : $"{Real.AgeS:0} s ago")}";
+
+    private RenderFragment Gate(string label, bool done, string detail) => __builder =>
+    {
+        <div class="mc-gate @(done ? "mc-gate--done" : string.Empty)"><span>@(done ? "✓ " : string.Empty)@label</span><b>@detail</b></div>
+    };
+
+    private RenderFragment Readout(TelemetryReadoutDto? t, string accent, string empty) => __builder =>
+    {
+        if (t?.ActualDeg is not double actual)
+        {
+            <div class="po-muted mc-readout">@empty</div>
+            return;
+        }
+        var pct = Math.Clamp((actual + 30.0) / 60.0 * 100.0, 0, 100);
+        <div class="mc-readout">
+            <div class="mc-readout__row"><span>@PrettyLabel(t.PrimaryLabel)</span><b>@($"{actual:+0;-0;0}°")</b></div>
+            <div class="gauge"><div class="gauge-zero"></div><div class="gauge-actual" style="left:@pct.ToString("0.#", CultureInfo.InvariantCulture)%;background:@accent"></div></div>
+            @if (Ui.Advanced)
+            {
+                <div class="po-muted">target @(t.TargetDeg is double tg ? $"{tg:+0.0;-0.0;0.0}°" : "—") · other joints drift @($"{t.OtherMaxDeg ?? 0:0.0}°") · @(t.AgeS < 2 ? "live" : $"{t.AgeS:0} s ago")</div>
+            }
+        </div>
+    };
+
+    private static string PrettyLabel(string? l) => string.IsNullOrEmpty(l) ? "Joint"
+        : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(l.ToLowerInvariant());
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cts = new CancellationTokenSource();
+        Ui.Changed += OnUiChanged;
+        await Ui.InitAsync();
+        _behaviour = QueryBehaviour is { Length: > 0 } qb ? qb : Ui.LastSkill;
+        _amp = QueryAmp is double a && a is >= 1 and <= 30 ? a : Ui.LastSize;
+        await PollOnceAsync();
+        FixAmp();
+        _ = PollLoopAsync(_cts.Token);
+    }
+
+    private void FixAmp()
+    {
+        // keep the size on one of this skill's chips (Hold Centre has none: any value is fine there)
+        var sizes = Sizes;
+        if (sizes.Count > 0 && !sizes.Any(s => Math.Abs(s - _amp) < 0.01))
+        {
+            _amp = sizes.Where(s => s <= _amp).DefaultIfEmpty(sizes[0]).Max();
+        }
+    }
+
+    private async Task SelectAsync(string id, double amp)
+    {
+        _behaviour = id;
+        _amp = amp;
+        FixAmp();
+        await Ui.SetSkillAsync(_behaviour, _amp);
+    }
+
+    private void OnUiChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task PollLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(300));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await PollOnceAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page closed
+        }
+    }
+
+    private async Task PollOnceAsync()
+    {
+        try
+        {
+            _status = await Api.GetStatusAsync(_cts?.Token ?? CancellationToken.None);
+            _online = _status is not null;
+            var visible = Groups.SelectMany(g => g.Items).ToList();
+            if (visible.Count > 0 && !visible.Any(b => b.Id == _behaviour))
+            {
+                _behaviour = (visible.FirstOrDefault(b => b.Ready) ?? visible[0]).Id;
+                FixAmp();
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _online = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task NextAsync()
+    {
+        await Ui.SetSkillAsync(_behaviour, _amp);
+        CommandResultDto res;
+        switch (NextStep)
+        {
+            case 0:
+                res = await Api.PreviewAsync(new PreviewRequest(_behaviour, _amp, 0.2, 20.0, Ui.PreviewTarget));
+                _toast = res.Ok ? "Playing on the virtual robot. Nothing physical moves." : res.Error;
+                break;
+            case 1:
+                res = await Api.CheckAsync(new BehaviourParamsDto(_behaviour, _amp, 0.2, 20.0, Practice: PracticeActive));
+                _toast = res.Ok ? "Checking the robot (no motor power)…" : res.Error;
+                break;
+            default:
+                _confirmOpen = CanRunRobot;
+                _toast = CanRunRobot ? null : _status?.WhyNotRun;
+                break;
+        }
+        await PollOnceAsync();
+    }
+
+    private async Task PlayVirtualAsync()
+    {
+        await Ui.SetSkillAsync(_behaviour, _amp);
+        var res = await Api.PreviewAsync(new PreviewRequest(_behaviour, _amp, 0.2, 20.0, Ui.PreviewTarget, SessionVersion));
+        _toast = res.Ok ? "Playing on the virtual robot. Nothing physical moves." : res.Error;
+        await PollOnceAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Library "Play" links (?behaviour=..&version=..&play=1) start the session right away
+        if (firstRender && Mode == "virtual" && Nav.Uri.Contains("play=1", StringComparison.Ordinal))
+        {
+            for (var i = 0; i < 20 && !IsIdle; i++)
+            {
+                await Task.Delay(250);
+            }
+            if (IsIdle && Ready)
+            {
+                await PlayVirtualAsync();
+            }
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        _confirmOpen = false;
+        var res = await Api.RunAsync(new RunRequest(_behaviour, _amp, 0.2, 20.0, true, Practice: PracticeActive));
+        _toast = res.Ok ? (PracticeActive ? "Running the practice step…" : "Starting the powered run on the REAL robot…") : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task MonitorAsync()
+    {
+        var res = await Api.MonitorAsync(practice: PracticeActive);
+        _toast = res.Ok ? "Live view: the right side follows the robot's measured joints (no motor power)." : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task SnapshotAsync()
+    {
+        var res = await Api.SnapshotAsync(practice: PracticeActive);
+        _toast = res.Ok ? "Read the pose (no motor power)." : res.Error;
+        await PollOnceAsync();
+    }
+
+    private async Task MoveJointAsync(MoveJointRequest req)
+    {
+        var res = await Api.MoveJointAsync(req);
+        _toast = res.Ok ? $"Moving {req.Joint} -> {req.TargetDeg:+0.0;-0.0;+0.0}° ({req.Target})…" : res.Error;
+        await PollOnceAsync();
+    }
+
+    public void Dispose()
+    {
+        Ui.Changed -= OnUiChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

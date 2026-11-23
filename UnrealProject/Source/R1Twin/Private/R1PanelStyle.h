@@ -1,5 +1,4 @@
-// Colours shared by the behaviour panel's tab files (R1PanelVoice/Robustness/Walk.cpp). Same values as the
-// anonymous-namespace constants at the top of R1BehaviourPanel.cpp, which predates this header.
+// Colours shared by the scenario lab panel's files (R1BehaviourPanel.cpp, R1PanelLab.cpp, R1PanelWalk.cpp).
 #pragma once
 
 #include "CoreMinimal.h"
@@ -19,14 +18,4 @@ namespace R1PanelStyle
 	inline const FLinearColor CardBg(0.07f, 0.08f, 0.10f, 0.92f);
 	inline const FLinearColor DividerCol(1.f, 1.f, 1.f, 0.08f);
 	inline const FLinearColor DarkInk(0.05f, 0.05f, 0.06f, 1.f);
-
-	// button ids used by more than one file
-	inline const FName IdMic(TEXT("voice_mic"));
-	inline const FName IdMute(TEXT("voice_mute"));
-	inline const FName IdTabHealth(TEXT("tab_health"));
-	inline const FName IdTabMotions(TEXT("tab_motions"));
-	inline const FName IdTabSetup(TEXT("tab_setup"));
-	inline const FName IdTabHelp(TEXT("tab_help"));
-	inline const FName IdEStop(TEXT("estop"));
-	inline const FName IdPosePreview(TEXT("voice_pose_preview"));
 }

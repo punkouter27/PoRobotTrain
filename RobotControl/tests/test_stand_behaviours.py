@@ -29,7 +29,12 @@ def _default_q(jm: JointMap) -> dict:
 
 
 def test_behaviour_specs_cover_all_stand_behaviours():
-    assert set(BEHAVIOUR_SPECS) == {"neck_turn", "neck_nod", "arm_raise", "hand_wave"}
+    assert {k for k, s in BEHAVIOUR_SPECS.items() if s.kind == "scripted"} == {
+        "neck_turn",
+        "neck_nod",
+        "arm_raise",
+        "hand_wave",
+    }
 
 
 def test_neck_nod_caps_amplitude_and_returns_to_zero():
@@ -117,7 +122,7 @@ def test_extract_lowstate_telemetry():
 @pytest.mark.parametrize("behaviour", ["neck_nod", "arm_raise", "hand_wave"])
 def test_sim_stand_behaviours_complete_cleanly(behaviour):
     with tempfile.TemporaryDirectory() as d:
-        assert runner_main([behaviour, "--target", "sim", "--amplitude", "20", "--duration", "3", "--log-dir", d]) == 0
+        assert runner_main([behaviour, "--target", "sim", "--fast", "--amplitude", "20", "--duration", "3", "--log-dir", d]) == 0
 
 
 def test_move_joint_smooth_ramp_and_sim_execution(capsys):

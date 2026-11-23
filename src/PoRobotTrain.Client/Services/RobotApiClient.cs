@@ -66,6 +66,38 @@ public sealed class RobotApiClient(HttpClient http)
         return (await resp.Content.ReadFromJsonAsync(RobotJsonContext.Default.WalkStateDto, ct), null);
     }
 
+    /// <summary>Train + export + validate a head skill on the PC running the behaviour service ("all" trains every skill).</summary>
+    public Task<CommandResultDto> TrainSkillAsync(string skill, int? iters = null, CancellationToken ct = default) =>
+        PostAsync("/api/robot/skills/train", new TrainSkillRequest(skill, iters), RobotJsonContext.Default.TrainSkillRequest, ct);
+
+    public Task<CommandResultDto> ActivateSkillAsync(string skill, int version, CancellationToken ct = default) =>
+        PostAsync("/api/robot/skills/activate", new ActivateSkillRequest(skill, version), RobotJsonContext.Default.ActivateSkillRequest, ct);
+
+    /// <summary>Copy the active version to the robot (no motion).</summary>
+    public Task<CommandResultDto> PushSkillAsync(string skill, CancellationToken ct = default) =>
+        PostAsync("/api/robot/skills/push", new SkillRequest(skill), RobotJsonContext.Default.SkillRequest, ct);
+
+    /// <summary>Ask the Unreal scenario lab to play a skill (simulation only).</summary>
+    public async Task<LabPlayResultDto> LabPlayAsync(string skill, double size, CancellationToken ct = default)
+    {
+        using var resp = await http.PostAsJsonAsync("/api/robot/lab/play", new LabPlayRequest(skill, size), RobotJsonContext.Default.LabPlayRequest, ct);
+        try
+        {
+            return await resp.Content.ReadFromJsonAsync(RobotJsonContext.Default.LabPlayResultDto, ct) ?? new LabPlayResultDto(false, "empty reply");
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return new LabPlayResultDto(false, $"HTTP {(int)resp.StatusCode}");
+        }
+    }
+
+    public async Task<SkillDetailDto?> GetSkillDetailAsync(string skill, int? version, CancellationToken ct = default)
+    {
+        var url = $"/api/robot/skills/detail?id={Uri.EscapeDataString(skill)}" + (version is int v ? $"&version={v}" : string.Empty);
+        using var resp = await http.GetAsync(url, ct);
+        return resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync(RobotJsonContext.Default.SkillDetailDto, ct) : null;
+    }
+
     public Task<CommandResultDto> WalkStartAsync(WalkStartRequest req, CancellationToken ct = default) =>
         PostAsync("/api/robot/walk/start", req, RobotJsonContext.Default.WalkStartRequest, ct);
 

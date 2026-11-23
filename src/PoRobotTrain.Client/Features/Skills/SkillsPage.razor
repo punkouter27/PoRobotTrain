@@ -1,0 +1,239 @@
+@page "/skills"
+@page "/step/3"
+@using System.Globalization
+@implements IDisposable
+@inject RobotApiClient Api
+@inject UiState Ui
+@inject NavigationManager Nav
+
+<PageTitle>Skills — PoRobotTrain</PageTitle>
+
+@* The skill library (docs/head_skills.md): train, retrain, and how good each skill is, in plain words. "Use" opens
+   Virtual | Real robot with the skill selected; that page runs it (virtual robot first, then the robot, one step at a time). Training
+   runs on this PC only. Advanced shows the raw validation numbers and timestamps. *@
+<div class="sk-page">
+    <section class="po-card">
+        <div class="ctrl-top">
+            <div>
+                @if (IsStep)
+                {
+                    <span class="step-head__n">STEP 3 OF 5</span>
+                }
+                <h1 class="dash-h1">@(IsStep ? "TRAIN SKILLS ON THIS COMPUTER" : "SKILLS")</h1>
+                <span class="po-muted">Head motions the robot learned in simulation. Only the listed head motors ever move.</span>
+            </div>
+            <span class="po-pill @(Training ? "po-pill--blue" : _online ? "po-pill--ok" : "po-pill--bad")">@(Training ? "TRAINING" : _online ? "READY" : "OFFLINE")</span>
+        </div>
+        <div class="btn-row">
+            <button type="button" class="po-btn po-btn--blue-soft" disabled="@(!IsIdle)" @onclick='() => TrainAsync("all")'>Train all (≈20 min)</button>
+            @if (!_online)
+            {
+                <span class="po-muted">Behaviour service offline: start <code>python -m robotcontrol.behaviours.service</code>.</span>
+            }
+            else if (!IsIdle && !Training)
+            {
+                <span class="po-muted">Busy: @_status?.Job is running.</span>
+            }
+        </div>
+        @if (Training)
+        {
+            var p = _status?.Progress;
+            var pct = p is { Total: > 0 } ? 100.0 * p.Done / p.Total : 0;
+            <div class="rb-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@pct.ToString("0", Inv)">
+                <div class="rb-progress__bar" style="width:@pct.ToString("0.#", Inv)%"></div>
+            </div>
+            <div class="po-muted">Training: @(pct.ToString("0", Inv))%@(Ui.Advanced ? $" · {LastTrainLine}" : string.Empty)</div>
+        }
+        @if (!string.IsNullOrEmpty(_toast))
+        {
+            <div class="po-toast">@_toast</div>
+        }
+        @if (IsStep && Ui.StepDone(3))
+        {
+            <a class="po-btn po-btn--blue step-next" href="/step/4">Next: step 4, watch them on the virtual robot →</a>
+        }
+    </section>
+
+    @if (!IsStep)
+    {
+    <h2 class="sk-section">CODED MOVES · fixed motions written in code, no training needed</h2>
+    <div class="sk-grid">
+        @foreach (var c in Coded)
+        {
+            <section class="po-card sk-card">
+                <div class="ctrl-top">
+                    <b class="sk-title">@c.Label</b>
+                    <span class="po-pill po-pill--ok">READY</span>
+                </div>
+                <div class="po-muted">@c.Desc</div>
+                <div class="sk-metrics"><span>Max size: @c.MaxDeg.ToString("0", Inv)°</span></div>
+                <div class="btn-row">
+                    <button type="button" class="po-btn po-btn--blue" @onclick="() => Use(c.Id)">Use</button>
+                </div>
+            </section>
+        }
+    </div>
+
+    }
+    <h2 class="sk-section">TRAINED SKILLS (RL) · learned by reinforcement learning on the virtual robot</h2>
+    <div class="sk-grid">
+        @foreach (var s in Skills)
+        {
+            <section class="po-card sk-card">
+                <div class="ctrl-top">
+                    <b class="sk-title">@s.Label</b>
+                    <span class="po-pill @StateClass(s.State)">@StateText(s.State)</span>
+                </div>
+                <div class="po-muted">@Plain(s.Desc)</div>
+                @if (s.State == "ready")
+                {
+                    <div class="sk-metrics"><span>Accuracy: <b>@Accuracy(s.TrackErrDeg)</b></span><span>Moves: @string.Join(" + ", s.Powered.Select(j => j.Replace('_', ' ')))</span></div>
+                    @if (Ui.Advanced)
+                    {
+                        <div class="sk-metrics">
+                            <span title="Jetson code path on the realistic twin">Virtual robot @Deg(s.TrackErrDeg)</span>
+                            <span>Nominal @Deg(s.NominalErrDeg)</span>
+                            <span>Randomised @Deg(s.RandomisedErrDeg)</span>
+                        </div>
+                        <div class="po-muted">Trained @Short(s.TrainedAt) · validated @Short(s.ValidatedAt)</div>
+                    }
+                }
+                else
+                {
+                    <div class="why">@(Ui.Advanced ? s.Reason : WhyPlain(s.State))</div>
+                }
+                <div class="btn-row">
+                    <button type="button" class="po-btn po-btn--blue" disabled="@(s.State != "ready")" title="@(s.State == "ready" ? "Open Virtual | Real robot with this skill" : "Train it first")" @onclick="() => Use(s.Id)">Use</button>
+                    <button type="button" class="po-btn po-btn--blue-soft" disabled="@(!IsIdle)" @onclick="() => TrainAsync(s.Id)">
+                        @(IsTrainingSkill(s.Id) ? "Training…" : s.State == "untrained" ? "Train" : "Retrain")
+                    </button>
+                </div>
+            </section>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private static readonly IReadOnlyList<SkillInfoDto> Fallback =
+    [
+        new("hold_centre", "Hold Centre", "Holds the head still, facing forward.", ["head_pitch", "head_yaw"], 30, "untrained", "service offline"),
+        new("look_at", "Look At", "Turns the head to a target angle and settles.", ["head_pitch", "head_yaw"], 30, "untrained", "service offline"),
+        new("nod_yes", "Nod Yes", "Nods 'yes'.", ["head_pitch"], 15, "untrained", "service offline"),
+        new("shake_no", "Shake No", "Shakes 'no'.", ["head_yaw"], 20, "untrained", "service offline"),
+        new("glance_around", "Glance Around", "Glances left, right and down.", ["head_pitch", "head_yaw"], 25, "untrained", "service offline"),
+    ];
+
+    private RobotStatusDto? _status;
+    private bool _online;
+    private string? _toast;
+    private string? _trainingSkill;
+    private CancellationTokenSource? _cts;
+
+    private bool IsStep => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/') == "step/3";
+
+    private IReadOnlyList<SkillInfoDto> Skills => _status?.Skills is { Count: > 0 } s ? s : Fallback;
+
+    /// <summary>The coded head moves (stand phase: head only; the coded arm motions are not offered).</summary>
+    private static readonly string[] CodedHead = ["neck_turn", "neck_nod"];
+    private IEnumerable<BehaviourInfoDto> Coded => (_status?.Behaviours ?? []).Where(b => b.Kind != "trained" && CodedHead.Contains(b.Id));
+    private bool IsIdle => _online && string.IsNullOrEmpty(_status?.Job);
+    private bool Training => string.Equals(_status?.Job, "train", StringComparison.OrdinalIgnoreCase);
+    private bool IsTrainingSkill(string id) => Training && (_trainingSkill == id || _trainingSkill == "all");
+    private string LastTrainLine => _status?.Lines.LastOrDefault(l => l.StartsWith('[')) ?? string.Empty;
+
+    private static string Deg(double? v) => v is double d ? $"{d.ToString("0.0", Inv)}°" : "—";
+    private static string Short(string? iso) => string.IsNullOrEmpty(iso) ? "—" : iso.Replace('T', ' ');
+    /// <summary>The service's descriptions start with "Trained: "; every card here is a trained skill.</summary>
+    private static string Plain(string desc) => desc.StartsWith("Trained: ", StringComparison.Ordinal) ? char.ToUpperInvariant(desc[9]) + desc[10..] : desc;
+
+    private static string Accuracy(double? err) => err switch
+    {
+        null => "—",
+        < 1.0 => $"excellent ({err.Value.ToString("0.0", Inv)}°)",
+        < 2.0 => $"good ({err.Value.ToString("0.0", Inv)}°)",
+        < 4.0 => $"fair ({err.Value.ToString("0.0", Inv)}°)",
+        _ => $"poor ({err.Value.ToString("0.0", Inv)}°)",
+    };
+
+    private static string StateText(string state) => state switch
+    {
+        "ready" => "READY",
+        "failed" => "DIDN'T PASS",
+        "unvalidated" => "NEEDS CHECKING",
+        _ => "NEEDS TRAINING",
+    };
+
+    private static string WhyPlain(string state) => state switch
+    {
+        "failed" => "Its last training didn't meet the accuracy bar. Retrain it.",
+        "unvalidated" => "Trained but not checked yet. Retrain to check it.",
+        _ => "Not trained yet. Press Train (a few minutes, on this PC).",
+    };
+
+    private static string StateClass(string state) => state switch
+    {
+        "ready" => "po-pill--ok",
+        "failed" => "po-pill--bad",
+        _ => string.Empty,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cts = new CancellationTokenSource();
+        Ui.Changed += OnUiChanged;
+        await Ui.InitAsync();
+        await PollOnceAsync();
+        _ = PollLoopAsync(_cts.Token);
+    }
+
+    private void OnUiChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task PollLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(700));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await PollOnceAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page closed
+        }
+    }
+
+    private async Task PollOnceAsync()
+    {
+        try
+        {
+            _status = await Api.GetStatusAsync(_cts?.Token ?? CancellationToken.None);
+            _online = _status is not null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _online = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TrainAsync(string id)
+    {
+        var res = await Api.TrainSkillAsync(id);
+        _trainingSkill = res.Ok ? id : null;
+        _toast = res.Ok ? (id == "all" ? "Training every skill on this PC…" : $"Training {id.Replace('_', ' ')} on this PC…") : res.Error;
+        await PollOnceAsync();
+    }
+
+    private void Use(string id) => Nav.NavigateTo($"{(IsStep ? "/step/4" : "/mission")}?behaviour={Uri.EscapeDataString(id)}");
+
+    public void Dispose()
+    {
+        Ui.Changed -= OnUiChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

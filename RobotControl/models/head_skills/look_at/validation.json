@@ -1,0 +1,36 @@
+{
+  "skill": "look_at",
+  "passed": true,
+  "failures": [],
+  "policy_sha256": "b769c7e4404db0cbd61ec580b9171a3a9ffa15b4bd3a61feaf85712f81dcac11",
+  "validated_at": "2026-11-22T18:58:31",
+  "bars_deg": {
+    "nominal": 2.0,
+    "randomised": 3.0,
+    "runtime": 3.0,
+    "other_joints": 5.0
+  },
+  "metrics": {
+    "onnx_parity": 1.9073486328125e-06,
+    "nominal": {
+      "mean_err_deg": 0.822,
+      "max_err_deg": 2.685,
+      "other_joint_max_deg": 1.389,
+      "max_torque_nm": 8.398
+    },
+    "randomised": {
+      "mean_err_deg": 0.822,
+      "max_err_deg": 2.728,
+      "other_joint_max_deg": 1.987,
+      "max_torque_nm": 7.936
+    },
+    "runtime": {
+      "exit_code": 0,
+      "abort": "",
+      "mean_err_deg": 0.821,
+      "max_err_deg": 2.777,
+      "log": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoRobotTrain\\logs\\head_skills\\validate_look_at.csv"
+    },
+    "track_err_deg": 0.821
+  }
+}

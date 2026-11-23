@@ -2,7 +2,7 @@
 
 Take the twin off the stand and drive it around a course with WASD, a gamepad, the on-screen pad or your voice.
 The walk runs the Level 2 velocity policy in headless MuJoCo inside the behaviour service. The Blazor **Walk
-sandbox** page and the Unreal panel's **Walk** tab both drive and show the same run.
+sandbox** page and the Unreal scenario lab's **Walk (sim)** tab both drive and show the same run.
 
 **Never the real robot.** The sandbox has no robot backend, `robot_kit.py` excludes `RobotControl/walk/`, and a
 Level 2 policy is loaded only after the Level 2 gate passed.

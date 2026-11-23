@@ -136,7 +136,7 @@
                 <div class="walk-hud__row"><span>Lap</span><b>@LapText(_state?.Lap?.CurrentS)</b></div>
                 <div class="walk-hud__row"><span>Last / best</span><b>@LapText(_state?.Lap?.LastS) / @LapText(_state?.Lap?.BestS)</b></div>
                 <div class="walk-hud__row"><span>Laps · falls</span><b>@(_state?.Lap?.Laps ?? 0) · @(_state?.Falls ?? 0)</b></div>
-                <div class="walk-hud__row"><span>Unreal twin</span><b>@(_state?.Puppet?.Connected == true ? "receiving poses" : "not connected")</b></div>
+                <div class="walk-hud__row"><span>Unreal virtual robot</span><b>@(_state?.Puppet?.Connected == true ? "receiving poses" : "not connected")</b></div>
                 <div class="walk-hud__row"><span>Sim time</span><b>@(_state?.T is double t ? $"{t:0.0} s" : "—")</b></div>
             </div>
             @if (_state?.Fallen == true)

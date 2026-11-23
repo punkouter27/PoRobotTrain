@@ -1,0 +1,77 @@
+policy_name: r1_head_look_at
+skill: look_at
+label: Look At
+step_dt: 0.02
+num_obs: 9
+num_actions: 2
+joint_names:
+- head_pitch_joint
+- head_yaw_joint
+motor_slots:
+- 29
+- 30
+default_joint_pos:
+- 0.0
+- 0.0
+kp:
+- 50.0
+- 10.0
+kd:
+- 2.0
+- 0.1
+action_scale:
+- 0.3
+- 0.25
+action_clip:
+- 5.0
+- 5.0
+soft_limit_factor: 0.9
+observations:
+- name: joint_pos_rel
+  size: 2
+- name: joint_vel
+  size: 2
+- name: last_action
+  size: 2
+- name: command
+  size: 3
+command: 'hold: [0,0,0]; look_at: [yaw, pitch, 0] rad; periodic: [sin, cos, size]'
+period_s: 0.0
+max_deg: 30.0
+metadata:
+  trained_at: '2026-11-22T18:51:21'
+  skill: look_at
+  iters: 300
+  num_envs: 512
+  horizon: 24
+  seed: 0
+  git: ff2a314
+  device: cuda
+  env: HeadSkillEnv
+  train_time_s: 132.3
+  joint_map_sha256: df0a086ae8017262
+validation:
+  passed: true
+  failures: []
+  policy_sha256: b769c7e4404db0cbd61ec580b9171a3a9ffa15b4bd3a61feaf85712f81dcac11
+  validated_at: '2026-11-22T18:58:31'
+  metrics:
+    onnx_parity: 1.9073486328125e-06
+    nominal:
+      mean_err_deg: 0.822
+      max_err_deg: 2.685
+      other_joint_max_deg: 1.389
+      max_torque_nm: 8.398
+    randomised:
+      mean_err_deg: 0.822
+      max_err_deg: 2.728
+      other_joint_max_deg: 1.987
+      max_torque_nm: 7.936
+    runtime:
+      exit_code: 0
+      abort: ''
+      mean_err_deg: 0.821
+      max_err_deg: 2.777
+      log: C:\Users\punko\Downloads\_CODEMATT\PoRobotTrain\logs\head_skills\validate_look_at.csv
+    track_err_deg: 0.821
+version: 1

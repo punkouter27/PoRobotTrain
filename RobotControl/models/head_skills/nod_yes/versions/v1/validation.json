@@ -1,0 +1,36 @@
+{
+  "skill": "nod_yes",
+  "passed": true,
+  "failures": [],
+  "policy_sha256": "73332eda91b317ec36538a49b52ff61292ca3051f3653cc67a627039a9e9c88f",
+  "validated_at": "2026-11-22T20:10:26",
+  "bars_deg": {
+    "nominal": 3.0,
+    "randomised": 4.0,
+    "runtime": 4.0,
+    "other_joints": 5.0
+  },
+  "metrics": {
+    "onnx_parity": 9.5367431640625e-07,
+    "nominal": {
+      "mean_err_deg": 0.192,
+      "max_err_deg": 0.391,
+      "other_joint_max_deg": 1.325,
+      "max_torque_nm": 0.578
+    },
+    "randomised": {
+      "mean_err_deg": 0.286,
+      "max_err_deg": 0.75,
+      "other_joint_max_deg": 1.685,
+      "max_torque_nm": 1.579
+    },
+    "runtime": {
+      "exit_code": 0,
+      "abort": "",
+      "mean_err_deg": 0.397,
+      "max_err_deg": 0.948,
+      "log": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoRobotTrain\\logs\\head_skills\\validate_nod_yes.csv"
+    },
+    "track_err_deg": 0.397
+  }
+}

@@ -159,6 +159,13 @@ def main(argv=None) -> int:
     )
     ap.add_argument("--start-q-deg", default=None, help="comma-separated 26 joint angles (deg) to match physical robot")
     ap.add_argument("--log-dir", default=str(LOGS_DIR))
+    ap.add_argument("--fast", action="store_true", help="sim: run as fast as possible instead of real time")
+    ap.add_argument(
+        "--skill-version",
+        type=int,
+        default=None,
+        help="trained skills, virtual robot only: play a stored training session instead of the active version",
+    )
     args = ap.parse_args(argv)
     if not 0 < args.freq <= 0.5:
         ap.error("--freq must be in (0, 0.5] Hz")
@@ -171,10 +178,14 @@ def main(argv=None) -> int:
             ap.error(f"--start-q-deg requires {jm.num_joints} values, got {len(vals)}")
         start_q_map = {n: math.radians(v) for n, v in zip(jm.names, vals)}
     read_only = args.target == "real" and not args.go
+    if args.skill_version is not None and args.target == "real":
+        ap.error("--skill-version is for the virtual robot only; the real robot runs the active version")
+    extra = {"version": args.skill_version} if args.skill_version is not None else {}
     beh = BEHAVIOURS[args.behaviour](
         jm,
         SweepParams(amplitude_deg=args.amplitude, freq_hz=args.freq, duration_s=args.duration),
         check_tracking=not read_only,
+        **extra,
     )
     if args.target == "sim":
         from .backends import SimBackend
@@ -185,6 +196,9 @@ def main(argv=None) -> int:
         backend = SimBackend(
             jm, beh.powered, friction_nm=args.sim_friction, start_q=sim_start, realistic=not args.no_realism
         )
+        # Someone is watching (web app twin preview, practice check/run): play at the real robot's speed, so a 20 s
+        # move takes 20 s on the virtual robot too. Automated checks call run() directly and still fast-forward.
+        backend.realtime = not args.fast
     elif args.target == "urlab":
         from .backends import URLabBackend
 

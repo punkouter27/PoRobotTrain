@@ -37,14 +37,14 @@
 @code {
     private static readonly (string Title, string Body)[] Steps =
     [
-        ("The twin is a safe copy of the robot",
-         "Everything you try first runs on the twin, a simulated R1 on its stand. Nothing physical moves. The badge at the top says TWIN ONLY until a real robot is connected."),
+        ("The virtual robot is a safe copy of the robot",
+         "Everything you try first runs on the virtual robot, a simulated R1 on its stand. Nothing physical moves. The dot at the top says Virtual robot only until a real robot is connected."),
         ("Stopping",
          "The red E-STOP button (or the Esc key) stops everything this app is running. On the real robot, the remote is the emergency stop: hold L2 + B for 5 seconds. Keep it in your hand."),
         ("Moving the real robot takes four steps",
-         "1 Preview the motion on the twin. 2 Run the read-only check (no motor power). 3 Tick the pre-flight checklist. 4 Confirm and run. The Control page shows these as a progress bar and tells you what is missing."),
-        ("Ask, or open Help",
-         "Type a question or a request in the Ask box (\"is the robot ready?\", \"wave hello on the twin\"). Help opens the guide for the page you are on. Expert tools appear when you tick Advanced."),
+         "1 Play it on the virtual robot. 2 Check the robot (no motor power). 3 Tick the pre-flight checklist. 4 Confirm and run. Virtual | Real robot always shows one button: the next step."),
+        ("Help and expert tools",
+         "Help opens the guide for the page you are on. Tick Advanced for expert tools: joint sliders, the Ask box, Motions and Walk."),
     ];
 
     private int _step;

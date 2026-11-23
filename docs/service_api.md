@@ -1,11 +1,11 @@
 # Behaviour service API: voice, robustness, walk sandbox, operator console
 
-`python -m robotcontrol.behaviours.service` (127.0.0.1:8765) is the one backend for both clients:
+`python -m robotcontrol.behaviours.service` (127.0.0.1:8765) is the backend of the **Blazor control UI** (`src/`),
+through the .NET API proxy at `/api/robot/...`. The web app implements every endpoint below.
 
-- **Blazor control UI** (`src/`), through the .NET API proxy at `/api/robot/...`
-- **Unreal twin** (`AR1BehaviourPanel` and friends), which calls the service directly
-
-Both clients implement the same features against the same endpoints. The existing endpoints (`/status`,
+The **Unreal app** is the simulation-only scenario lab (`docs/scenario_lab.md`). It runs the trained skills inside the
+engine and calls the service only for the walk sandbox (section 3). The service still drives the Unreal twin over
+URLab for a web app twin preview with the Unreal engine selected, and for the live mirror. The existing endpoints (`/status`,
 `/preview`, `/check`, `/run`, `/stop`, `/monitor`, `/snapshot`, `/move_joint`, `/robot_view.png`) are unchanged.
 All bodies are JSON. Errors come back as `{"ok": false, "error": "..."}` (HTTP 400/404/409).
 
@@ -17,6 +17,8 @@ All bodies are JSON. Errors come back as `{"ok": false, "error": "..."}` (HTTP 4
 | Walk state | `GET /walk/state` | `GET /api/robot/walk/state` |
 | Walk start / stop / reset | `POST /walk/start`, `/walk/stop`, `/walk/reset` | `POST /api/robot/walk/start` ... |
 | Walk command | `POST /walk/command` | `POST /api/robot/walk/command` |
+| Trained skills | `GET /skills` | `GET /api/robot/skills` |
+| Train a skill | `POST /skills/train` | `POST /api/robot/skills/train` |
 
 ---
 
@@ -27,7 +29,6 @@ Speech to text and text to speech run in the client:
 | | Speech to text | Text to speech |
 |---|---|---|
 | Blazor | Web Speech API `SpeechRecognition` (Chrome/Edge), fallback Whisper `Xenova/whisper-tiny.en` via Transformers.js (local) | `speechSynthesis` |
-| Unreal | Windows SAPI in-process recogniser, dictation grammar, default microphone | Windows SAPI `ISpVoice` (async) |
 
 The recognised text is interpreted into a **suggestion**. Voice never starts, checks or runs a robot behaviour;
 the client fills in the selection exactly as a click would, and Steps 1 + 2 + the confirm dialog still gate any run.
@@ -204,7 +205,7 @@ Twenty Explore-style operator features, served by `robotcontrol/behaviours/conso
 `motions.py`, `ops.py`, `chat.py`). The .NET API forwards every path below unchanged under `/api/robot/...`
 (for example `GET /api/robot/health`, `POST /api/robot/motions/play`), query string and body included.
 
-Safety contract, which both clients must keep:
+Safety contract, which the client must keep:
 
 - Read-only features (health, events, history, power, IMU, camera, versions, network, docs, chat) never command a motor.
 - Motions, poses and modes power several joints at once, so they run **only** on the simulated stand twin: target
@@ -352,7 +353,7 @@ validation). Level 0 has no hash, so it reports its gate report instead. Show `w
 
 Body `{}`. Stops the running job, the simulation player, the walk sandbox and any recording, and logs a
 critical `estop` event. Response: `{"ok": true, "stopped": ["player", "walk"], "note": "software stop sent; ..."}`.
-Clients show a STOP button on every page/tab, also bound to `Esc` (Blazor) or `End` (Unreal; Esc quits PIE).
+The web app shows a STOP button on every page, also bound to `Esc`. (The Unreal lab's own STOP stops its in-engine brain and the walk sandbox.)
 
 ### Session limits
 
@@ -513,3 +514,53 @@ returns a **superset of `/assistant/interpret`** plus `answer`, `pose`, `session
 It stays suggest-only and runs locally (deterministic, no text leaves the machine).
 `GET /assistant/chat/history?session=` returns `{"turns": [{"role": "user"|"assistant", "text", "kind", "at"}]}`.
 `POST /assistant/chat/reset {"session"}` clears it.
+
+---
+
+## 8. Trained head skills
+
+Five RL head skills (`hold_centre`, `look_at`, `nod_yes`, `shake_no`, `glance_around`). They are listed in
+`/status.behaviours` next to the scripted ones, with `"kind": "trained"`, `"ready"` (validation passed for the exact
+ONNX file) and `"skill_state"`. `/status.skills` carries the detail below. See docs/head_skills.md.
+
+The usual endpoints (`/preview`, `/check`, `/run`) accept a skill id as `behaviour`. They refuse it (`"... train it
+first"`) until its state is `ready`. For a skill, `/check` (read-only) first copies the validated `policy.onnx` and
+`deploy.yaml` to the robot, and the robot re-verifies the sha256 before loading.
+
+### `GET /skills`
+
+```json
+{"ok": true, "skills": [{"id": "look_at", "label": "Look At", "desc": "...", "powered": ["head_pitch", "head_yaw"],
+  "max_deg": 30.0, "state": "ready", "reason": "", "trained_at": "2026-11-22T14:05:11",
+  "validated_at": "2026-11-22T14:06:02", "track_err_deg": 0.8, "nominal_err_deg": 0.8, "randomised_err_deg": 0.8}]}
+```
+
+`state`: `untrained` | `unvalidated` | `failed` (reason names the failed bar) | `ready`. `track_err_deg` is the mean
+error of the Jetson code path on the realistic twin.
+
+### `POST /skills/train`
+
+Body `{"behaviour": "<skill id>" | "all", "iters": n}` (`iters` is optional, 1–3000). Starts service job `train` on
+this PC (never the robot). It is refused with 409 while another job runs. While it runs, `/status.progress` is
+`{"job": "train", "done": k, "total": n}` (PPO iterations). STOP cancels it, and the previous policy stays in place.
+The web app shows the progress bar and the per-skill state, and locks Play / Run for skills that are not `ready`.
+
+### Versions (training sessions), copy to robot, Unreal link
+
+Every training run is stored as `models/head_skills/<skill>/versions/v<N>/`; the folder `<skill>/` holds the ACTIVE
+version that every runtime loads. A retrain activates its new version only when it passed, so a failed retrain never
+replaces a working skill (`behaviours/skill_versions.py`).
+
+| Endpoint | What it does |
+|---|---|
+| `GET /skills` | each skill also has `version` (active), `versions` (newest first: `version, active, passed, trained_at, track_err_deg, iters, num_envs, steps, sim_hours, train_time_s, device, onnx_bytes`) and `robot` (`version, sha256, at, current`: what the robot has) |
+| `GET /skills/detail?id=<skill>&version=<n>` | `curve` (iteration, tracking error, reward, time from train_log.csv), `validation` (the full gate report), `training` |
+| `POST /skills/activate {"behaviour", "version"}` | make a stored version that passed active (rollback); 400 if it did not pass, 409 while a job runs |
+| `POST /skills/push {"behaviour"}` | job `push`: copy the active version to the robot (`skill_push.py`); moves nothing. Its `@pushed <id> v<N> <sha>` line updates `robot` |
+| `POST /lab/play {"behaviour", "size"}` | ask the Unreal scenario lab to play a skill; `unreal_running` says whether the lab polled in the last 5 s |
+| `GET /lab/poll?seen=<seq>` | the Unreal lab's 1 s poll: the latest request; records the lab as running and `seen` as acknowledged (`/status.lab`) |
+
+`/preview` accepts `"version": n` for a trained skill to play a stored session on the virtual robot (the runner's
+`--skill-version`, refused for target `real`). `/check` and `/run` refuse a `version`: the real robot always runs the
+active version. The
+Unreal lab reads the same folder (`deploy.json`) and applies the same gate; its Reload button picks up a new skill.

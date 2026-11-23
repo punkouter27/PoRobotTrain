@@ -85,6 +85,7 @@ public static class RobotEndpoints
         "health", "versions", "events", "history/temps", "power", "imu", "camera.png", "limits", "poses", "motions",
         "motions/record", "motions/{name}", "motions/{name}/export", "player", "calibration/offsets", "network",
         "preflight", "docs", "docs/{name}", "assistant/chat/history",
+        "skills", "skills/detail",
     ];
 
     internal static readonly string[] ConsolePosts =
@@ -93,6 +94,7 @@ public static class RobotEndpoints
         "motions/import", "motions/play", "motions/record/start", "motions/record/stop", "player/stop",
         "calibration/capture", "calibration/save", "network/test", "network/profiles", "network/profiles/delete",
         "network/active", "preflight", "preflight/reset", "assistant/chat", "assistant/chat/reset",
+        "skills/train", "skills/activate", "skills/push", "lab/play",
     ];
 
     private static void MapConsole(RouteGroupBuilder group)

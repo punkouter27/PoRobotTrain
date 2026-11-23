@@ -116,35 +116,38 @@ def build_robot(jm: dict, pelvis_z: float, with_stand: bool) -> ET.Element:
     ET.SubElement(head_yaw, "camera", name="head_rgbd", pos=cam_pos, xyaxes="0 -1 0 0.34202 0 0.93969", fovy="58")
 
     if with_stand:
+        # The R1 EDU stand: posts and a crossbar BEHIND the robot at shoulder height, an arm forward and a J-hook that
+        # rests on the top of the back (the upper-back ridge, about x -0.06 m / 0.26 m above the pelvis in the home
+        # pose). Nothing passes over the head, so the head can pitch and yaw freely. Visual only (no collision): the
+        # robot is held by the pelvis weld below, exactly as before.
         stand = ET.SubElement(wb, "body", name="stand", pos="0 0 0")
-        post_h = pelvis_z + 0.45
+        post_x, bar_h = -0.40, pelvis_z + 0.32
         nocol = {"contype": "0", "conaffinity": "0", "rgba": STAND_RGBA}
         for y in (-0.45, 0.45):
             ET.SubElement(
-                stand, "geom", type="capsule", size="0.025", fromto=fmt([-0.35, y, 0.02, -0.35, y, post_h]), **nocol
+                stand, "geom", type="capsule", size="0.025", fromto=fmt([post_x, y, 0.02, post_x, y, bar_h]), **nocol
             )
-            ET.SubElement(stand, "geom", type="box", size="0.25 0.06 0.02", pos=fmt([-0.35, y, 0.02]), **nocol)
+            ET.SubElement(stand, "geom", type="box", size="0.25 0.06 0.02", pos=fmt([post_x, y, 0.02]), **nocol)
         ET.SubElement(
             stand,
             "geom",
             type="capsule",
             size="0.025",
-            fromto=fmt([-0.35, -0.45, post_h, -0.35, 0.45, post_h]),
+            fromto=fmt([post_x, -0.45, bar_h, post_x, 0.45, bar_h]),
             **nocol,
         )
         ET.SubElement(
-            stand, "geom", type="capsule", size="0.02", fromto=fmt([-0.35, 0, post_h, 0.0, 0, post_h]), **nocol
+            stand, "geom", type="capsule", size="0.02", fromto=fmt([post_x, 0, bar_h, -0.12, 0, bar_h]), **nocol
         )
+        hook = {"contype": "0", "conaffinity": "0", "rgba": "0.6 0.6 0.1 1"}
         ET.SubElement(
-            stand,
-            "geom",
-            type="capsule",
-            size="0.012",
-            fromto=fmt([0, 0, post_h, 0, 0, pelvis_z + 0.33]),
-            contype="0",
-            conaffinity="0",
-            rgba="0.6 0.6 0.1 1",
-        )
+            stand, "geom", type="capsule", size="0.014",
+            fromto=fmt([-0.12, 0, bar_h, -0.082, 0, pelvis_z + 0.30]), **hook,
+        )  # fmt: skip
+        ET.SubElement(
+            stand, "geom", type="capsule", size="0.014",
+            fromto=fmt([-0.082, 0, pelvis_z + 0.30, -0.076, 0, pelvis_z + 0.262]), **hook,
+        )  # fmt: skip
         eq = ET.SubElement(mj, "equality")
         # Weld pelvis to world at its qpos0 pose (relpose omitted => initial configuration).
         ET.SubElement(

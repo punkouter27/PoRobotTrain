@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scenario Lab Report</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--ok:#1f8a4c;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038;--ok:#52d984;--bad:#ff7b72}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.row{grid-template-columns:1fr}}
+code{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>Unreal app becomes the scenario lab (simulation only)</h1>
+<p>2026-11-22. The web app owns debugging, training and the real robot on its stand. The Unreal app now hatches the
+brains the web app trained and tests them in scenarios: a look-at ball (Script / Manual / Orbit), a head camera,
+pushes, delay, noise, weak motors and skill timelines. The brains run inside Unreal through NNE (about 0.1 ms per
+step) under the same contract and SHA-256 validation gate as the robot. Captured with <code>R1TwinEditor</code>
+Development, <code>-game -PanelCapture</code> (scripted scenario), 1600×900. HUD anchors: Brain, Target, Disturb,
+STOP and Details (<code>R1BehaviourPanel.h</code>).</p>
+
+<h2>Before</h2>
+<div class="row">
+<figure><img src="unreal_console_after_behaviours_1600x900.png" alt="Old Unreal panel with seven tabs and real-robot buttons"><figcaption>HEAD: seven tabs (Behaviours, Robustness, Walk, Health, Motions, Setup, Help), voice, and real-robot Check / Monitor / Move REAL robot. These duplicated the web app.</figcaption></figure>
+<figure><img src="skills_unreal_after_1600x900.png" alt="Intermediate panel with trained skills row"><figcaption>Intermediate (earlier today): a Trained skills row and Train buttons on the old panel. Superseded: training now lives in the web app only.</figcaption></figure>
+</div>
+
+<h2>After</h2>
+<figure><img src="unreal_lab/lab_lookat_orbit.png" alt="Look At following the orbiting ball, head camera picture-in-picture"><figcaption>Look At follows the orbiting ball. The head camera (top right) keeps the ball on the vertical centre line; it sits high because the camera is tilted 20° down. Result: head pitch −8.9° against a reference of −9.1°, mean error 1.4° on a moving target (validated 0.8° on step targets), and the real robot's safety envelope would let the run continue.</figcaption></figure>
+<div class="row">
+<figure><img src="unreal_lab/lab_push.png" alt="Head pushed left"><figcaption>Push: a real MuJoCo torque on <code>head_yaw_link</code> (1.2 Nm, more than the 0.86 Nm yaw motor), applied for 0.2 s.</figcaption></figure>
+<figure><img src="unreal_lab/lab_timeline.png" alt="Four-step timeline running"><figcaption>Timeline: Hold Centre, then Nod Yes, then Shake No (shown: step 3/4, error 1.1° against a validated 0.7°), then Glance Around.</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="unreal_lab/lab_disturbed.png" alt="Shake No with delay, noise and weak motor"><figcaption>Disturbed: 80 ms delay, 2° sensor noise and a 50 % motor. The mean error climbs to 3.1° (amber). The script restarted while the head was at −12°, so the card shows the real runner would have refused to start.</figcaption></figure>
+<figure><img src="unreal_lab/lab_joints.png" alt="Joint matrix"><figcaption>Joints (26): the right column swaps the camera for the joint matrix.</figcaption></figure>
+</div>
+<figure><img src="unreal_lab/walk_tab.png" alt="Walk sim tab"><figcaption>Walk (sim) is kept: the Level 2 sandbox, stepped by the behaviour service.</figcaption></figure>
+</main>
+</body>
+</html>

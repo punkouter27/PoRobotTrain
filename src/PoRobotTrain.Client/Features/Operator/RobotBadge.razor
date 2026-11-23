@@ -9,13 +9,13 @@
 @code {
     private string Cls => !Ui.Online ? "off" : Ui.RealConnected ? "real" : "twin";
 
-    private string Text => !Ui.Online ? "SERVICE OFFLINE" : Ui.RealConnected ? "REAL ROBOT CONNECTED" : "TWIN ONLY";
+    private string Text => !Ui.Online ? "Offline" : Ui.RealConnected ? "Robot connected" : "Virtual robot only";
 
     private string Title => !Ui.Online
         ? "The behaviour service is not reachable: start python -m robotcontrol.behaviours.service"
         : Ui.RealConnected
             ? "The physical R1 is streaming state. Real-robot steps still need preview, check, pre-flight and confirmation."
-            : "No physical robot connected: every action runs on the twin (nothing physical moves).";
+            : "No physical robot connected: every action runs on the virtual robot (nothing physical moves).";
 
     protected override void OnInitialized() => Ui.Changed += OnChanged;
 

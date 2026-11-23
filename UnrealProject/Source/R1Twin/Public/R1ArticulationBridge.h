@@ -24,6 +24,8 @@ struct R1TWIN_API FR1BridgeInitParams
 	TArray<double> InitialJointPos;
 	FName ImuSiteName = TEXT("imu");
 	FName RootBodyName = TEXT("pelvis");
+	/** Further bodies whose world pose (and external wrench) a consumer needs, e.g. head links for the scenario lab. */
+	TArray<FName> ExtraBodyNames;
 	/** Candidate articulation actor (URLab AMjArticulation-derived Blueprint instance). May be null. */
 	TWeakObjectPtr<AActor> ArticulationActor;
 };
@@ -59,6 +61,11 @@ public:
 
 	/** World pose of a body (metres + raw MuJoCo quaternion). False if unknown. */
 	virtual bool GetBodyPoseMj(FName BodyName, FVector& OutPosMeters, FQuat& OutQuatRaw) const = 0;
+
+	/** External wrench on a body for the next physics step (MuJoCo world frame: N and N m); re-apply every tick to
+	 *  sustain it. Only bodies in RootBodyName / ExtraBodyNames. False when unsupported (mock). */
+	virtual bool ApplyBodyWrenchMj(FName BodyName, const FVector& ForceMj, const FVector& TorqueMj) { return false; }
+	virtual void ClearBodyWrench(FName BodyName) {}
 
 	/** Lets the mock integrate its fake dynamics. No-op for the real bridge (physics is async in URLab). */
 	virtual void Advance(float DeltaSeconds) {}
@@ -133,6 +140,8 @@ public:
 	virtual FQuat GetImuQuat() const override;
 	virtual FVector GetImuGyro() const override;
 	virtual bool GetBodyPoseMj(FName BodyName, FVector& OutPosMeters, FQuat& OutQuatRaw) const override;
+	virtual bool ApplyBodyWrenchMj(FName BodyName, const FVector& ForceMj, const FVector& TorqueMj) override;
+	virtual void ClearBodyWrench(FName BodyName) override;
 	virtual bool IsExternallyStepped() const override;
 	virtual void SetInEngineControl(bool bClaim) override;
 	virtual void StartInEngineSession() override;
@@ -148,6 +157,7 @@ private:
 	TMap<FName, TWeakObjectPtr<UObject>> Joints;
 	TMap<FName, TWeakObjectPtr<UObject>> Actuators;
 	TWeakObjectPtr<UObject> RootBody;
+	TMap<FName, TWeakObjectPtr<UObject>> ExtraBodies;
 	TWeakObjectPtr<UObject> GyroSensor;
 	mutable bool bWarnedGains = false;
 	int32 ClaimedState = -1; // -1 unknown, 0 released, 1 claimed

@@ -1,0 +1,112 @@
+@page "/step/1"
+@implements IDisposable
+@inject RobotApiClient Api
+@inject UiState Ui
+@inject NavigationManager Nav
+
+<PageTitle>Step 1 · Check — PoRobotTrain</PageTitle>
+
+@* Step 1: is the virtual robot ready, and is the physical R1 connected? Step 2 opens as soon as the connection is known:
+   connected, or looked for and not found (then everything practises on the virtual robot until it connects). Reading
+   the robot powers no motor. *@
+<div class="step-page">
+    <section class="po-card">
+        <div class="step-head"><span class="step-head__n">STEP 1 OF 5</span><h1 class="dash-h1">CHECK BOTH ROBOTS</h1></div>
+        <p class="po-muted">Nothing moves here. This only checks what is available.</p>
+    </section>
+
+    <div class="step-grid">
+        <section class="po-card step-check">
+            <h2 class="step-check__title">Virtual robot</h2>
+            @Row(Ui.Online, "Behaviour service running", Ui.Online ? "answering" : "start: python -m robotcontrol.behaviours.service")
+            @Row(Ui.Online && Ui.Status?.Behaviours.Count > 0, "Virtual robot loaded", Ui.Online ? "MuJoCo stand model ready" : "waits for the service")
+            @Row(TrainedReady > 0, "Trained skills", TrainedReady > 0 ? $"{TrainedReady} ready" : "none yet (step 3)", optional: true)
+        </section>
+
+        <section class="po-card step-check">
+            <h2 class="step-check__title">Real robot (Unitree R1)</h2>
+            @if (!Ui.Online)
+            {
+                @Row(false, "Connection", "waits for the service")
+            }
+            else if (Looking)
+            {
+                @Row(false, "Connection", "looking for the robot at 192.168.123.164…", pending: true)
+            }
+            else if (Ui.RealConnected)
+            {
+                @Row(true, "Connection", "connected: joint state is streaming")
+                @Row(MaxTemp is null or < 55, "Motor temperatures", MaxTemp is int t ? $"hottest {t} °C" : "not read yet", optional: true)
+                @Row(BusV is not null, "Battery", BusV is double v ? $"{v:0.0} V" : "not read yet", optional: true)
+            }
+            else if (Ui.ConnectionKnown)
+            {
+                @Row(false, "Connection", $"not found ({Reason})")
+                <p class="po-muted">You can carry on with the virtual robot. When the R1 is on its stand, powered and on the network
+                    (<a href="/robot-health">connection guide in Help</a>), press <b>Look again</b>.</p>
+            }
+            else
+            {
+                @Row(false, "Connection", "not checked yet", pending: true)
+            }
+            <div class="btn-row">
+                <button type="button" class="po-btn po-btn--orange-soft" disabled="@(!Ui.Online || Looking || !string.IsNullOrEmpty(Ui.Status?.Job))" @onclick="LookAsync">
+                    @(Looking ? "Looking…" : Ui.RealConnected ? "Read again" : "Look again")
+                </button>
+                <a class="po-btn po-btn--blue-soft" href="/robot-health">Full health details</a>
+            </div>
+        </section>
+    </div>
+
+    <section class="po-card step-foot">
+        @if (Ui.ConnectionKnown)
+        {
+            <span class="ok">@(Ui.RealConnected ? "Both robots are ready." : "Virtual robot ready; the real robot is not connected (you can still practise every step).")</span>
+            <a class="po-btn po-btn--blue step-next" href="/step/2">Next: step 2, coded moves →</a>
+        }
+        else
+        {
+            <span class="po-muted">Step 2 opens once the real robot's connection is known.</span>
+        }
+    </section>
+    @if (!string.IsNullOrEmpty(_toast))
+    {
+        <div class="po-toast">@_toast</div>
+    }
+</div>
+
+@code {
+    private string? _toast;
+
+    private bool Looking => string.Equals(Ui.Status?.Job, "snapshot", StringComparison.OrdinalIgnoreCase);
+    private int TrainedReady => Ui.Status?.Skills?.Count(s => s.State == "ready") ?? 0;
+    private string Reason => Ui.Status?.Results.GetValueOrDefault("snapshot")?.Reason is { Length: > 0 } r ? r : "no answer";
+    private TelemetryReadoutDto? Real => Ui.Status?.Telemetry.GetValueOrDefault("real");
+    private int? MaxTemp => Real?.MaxTempC;
+    private double? BusV => Real?.BusV;
+
+    private static RenderFragment Row(bool ok, string label, string detail, bool optional = false, bool pending = false) => __builder =>
+    {
+        <div class="step-row @(ok ? "ok" : pending || optional ? "pending" : "bad")">
+            <span class="step-row__mark" aria-hidden="true">@(ok ? "✓" : pending || optional ? "…" : "✕")</span>
+            <span class="step-row__label">@label</span>
+            <span class="step-row__detail">@detail</span>
+        </div>
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Ui.Changed += OnChanged;
+        await Ui.InitAsync();
+    }
+
+    private async Task LookAsync()
+    {
+        var res = await Api.SnapshotAsync(practice: false);
+        _toast = res.Ok ? "Looking for the robot (reads joint state, no motor power)…" : res.Error;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Ui.Changed -= OnChanged;
+}

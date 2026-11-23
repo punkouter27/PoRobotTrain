@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trained Skills Report</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4;--ok:#1f8a4c;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038;--ok:#52d984;--bad:#ff7b72}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.ok{color:var(--ok);font-weight:600}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.row{grid-template-columns:1fr}}
+.narrow{max-width:460px}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-top:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+code{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>Trained head skills: train, play on the twin, run on the robot</h1>
+<p>2026-11-22 · Five RL head skills (Hold Centre, Look At, Nod Yes, Shake No, Glance Around) added to the Blazor client and the Unreal panel. Blazor: Development build on port 5080 against the behaviour service on 8765, captured with headless Chrome through the DevTools protocol. Unreal: <code>R1TwinEditor</code> Development, <code>-game -PanelCapture</code>. Contract: <code>docs/head_skills.md</code>, <code>docs/service_api.md</code> section 8. No physical robot was connected: robot steps ran in practice mode.</p>
+
+<h2>Validation (all five passed)</h2>
+<table>
+<tr><th>Skill</th><th>Motors</th><th>Nominal</th><th>8 randomised robots</th><th>Jetson code path on realistic twin</th><th>Unreal twin (URLab)</th></tr>
+<tr><td>Hold Centre</td><td>pitch + yaw</td><td>0.10°</td><td>0.10°</td><td class="ok">0.11°</td><td>—</td></tr>
+<tr><td>Look At</td><td>pitch + yaw</td><td>0.82°</td><td>0.82°</td><td class="ok">0.82°</td><td class="ok">0.41°</td></tr>
+<tr><td>Nod Yes</td><td>pitch only</td><td>0.19°</td><td>0.29°</td><td class="ok">0.40°</td><td>—</td></tr>
+<tr><td>Shake No</td><td>yaw only</td><td>0.64°</td><td>0.63°</td><td class="ok">0.71°</td><td>—</td></tr>
+<tr><td>Glance Around</td><td>pitch + yaw</td><td>0.91°</td><td>0.87°</td><td class="ok">0.82°</td><td class="ok">0.75°</td></tr>
+</table>
+<p>Mean tracking error against the skill's reference motion (Look At: last 0.5 s of each target). The bars are 1.0–5.0° depending on the skill. Other joints moved at most 2.0° in validation and 3.1° on the Unreal twin, against a 5° abort limit.</p>
+
+<h2>Before</h2>
+<div class="row">
+<figure><img src="console_after_control_1600x900.png" alt="Control page before: four scripted motions"><figcaption>Blazor Control before (last capture at HEAD): four scripted motions, no training.</figcaption></figure>
+<figure><img src="unreal_console_after_behaviours_1600x900.png" alt="Unreal Behaviours tab before"><figcaption>Unreal Behaviours tab before: one row of four behaviours.</figcaption></figure>
+</div>
+
+<h2>After</h2>
+<figure><img src="skills_after_1600x900.png" alt="Trained skills page with five validated skill cards"><figcaption>Blazor <code>/skills</code>: each card shows its state, motors, max size and validation errors, plus Train or Retrain, Play on twin and Run on robot. Play and Run are locked until the skill is validated. Train all five is at the top, with a progress bar while training runs.</figcaption></figure>
+<div class="row">
+<figure><img src="skills_control_after_1600x900.png" alt="Control page with star trained chips, Look At selected"><figcaption>Control: ★ chips for trained skills (locked while untrained) and the new "★ Train a skill" task. Play on twin opened this with Look At selected.</figcaption></figure>
+<figure class="narrow"><img src="skills_after_450x800.png" alt="Trained skills page at 450 by 800"><figcaption>/skills at 450×800.</figcaption></figure>
+</div>
+<figure><img src="skills_chooser_after_1600x900.png" alt="Control task chooser with Train a skill card"><figcaption>Task chooser: the fifth card, "Train a skill". The main nav stays at five places.</figcaption></figure>
+<figure><img src="skills_unreal_after_1600x900.png" alt="Unreal panel with trained skills row and Train buttons"><figcaption>(Superseded later the same day: the Unreal app became the simulation-only scenario lab; see scenario_lab_report.html.) Unreal Behaviours tab with a trained-skills row and Train buttons.</figcaption></figure>
+<h2>Twin | Robot (/mission)</h2>
+<figure><img src="mission_ready_after_1600x900.png" alt="Twin on the left, real robot on the right, gates between"><figcaption>Before a run: the twin preview has passed. The right side draws the robot from its measured joint angles (practice twin here, because the R1 was not connected).</figcaption></figure>
+<figure><img src="mission_running_after_1600x900.png" alt="After a practice run of Shake No"><figcaption>After a practice run of Shake No at 20°. The read-only check returns to "to do" because every run requires a fresh check.</figcaption></figure>
+</main>
+</body>
+</html>

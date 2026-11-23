@@ -435,3 +435,125 @@ a.po-chip, a.po-btn { text-decoration: none; display: inline-flex; align-items: 
 /* readable links inside pages (default link blue is too dark on the dark surface) */
 .po-main a:not(.po-chip):not(.po-btn), .askbar a:not(.po-chip):not(.po-btn) { color: #8ab8ff; }
 .status-msg.info { color: #8ab8ff; }
+
+/* Trained skills page (/skills) and the ★ trained chips on Control */
+.sk-page { display: flex; flex-direction: column; gap: 12px; }
+.sk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.sk-card { display: flex; flex-direction: column; gap: 8px; }
+.sk-title { font-size: 16px; }
+.sk-meta, .sk-metrics { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.sk-metrics b { font-variant-numeric: tabular-nums; }
+.sk-card .btn-row { flex-wrap: wrap; }
+.po-chip--trained:not(.active):not(:disabled) { box-shadow: inset 0 0 0 1px rgba(138,184,255,.55); }
+
+/* Twin | Robot mission control (/mission): virtual left, real (measured joints) right, gates between */
+.mc-page { display: flex; flex-direction: column; gap: 12px; }
+.mc-bar { display: flex; flex-direction: column; gap: 8px; }
+.mc-bar__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.mc-bar__row .dash-h1 { margin: 0; }
+.mc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 200px minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.mc-side { display: flex; flex-direction: column; gap: 10px; }
+.mc-side--twin { border-color: #2770e0; background: #121a2a; }
+.mc-side--real { border-color: #a5591a; background: #1e160f; }
+.mc-side__hdr { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; }
+.mc-title { font-size: 14px; letter-spacing: .02em; }
+.mc-title--twin { color: #8ab8ff; }
+.mc-title--real { color: #ffb170; }
+.mc-engine { display: flex; gap: 4px; }
+.mc-main { min-height: 48px; font-size: 15px; }
+.mc-readout { display: flex; flex-direction: column; gap: 4px; font-size: 13px; min-height: 58px; }
+.mc-readout__row { display: flex; justify-content: space-between; }
+.mc-gates { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.mc-gates__title { margin: 0 0 4px; font-size: 12px; text-align: center; color: var(--po-muted); letter-spacing: .06em; }
+.mc-gate { display: flex; justify-content: space-between; gap: 6px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--po-border); background: var(--po-card); font-size: 13px; }
+.mc-gate b { font-weight: 500; color: var(--po-muted); }
+.mc-gate--done { background: #13261b; border-color: #2f7a4a; }
+.mc-gate--done b { color: #6ee79a; }
+.mc-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+@media (max-width: 1100px) { .mc-grid { grid-template-columns: 1fr; } .mc-gates { flex-direction: row; flex-wrap: wrap; } .mc-gate { flex: 1 1 160px; } .mc-gates__title { width: 100%; } }
+
+/* Twin | Robot, simplified: two views and one next-step button */
+.mc-grid--two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.mc-next { display: flex; flex-direction: column; gap: 10px; }
+.mc-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--po-muted); }
+.mc-steps li.done { color: #6ee79a; }
+.mc-steps li.now { color: var(--po-text); font-weight: 700; }
+.mc-next__row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.mc-next__btn { min-height: 52px; min-width: 260px; font-size: 16px; justify-content: center; }
+.mc-next__why { font-size: 14px; color: var(--po-muted); flex: 1 1 280px; }
+.mc-next__why.bad { color: #ff8a80; }
+.mc-next__why.warn { color: #ffb170; }
+.mc-adv { display: flex; flex-direction: column; gap: 10px; }
+.mc-adv .mc-gates { flex-direction: row; flex-wrap: wrap; }
+.mc-adv .mc-gate { flex: 1 1 160px; }
+@media (max-width: 900px) { .mc-grid--two { grid-template-columns: 1fr; } .mc-next__btn { width: 100%; } }
+a.chooser__card { text-decoration: none; }
+
+/* Virtual | Real robot: coded moves and trained (RL) skills as two labelled sections */
+.mc-groups { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+.mc-group { display: flex; flex-direction: column; gap: 4px; }
+.mc-group__title { font-size: 11px; letter-spacing: .06em; color: var(--po-muted); font-weight: 700; }
+.sk-section { margin: 4px 0 0; font-size: 13px; letter-spacing: .06em; color: var(--po-muted); }
+
+/* Five-step flow: the header step bar (Layout/StepNav.razor) and the step pages */
+.stepnav { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.stepnav__item a, .stepnav__item > span { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 8px; font-size: 14px; text-decoration: none; color: var(--po-muted); white-space: nowrap; }
+.stepnav__item a:hover { background: #1d2330; color: var(--po-text); }
+.stepnav__n { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 700; background: #262b36; color: var(--po-text); }
+.stepnav__item--here a { background: #1d2330; color: var(--po-text); font-weight: 700; }
+.stepnav__item--here .stepnav__n { background: var(--po-blue); color: #fff; }
+.stepnav__item--done .stepnav__n { background: #1f5f38; color: #b7f5cb; }
+.stepnav__item--done a { color: #b8c1d3; }
+.stepnav__item--locked > span { opacity: .45; cursor: not-allowed; }
+.stepnav__item + .stepnav__item::before { content: ""; width: 14px; height: 1px; background: #3a4152; margin-right: 4px; }
+.stepnav__item { display: inline-flex; align-items: center; }
+.po-nav__link--library { margin-left: 10px; border-left: 1px solid #3a4152; padding-left: 14px; }
+.po-nav__link--locked { opacity: .45; cursor: not-allowed; margin-left: 10px; padding-left: 14px; border-left: 1px solid #3a4152; }
+
+.step-page { display: flex; flex-direction: column; gap: 12px; }
+.step-head { display: flex; flex-direction: column; gap: 2px; }
+.step-head .dash-h1 { margin: 0; }
+.step-head__n { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: #8ab8ff; }
+.step-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.step-check { display: flex; flex-direction: column; gap: 8px; }
+.step-check__title { margin: 0 0 4px; font-size: 16px; }
+.step-row { display: grid; grid-template-columns: 24px 190px 1fr; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.03); font-size: 14px; }
+.step-row__mark { font-weight: 800; }
+.step-row.ok .step-row__mark { color: #6ee79a; }
+.step-row.bad .step-row__mark { color: #ff8a80; }
+.step-row.pending .step-row__mark { color: var(--po-muted); }
+.step-row__detail { color: var(--po-muted); }
+.step-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.step-foot .ok { color: #6ee79a; }
+.step-next { min-height: 48px; justify-content: center; text-decoration: none; }
+@media (max-width: 720px) { .step-row { grid-template-columns: 24px 1fr; } .step-row__detail { grid-column: 2; } }
+
+/* Library (/library): skill list left, results + versions right */
+.lib-page { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.lib-list { flex: 1 1 260px; max-width: 320px; display: flex; flex-direction: column; gap: 8px; }
+.lib-list .dash-h1 { margin: 0; }
+.lib-item { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 10px; border: 1px solid var(--po-border); background: #161a23; color: var(--po-text); font: inherit; cursor: pointer; }
+.lib-item.active { border-color: #2770e0; background: #1d2a44; }
+.lib-item__top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.lib-item__sub { font-size: 12px; color: var(--po-muted); }
+.lib-detail { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.lib-title { margin: 0; font-size: 22px; }
+.lib-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.lib-actions .po-btn { min-height: 44px; }
+.lib-status { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 13px; color: var(--po-muted); margin-top: 8px; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+.lib-h3 { margin: 0 0 8px; font-size: 15px; }
+.lib-chart { width: 100%; height: auto; display: block; }
+.lib-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--po-muted); margin-top: 8px; }
+.lib-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lib-table th, .lib-table td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--po-border); }
+.lib-table tr.active td { background: rgba(39,112,224,.12); }
+.lib-table td.pass { color: #6ee79a; }
+.lib-table td.fail { color: #ff8a80; }
+.lib-link { background: none; border: 0; color: #8ab8ff; cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+.lib-page--stack { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+.lib-skill { display: flex; flex-direction: column; gap: 10px; }
+.lib-table-wrap { overflow-x: auto; }
+.lib-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; white-space: nowrap; }
+.lib-play { min-height: 32px; padding: 4px 12px; text-decoration: none; }
+.lib-results-row td { background: rgba(255,255,255,.02); padding: 14px 8px; }

@@ -1,0 +1,185 @@
+{
+ "policy_name": "r1_head_shake_no",
+ "skill": "shake_no",
+ "label": "Shake No",
+ "step_dt": 0.02,
+ "num_obs": 6,
+ "num_actions": 1,
+ "joint_names": [
+  "head_yaw_joint"
+ ],
+ "motor_slots": [
+  30
+ ],
+ "default_joint_pos": [
+  0.0
+ ],
+ "kp": [
+  10.0
+ ],
+ "kd": [
+  0.1
+ ],
+ "action_scale": [
+  0.25
+ ],
+ "action_clip": [
+  5.0
+ ],
+ "soft_limit_factor": 0.9,
+ "observations": [
+  {
+   "name": "joint_pos_rel",
+   "size": 1
+  },
+  {
+   "name": "joint_vel",
+   "size": 1
+  },
+  {
+   "name": "last_action",
+   "size": 1
+  },
+  {
+   "name": "command",
+   "size": 3
+  }
+ ],
+ "command": "hold: [0,0,0]; look_at: [yaw, pitch, 0] rad; periodic: [sin, cos, size]",
+ "period_s": 3.0,
+ "max_deg": 20.0,
+ "metadata": {
+  "trained_at": "2026-11-22T18:55:32",
+  "skill": "shake_no",
+  "iters": 250,
+  "num_envs": 512,
+  "horizon": 24,
+  "seed": 0,
+  "git": "ff2a314",
+  "device": "cuda",
+  "env": "HeadSkillEnv",
+  "train_time_s": 122.5,
+  "joint_map_sha256": "df0a086ae8017262"
+ },
+ "validation": {
+  "passed": true,
+  "failures": [],
+  "policy_sha256": "cce86e9486187921f2e55fa905662e2773d8cf5dc3b7f94e8ce2e2adf1f43b25",
+  "validated_at": "2026-11-22T19:40:59",
+  "metrics": {
+   "onnx_parity": 9.5367431640625e-07,
+   "nominal": {
+    "mean_err_deg": 0.643,
+    "max_err_deg": 1.49,
+    "other_joint_max_deg": 1.326,
+    "max_torque_nm": 0.126
+   },
+   "randomised": {
+    "mean_err_deg": 0.631,
+    "max_err_deg": 1.58,
+    "other_joint_max_deg": 1.674,
+    "max_torque_nm": 0.258
+   },
+   "runtime": {
+    "exit_code": 0,
+    "abort": "",
+    "mean_err_deg": 0.706,
+    "max_err_deg": 1.707,
+    "log": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoRobotTrain\\logs\\head_skills\\validate_shake_no.csv"
+   },
+   "track_err_deg": 0.706
+  }
+ },
+ "desc": "Trained: shakes 'no' (max 20 deg). Only the neck yaw motor moves.",
+ "effort": [
+  0.86
+ ],
+ "soft_limit_lo": [
+  -1.80639
+ ],
+ "soft_limit_hi": [
+  1.80639
+ ],
+ "hold_joints": [
+  "waist_roll_joint",
+  "waist_yaw_joint",
+  "left_shoulder_pitch_joint",
+  "left_shoulder_roll_joint",
+  "left_shoulder_yaw_joint",
+  "left_elbow_joint",
+  "left_wrist_roll_joint",
+  "right_shoulder_pitch_joint",
+  "right_shoulder_roll_joint",
+  "right_shoulder_yaw_joint",
+  "right_elbow_joint",
+  "right_wrist_roll_joint",
+  "head_pitch_joint"
+ ],
+ "hold_default": [
+  0.0,
+  0.0,
+  0.35,
+  0.18,
+  0.0,
+  0.87,
+  0.0,
+  0.35,
+  -0.18,
+  0.0,
+  0.87,
+  0.0,
+  0.0
+ ],
+ "hold_kp": [
+  100.0,
+  100.0,
+  40.0,
+  40.0,
+  20.0,
+  20.0,
+  20.0,
+  40.0,
+  40.0,
+  20.0,
+  20.0,
+  20.0,
+  50.0
+ ],
+ "hold_kd": [
+  2.0,
+  2.0,
+  2.0,
+  2.0,
+  1.0,
+  1.0,
+  1.0,
+  2.0,
+  2.0,
+  1.0,
+  1.0,
+  1.0,
+  2.0
+ ],
+ "glance_keys": [
+  [
+   0.0,
+   0.0
+  ],
+  [
+   1.0,
+   0.0
+  ],
+  [
+   -1.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.4
+  ]
+ ],
+ "glance_move": 0.4,
+ "yaw_range": 0.0,
+ "pitch_range": 0.0,
+ "version": 1
+}

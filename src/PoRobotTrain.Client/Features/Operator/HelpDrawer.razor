@@ -35,7 +35,9 @@
     // which document answers "how do I use this page?"
     private static readonly Dictionary<string, string> PageDocs = new(StringComparer.OrdinalIgnoreCase)
     {
-        [""] = "behaviours",
+        [""] = "head_skills",
+        ["skills"] = "head_skills",
+        ["mission"] = "head_skills",
         ["walk"] = "level2_walk",
         ["robustness"] = "robustness",
         ["robot-health"] = "robot_connection_guide",
@@ -67,7 +69,7 @@
             _error = err;
         }
         var page = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
-        var want = PageDocs.GetValueOrDefault(page, "behaviours");
+        var want = PageDocs.GetValueOrDefault(page, "head_skills");
         _name = _docs.Any(d => d.Name == want) ? want : _docs.FirstOrDefault()?.Name ?? want;
         await LoadAsync();
     }

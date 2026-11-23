@@ -24,14 +24,9 @@ public class R1Twin : ModuleRules
 			"NNE",
 		});
 
-		// Behaviour panel (AR1BehaviourPanel) talks to RobotControl's local behaviour service over HTTP/JSON.
-		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json", "UMG", "Slate", "SlateCore", "DeveloperSettings", "ImageWrapper" });  // UMG: hide URLab's debug widget; Slate: click input; ImageWrapper: twin head camera PNG
-
-		// Voice commands (FR1VoiceSapi): Windows SAPI speech recognition + text to speech, no ATL / sphelper.h.
-		if (Target.Platform == UnrealTargetPlatform.Win64)
-		{
-			PublicSystemLibraries.AddRange(new string[] { "sapi.lib", "ole32.lib" });
-		}
+		// Scenario lab panel: Json reads the trained skills' deploy.json; HTTP talks to the behaviour service for the walk
+		// sandbox only. UMG: hide URLab's debug widget; Slate: click input.
+		PrivateDependencyModuleNames.AddRange(new string[] { "HTTP", "Json", "UMG", "Slate", "SlateCore", "DeveloperSettings" });
 
 		// One version stamp (Po Game Standard): UTC yyMMdd of the HEAD commit (web/build.py uses the same rule), else today (UTC).
 		string Stamp = DateTime.UtcNow.ToString("yyMMdd");

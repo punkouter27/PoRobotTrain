@@ -29,7 +29,7 @@
 
 <div class="po-card" style="max-width:860px;margin-top:12px">
     <div class="sec-hdr">
-        <h2 class="tel-title">BROWSER RUNTIME (3D TWIN, CHECKS, LOCAL AI)</h2>
+        <h2 class="tel-title">BROWSER RUNTIME (3D VIRTUAL ROBOT, CHECKS, LOCAL AI)</h2>
         <span class="po-pill @(Overall switch { true => "po-pill--ok", false => "po-pill--bad", _ => string.Empty })">
             @(Overall switch { true => "ALL CHECKS PASS", false => $"{_rows.Count(r => !r.Ok)} FAILING", _ => "RUNNING…" })
         </span>
@@ -72,7 +72,7 @@
     private static string SectionTitle(string s) => s switch
     {
         "GPU" => "GPU (WebGPU is optional: WebGL2 + CPU fallbacks are used without it)",
-        "Data" => "Data (twin assets, decoders)",
+        "Data" => "Data (virtual robot assets, decoders)",
         "Services" => "Services (CDN modules)",
         "Sandbox" => "Voice, robustness explorer, walk sandbox (speech, model files, live API calls)",
         _ => "Checks (contracts verified in the browser)",

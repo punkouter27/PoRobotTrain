@@ -7,14 +7,14 @@
 <PageTitle>Robustness explorer — PoRobotTrain</PageTitle>
 
 @* Robustness explorer (idea #19, docs/service_api.md §2). The service runs the deployed Level 0 policy on many
-   perturbed copies of the headless MuJoCo stand twin; this page starts sweeps and reads the report.
+   perturbed copies of the headless MuJoCo virtual robot; this page starts sweeps and reads the report.
    Pure simulation: nothing here touches the robot. *@
 <div class="rb-page">
     <section class="po-card">
         <div class="ctrl-top">
             <div>
                 <h1 class="dash-h1">ROBUSTNESS EXPLORER</h1>
-                <span class="po-muted">Level 0 policy on perturbed copies of the MuJoCo stand twin · simulation only</span>
+                <span class="po-muted">Level 0 policy on perturbed copies of the MuJoCo virtual robot · simulation only</span>
             </div>
             <span class="po-pill @HeaderPillClass">@HeaderPill</span>
         </div>
@@ -78,7 +78,7 @@
                 {
                     <div class="rb-tile rb-tile--wide">
                         <span class="rb-icon rb-icon--@Verdict(nom)" aria-hidden="true">@Icon(nom)</span>
-                        <span><b>Nominal twin: @VerdictWord(nom)</b> · @Metrics(nom)<br /><span class="po-muted">@Reason(nom)</span></span>
+                        <span><b>Nominal virtual robot: @VerdictWord(nom)</b> · @Metrics(nom)<br /><span class="po-muted">@Reason(nom)</span></span>
                     </div>
                 }
             </div>
@@ -318,7 +318,7 @@
             }
             var median = accFails.Select(c => c.MaxAcc ?? 0).OrderBy(x => x).ElementAt(accFails.Count() / 2);
             return $"{accFails.Count()} of {cells.Count} failing cells fail on acceleration of the {JointLabel(accFails.Key)} joint (median {median.ToString("0", Inv)} rad/s², limit {Thr.MaxAcc.ToString("0", Inv)}). "
-                 + "The policy chatters on that joint in this twin; tracking error alone would pass far more cells.";
+                 + "The policy chatters on that joint in this virtual robot; tracking error alone would pass far more cells.";
         }
     }
 

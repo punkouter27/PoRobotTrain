@@ -1,0 +1,285 @@
+@page "/library"
+@using System.Globalization
+@implements IDisposable
+@inject RobotApiClient Api
+@inject UiState Ui
+@inject NavigationManager Nav
+
+<PageTitle>Library — PoRobotTrain</PageTitle>
+
+@* Every RL-trained skill, each with ALL its training sessions underneath: when, how much data it trained on (policy steps
+   and hours of simulated practice), how long it took, the ONNX file size, its accuracy and whether it passed its check,
+   a link that plays exactly that session on the virtual robot, and its full results (training curve + benchmarks).
+   Per skill: retrain on this computer, copy the active version to the robot (no motion), view it in the Unreal lab.
+   Running on the real robot stays in step 5. *@
+<div class="lib-page lib-page--stack">
+    <section class="po-card">
+        <h1 class="dash-h1">LIBRARY</h1>
+        <span class="po-muted">Every trained skill and every training session. Retraining keeps the old sessions; only one that passed its check can be active.</span>
+        @if (!string.IsNullOrEmpty(_toast))
+        {
+            <div class="po-toast">@_toast</div>
+        }
+        @if (IsJob("train"))
+        {
+            var p = Ui.Status?.Progress;
+            var pct = p is { Total: > 0 } ? 100.0 * p.Done / p.Total : 0;
+            <div class="rb-progress"><div class="rb-progress__bar" style="width:@pct.ToString("0.#", Inv)%"></div></div>
+            <div class="po-muted">Training a new session on this PC: @pct.ToString("0", Inv)%. The active version stays until the new one passes its check.</div>
+        }
+        <div class="lib-status"><span>Unreal lab: <b>@UnrealText</b></span></div>
+    </section>
+
+    @foreach (var s in Skills)
+    {
+        <section class="po-card lib-skill">
+            <div class="ctrl-top">
+                <div>
+                    <h2 class="lib-title">@s.Label <span class="po-muted">@(s.Version is int av ? $"v{av} active" : "not trained")</span></h2>
+                    <div class="po-muted">@Plain(s.Desc) Moves: @string.Join(" + ", s.Powered.Select(j => j.Replace('_', ' '))). On the robot: <b>@RobotText(s)</b>.</div>
+                </div>
+                <span class="po-pill @StateClass(s.State)">@StateText(s.State)</span>
+            </div>
+            <div class="lib-actions">
+                <button type="button" class="po-btn po-btn--blue-soft" disabled="@(s.State != "ready")" @onclick="() => ViewUnrealAsync(s)">View in Unreal</button>
+                <button type="button" class="po-btn po-btn--orange-soft" disabled="@(s.State != "ready" || !IsIdle)" title="Copies the active version only; nothing moves" @onclick="() => PushAsync(s.Id)">
+                    @(IsJob("push") && _busySkill == s.Id ? "Copying…" : "Copy to robot")
+                </button>
+                <button type="button" class="po-btn" disabled="@(!IsIdle)" @onclick="() => TrainAsync(s.Id)">
+                    @(IsJob("train") && _busySkill == s.Id ? "Training…" : s.State == "untrained" ? "Train" : "Train a new session")
+                </button>
+            </div>
+
+            <div class="lib-table-wrap">
+                <table class="lib-table">
+                    <thead>
+                        <tr><th>Session</th><th>Trained</th><th>Data trained on</th><th>Time</th><th>ONNX</th><th>Accuracy</th><th>Check</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in s.Versions ?? [])
+                        {
+                            var open = _openSkill == s.Id && _openVersion == v.Version;
+                            <tr class="@(v.Active ? "active" : string.Empty)">
+                                <td><b>v@(v.Version)</b>@(v.Active ? " · active" : string.Empty)</td>
+                                <td>@Short(v.TrainedAt)</td>
+                                <td title="@(v.Iters) iterations × @(v.NumEnvs) virtual robots in parallel">@Data(v)</td>
+                                <td>@(v.TrainTimeS is double t ? $"{t / 60:0.0} min" : "—")@(v.Device is { } dv ? $" · {dv}" : string.Empty)</td>
+                                <td>@Size(v.OnnxBytes)</td>
+                                <td>@Accuracy(v.TrackErrDeg)</td>
+                                <td class="@(v.Passed ? "pass" : "fail")">@(v.Passed ? "✓ passed" : "✕ did not pass")</td>
+                                <td class="lib-row-actions">
+                                    @if (v.Passed)
+                                    {
+                                        <a class="po-btn po-btn--blue lib-play" href="@PlayHref(s.Id, v.Version)" title="Plays exactly this session on the virtual robot">▶ Play</a>
+                                    }
+                                    <button type="button" class="lib-link" @onclick="() => ToggleAsync(s.Id, v.Version)">@(open ? "Hide results" : "Results")</button>
+                                    @if (v.Passed && !v.Active)
+                                    {
+                                        <button type="button" class="lib-link" disabled="@(!IsIdle)" @onclick="() => ActivateAsync(s.Id, v.Version)">Make active</button>
+                                    }
+                                </td>
+                            </tr>
+                            @if (open)
+                            {
+                                <tr class="lib-results-row">
+                                    <td colspan="8">@Results(_detail)</td>
+                                </tr>
+                            }
+                        }
+                        @if ((s.Versions ?? []).Count == 0)
+                        {
+                            <tr><td colspan="8" class="po-muted">No sessions yet. Press Train.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private string? _toast;
+    private string? _busySkill;
+    private int _labSeq;
+    private string? _openSkill;
+    private int _openVersion;
+    private SkillDetailDto? _detail;
+
+    private IReadOnlyList<SkillInfoDto> Skills => Ui.Status?.Skills ?? [];
+    private bool IsIdle => Ui.Online && string.IsNullOrEmpty(Ui.Status?.Job);
+    private bool IsJob(string j) => string.Equals(Ui.Status?.Job, j, StringComparison.OrdinalIgnoreCase);
+
+    private string PlayHref(string id, int version) => $"/step/4?behaviour={Uri.EscapeDataString(id)}&version={version}&play=1";
+
+    private string UnrealText
+    {
+        get
+        {
+            var lab = Ui.Status?.Lab;
+            var running = lab?.UnrealSeenS is double age && age < 5;
+            if (_labSeq > 0 && lab is not null)
+            {
+                return lab.AckSeq >= _labSeq ? "playing your request" : running ? "sending…" : "not running: open the Unreal app and it will pick the request up";
+            }
+            return running ? "running" : "not running";
+        }
+    }
+
+    private static string RobotText(SkillInfoDto s) => s.Robot is null ? "not copied"
+        : s.Robot.Current ? $"v{s.Robot.Version} (up to date)" : $"v{s.Robot.Version} (older than active)";
+
+    /// <summary>How much practice the session had: policy steps of experience and the simulated time they add up to.</summary>
+    private static string Data(SkillVersionDto v) => v.Steps is long st
+        ? $"{(st >= 1_000_000 ? $"{st / 1e6:0.0} M" : $"{st / 1e3:0} k")} steps · {v.SimHours:0.#} h simulated"
+        : "—";
+
+    private static string Size(long? bytes) => bytes is long b ? b >= 1024 * 1024 ? $"{b / 1048576.0:0.0} MB" : $"{b / 1024.0:0} KB" : "—";
+    private static string Plain(string d) => d.StartsWith("Trained: ", StringComparison.Ordinal) ? char.ToUpperInvariant(d[9]) + d[10..] : d;
+    private static string Short(string? iso) => string.IsNullOrEmpty(iso) ? "—" : iso.Replace('T', ' ');
+    private static double? Max(double? a, double? b) => a is null ? b : b is null ? a : Math.Max(a.Value, b.Value);
+
+    private static string Accuracy(double? err) => err switch
+    {
+        null => "—",
+        < 1.0 => $"excellent ({err.Value.ToString("0.0", Inv)}°)",
+        < 2.0 => $"good ({err.Value.ToString("0.0", Inv)}°)",
+        < 4.0 => $"fair ({err.Value.ToString("0.0", Inv)}°)",
+        _ => $"poor ({err.Value.ToString("0.0", Inv)}°)",
+    };
+
+    private static string StateText(string state) => state switch
+    {
+        "ready" => "READY",
+        "failed" => "DIDN'T PASS",
+        "unvalidated" => "NEEDS CHECKING",
+        _ => "NEEDS TRAINING",
+    };
+
+    private static string StateClass(string state) => state == "ready" ? "po-pill--ok" : state == "failed" ? "po-pill--bad" : string.Empty;
+
+    private RenderFragment Results(SkillDetailDto? d) => __builder =>
+    {
+        if (d is not { Ok: true })
+        {
+            <div class="po-muted">Loading results…</div>
+            return;
+        }
+        <div class="lib-grid">
+            <div>
+                <h3 class="lib-h3">Training · v@(d.Version)</h3>
+                @Chart(d.Curve)
+            </div>
+            <div>
+                <h3 class="lib-h3">Benchmarks · @(d.Validation?.Passed == true ? "passed" : "did not pass")</h3>
+                <table class="lib-table">
+                    <thead><tr><th>Test</th><th>Mean error</th><th>Max error</th><th>Bar</th><th></th></tr></thead>
+                    <tbody>
+                        @BenchRow("Nominal physics", d.Validation?.Metrics?.Nominal, d.Validation?.Bars?.Nominal)
+                        @BenchRow("8 randomised robots", d.Validation?.Metrics?.Randomised, d.Validation?.Bars?.Randomised)
+                        @BenchRow("Robot code on realistic virtual robot", d.Validation?.Metrics?.Runtime, d.Validation?.Bars?.Runtime)
+                    </tbody>
+                </table>
+                <div class="lib-facts">
+                    <span>Other joints moved: @(Max(d.Validation?.Metrics?.Nominal?.OtherJointMaxDeg, d.Validation?.Metrics?.Randomised?.OtherJointMaxDeg) is double o ? $"{o:0.0}°" : "—") (limit @(d.Validation?.Bars?.OtherJoints ?? 5)°)</span>
+                    <span>Peak torque: @(Max(d.Validation?.Metrics?.Nominal?.MaxTorqueNm, d.Validation?.Metrics?.Randomised?.MaxTorqueNm) is double tq ? $"{tq:0.0} Nm" : "—")</span>
+                    <span>ONNX = PyTorch: @(d.Validation?.Metrics?.OnnxParity is double op ? op.ToString("0.0e0", Inv) : "—")</span>
+                </div>
+                @if (d.Validation?.Failures is { Count: > 0 } fails)
+                {
+                    <div class="why">@string.Join("; ", fails)</div>
+                }
+            </div>
+        </div>
+    };
+
+    private static RenderFragment BenchRow(string label, GateRunDto? r, double? bar) => __builder =>
+    {
+        var ok = r?.MeanErrDeg is double m && bar is double b && m < b && (r.ExitCode is null or 0);
+        <tr>
+            <td>@label</td>
+            <td>@(r?.MeanErrDeg is double mm ? $"{mm:0.00}°" : "—")</td>
+            <td>@(r?.MaxErrDeg is double mx ? $"{mx:0.0}°" : "—")</td>
+            <td>@(bar is double bb ? $"< {bb:0.0}°" : "—")</td>
+            <td class="@(ok ? "pass" : "fail")">@(ok ? "✓ pass" : "✕")</td>
+        </tr>
+    };
+
+    /// <summary>Tracking error over training iterations: the curve the trainer logged (train_log.csv).</summary>
+    private static RenderFragment Chart(SkillCurveDto? c) => __builder =>
+    {
+        if (c is null || c.Iter.Count < 2)
+        {
+            <div class="po-muted">No training log for this session.</div>
+            return;
+        }
+        const double W = 520, H = 160, Pad = 28;
+        var maxE = Math.Max(1.0, c.TrackErrDeg.Max());
+        var n = c.Iter.Count;
+        string Pt(int i) => $"{(Pad + (W - Pad - 6) * i / (n - 1)).ToString("0.#", Inv)},{(H - Pad - (H - Pad - 8) * c.TrackErrDeg[i] / maxE).ToString("0.#", Inv)}";
+        var pts = string.Join(' ', Enumerable.Range(0, n).Select(Pt));
+        <svg class="lib-chart" viewBox="0 0 @W @H" role="img" aria-label="Tracking error during training, from @c.TrackErrDeg[0].ToString("0.0", Inv) to @c.TrackErrDeg[^1].ToString("0.0", Inv) degrees over @n iterations">
+            <line x1="@Pad" y1="@(H - Pad)" x2="@(W - 6)" y2="@(H - Pad)" stroke="#3a4152" />
+            <line x1="@Pad" y1="8" x2="@Pad" y2="@(H - Pad)" stroke="#3a4152" />
+            <text x="2" y="16" fill="#9aa3b5" font-size="11">@maxE.ToString("0", Inv)°</text>
+            <text x="10" y="@(H - Pad + 4)" fill="#9aa3b5" font-size="11">0</text>
+            <text x="@Pad" y="@(H - 8)" fill="#9aa3b5" font-size="11">iteration 1</text>
+            <text x="@(W - 90)" y="@(H - 8)" fill="#9aa3b5" font-size="11">@c.Iter[^1]</text>
+            <polyline fill="none" stroke="#8ab8ff" stroke-width="2" points="@pts" />
+        </svg>
+        <div class="po-muted">Tracking error (how far the head is from where it should be) while learning: @c.TrackErrDeg[0].ToString("0.0", Inv)° → @c.TrackErrDeg[^1].ToString("0.0", Inv)°.</div>
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Ui.Changed += OnChanged;
+        await Ui.InitAsync();
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task ToggleAsync(string id, int version)
+    {
+        if (_openSkill == id && _openVersion == version)
+        {
+            _openSkill = null;
+            return;
+        }
+        _openSkill = id;
+        _openVersion = version;
+        _detail = null;
+        _detail = await Api.GetSkillDetailAsync(id, version);
+    }
+
+    private async Task ViewUnrealAsync(SkillInfoDto s)
+    {
+        var res = await Api.LabPlayAsync(s.Id, Math.Min(Ui.LastSize, s.MaxDeg));
+        _labSeq = res.Ok ? res.Seq : 0;
+        _toast = !res.Ok ? res.Error
+            : res.UnrealRunning ? $"Sent to the Unreal lab: it plays {s.Label} now."
+            : "Sent. The Unreal app is not running: open it (Play) and it will pick this up.";
+    }
+
+    private async Task PushAsync(string id)
+    {
+        _busySkill = id;
+        var res = await Api.PushSkillAsync(id);
+        _toast = res.Ok ? "Copying the active version to the robot (no motion)…" : res.Error;
+    }
+
+    private async Task TrainAsync(string id)
+    {
+        _busySkill = id;
+        var res = await Api.TrainSkillAsync(id);
+        _toast = res.Ok ? "Training a new session on this PC. The active version stays until the new one passes its check." : res.Error;
+    }
+
+    private async Task ActivateAsync(string id, int version)
+    {
+        var res = await Api.ActivateSkillAsync(id, version);
+        _toast = res.Ok ? $"v{version} is now active." : res.Error;
+    }
+
+    public void Dispose() => Ui.Changed -= OnChanged;
+}

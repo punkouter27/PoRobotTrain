@@ -6,8 +6,8 @@
         <div>
             <h2 class="tel-title">
                 @(PracticeActive
-                    ? (_wantReal ? "TWIN — CURRENT POSE" : "TWIN PREVIEW RUN — POSE")
-                    : (_wantReal ? "REAL ROBOT — CURRENT POSE" : "TWIN PREVIEW RUN — POSE"))
+                    ? (_wantReal ? "VIRTUAL ROBOT — CURRENT POSE" : "VIRTUAL ROBOT PREVIEW RUN — POSE")
+                    : (_wantReal ? "REAL ROBOT — CURRENT POSE" : "VIRTUAL ROBOT PREVIEW RUN — POSE"))
             </h2>
             <div class="tel-metrics">
                 @if (ActiveTelemetry?.ImuRpyDeg is { Length: >= 3 } imu)
@@ -35,12 +35,12 @@
             @if (!PracticeActive)
             {
                 <button type="button" class="po-chip @(_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = true">Real robot</button>
-                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Twin preview</button>
+                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Virtual robot preview</button>
             }
             else
             {
-                <button type="button" class="po-chip @(_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = true">Twin</button>
-                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Twin preview</button>
+                <button type="button" class="po-chip @(_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = true">Virtual robot</button>
+                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Virtual robot preview</button>
             }
             @if (_wantReal)
             {
@@ -49,7 +49,7 @@
                         style="padding:6px 10px;font-size:12px"
                         @onclick="ToggleRealWrite">
                     @(_realWriteArmed
-                        ? (PracticeActive ? "Sliders move the twin" : "Sliders move the REAL robot")
+                        ? (PracticeActive ? "Sliders move the virtual robot" : "Sliders move the REAL robot")
                         : "Sliders: read-only (enable)")
                 </button>
                 @if (_realWriteArmed)
@@ -67,7 +67,7 @@
             }
             <button type="button" class="po-btn @(PracticeActive ? "po-btn--blue-soft" : "po-btn--orange-soft")" style="padding:6px 10px;font-size:12px"
                     disabled="@(!IsIdle)" @onclick="ReadPhysicalAsync">
-                @(IsReading ? "Reading..." : (PracticeActive ? "Read twin pose" : "Read robot pose"))
+                @(IsReading ? "Reading..." : (PracticeActive ? "Read virtual robot pose" : "Read robot pose"))
             </button>
             <span class="po-pill @BadgeClass">@BadgeText</span>
         </div>
@@ -80,7 +80,7 @@
     @if (_wantReal && _realWriteArmed)
     {
         <div class="status-msg warn">
-            <b>@(PracticeActive ? "PRACTICE SLIDERS ARMED -> VIRTUAL STAND TWIN (PC):" : "SLIDER WRITE ARMED -> PHYSICAL R1 (192.168.123.164):")</b> dragging a slider smoothly powers only that joint (torque/limit capped; legs stay stand-locked; e-stop: L2+B 5s).
+            <b>@(PracticeActive ? "PRACTICE SLIDERS ARMED -> VIRTUAL ROBOT (PC):" : "SLIDER WRITE ARMED -> PHYSICAL R1 (192.168.123.164):")</b> dragging a slider smoothly powers only that joint (torque/limit capped; legs stay stand-locked; e-stop: L2+B 5s).
         </div>
     }
 
@@ -174,7 +174,7 @@
         <div class="sec-hdr">
             <div>
                 <strong style="font-size:14px">3D R1 ON STAND (LIVE POSE)</strong>
-                <span class="po-muted" style="margin-left:8px">@(_wantReal ? (PracticeActive ? "Twin pose" : "Real robot pose") : "Twin preview run")</span>
+                <span class="po-muted" style="margin-left:8px">@(_wantReal ? (PracticeActive ? "Virtual robot pose" : "Real robot pose") : "Virtual robot preview run")</span>
             </div>
             <div class="size-row">
                 <button type="button" class="po-chip @(_cam == "iso" ? "active" : string.Empty)" @onclick='() => _cam = "iso"'>3/4 Iso</button>
@@ -204,7 +204,7 @@
     <JointHistoryHeatmap Actual="ActiveTelemetry?.QDeg"
                          Sim="@(_wantReal ? Virt?.QDeg : null)"
                          SampleTime="ActiveTelemetry?.T"
-                         SourceLabel="@(_wantReal ? (PracticeActive ? "Twin" : "Real robot") : "Twin preview run")" />
+                         SourceLabel="@(_wantReal ? (PracticeActive ? "Virtual robot" : "Real robot") : "Virtual robot preview run")" />
     }
 </div>
 
@@ -212,10 +212,10 @@
 {
     <div class="po-modal-bg">
         <div class="po-modal">
-            <h2>@(PracticeActive ? "ARM SLIDERS FOR PRACTICE TWIN?" : "ARM SLIDER WRITE -> PHYSICAL R1?")</h2>
+            <h2>@(PracticeActive ? "ARM SLIDERS FOR PRACTICE VIRTUAL ROBOT?" : "ARM SLIDER WRITE -> PHYSICAL R1?")</h2>
             @if (PracticeActive)
             {
-                <p>Physical R1 is not connected — moving upper-body sliders will smoothly move the <b>virtual MuJoCo stand twin</b> for practice.</p>
+                <p>Physical R1 is not connected — moving upper-body sliders will smoothly move the <b>virtual robot</b> for practice.</p>
             }
             else
             {
@@ -242,7 +242,7 @@
     [Parameter] public double SelectedAmplitude { get; set; } = 10.0;
     [Parameter] public string? HighlightJoint { get; set; }
 
-    /// <summary>Simple view (Advanced off): the 3D twin first, the 26-joint list folded away, no history heatmap.</summary>
+    /// <summary>Simple view (Advanced off): the 3D virtual robot first, the 26-joint list folded away, no history heatmap.</summary>
     [Parameter] public bool Simple { get; set; }
 
     private bool _showJoints;
@@ -363,7 +363,7 @@
             ? ((Status?.Job is "monitor" or "run" or "snapshot") && Real?.AgeS < 2.0
                 ? "REAL ROBOT LIVE"
                 : $"REAL ROBOT · {Real?.AgeS:0}s AGO")
-            : UsingPractice ? "TWIN"
+            : UsingPractice ? "VIRTUAL ROBOT"
             : HasHeadOnly ? "REAL ROBOT: HEAD ONLY"
             : IsReading ? "READING THE ROBOT…"
             : "NO ROBOT READING")
@@ -388,16 +388,16 @@
             {
                 if (HasReal26) return string.Empty;
                 if (UsingPractice)
-                    return "Showing the twin (the real robot is not connected). Nothing physical moves.";
+                    return "Showing the virtual robot (the real robot is not connected). Nothing physical moves.";
                 if (HasHeadOnly)
                     return "Only the head angles arrived from the check. Press 'Read robot pose' for all 26 joints.";
                 if (PracticeActive)
-                    return "The real robot is not connected. Press 'Read twin pose' to show the twin.";
+                    return "The real robot is not connected. Press 'Read virtual robot pose' to show the virtual robot.";
                 if (!string.IsNullOrEmpty(SnapshotOrMonitorFail))
                     return $"Could not read the robot ({SnapshotOrMonitorFail}). Angles show '--' rather than guesses.";
                 return "No reading from the robot yet (angles show '--', never guesses). Press 'Read robot pose' once it is online.";
             }
-            return HasVirt26 ? string.Empty : "No preview run yet: run a motion on the twin to see it here.";
+            return HasVirt26 ? string.Empty : "No preview run yet: run a motion on the virtual robot to see it here.";
         }
     }
 

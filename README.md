@@ -149,7 +149,8 @@ the real robot, walk). Running on the robot shows its four gates as a progress b
 
 The behaviour service also provides 20 features modelled on the Unitree Explore app. The Blazor UI shows them on
 the **Motions**, **Health** and **Setup** pages, behind a **? Help** drawer and an **E-STOP** button (`Esc`) on
-every page. The Unreal panel has matching Health, Motions, Setup and Help tabs, with E-STOP on `End`.
+every page. The Unreal app does not duplicate them: it is the simulation-only scenario lab for testing trained
+brains (`docs/scenario_lab.md`).
 The contract is in `docs/service_api.md` sections 4-7 and the code is in `RobotControl/behaviours/console.py`.
 
 | Area | Features |

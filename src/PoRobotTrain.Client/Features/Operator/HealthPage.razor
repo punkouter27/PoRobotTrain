@@ -32,9 +32,9 @@
                 <button type="button" class="po-chip @(_source == s ? "active" : string.Empty)" @onclick="() => SetSource(s)">@SourceLabel(s)</button>
             }
             <button type="button" class="po-chip" @onclick="() => _showDetails = !_showDetails" aria-expanded="@_showDetails">@(_showDetails ? "Hide details" : "Show details")</button>
-            <span class="po-muted">Read-only: nothing here moves the robot. Live robot data needs "Check the real robot" on Control.</span>
+            <span class="po-muted">Read-only: nothing here moves the robot. Live robot data appears after "Check the robot" on Virtual | Real robot.</span>
         </div>
-        <div class="po-muted">More checks: <a href="/robustness">Robustness explorer</a> (how the policy copes with changed physics) · <a href="/diag">Browser diagnostics</a> (3D twin, speech, files).</div>
+        <div class="po-muted">More checks: <a href="/robustness">Robustness explorer</a> (how the policy copes with changed physics) · <a href="/diag">Browser diagnostics</a> (3D virtual robot, speech, files).</div>
         @if (_healthError is not null)
         {
             <div class="assist-out warn">Health unavailable: @_healthError</div>
@@ -64,9 +64,9 @@
     </section>
 
     <section class="po-card">
-        <div class="sec-hdr"><h2 class="tel-title">HEAD CAMERA (TWIN VIEW)</h2><span class="po-pill">~4 FPS</span></div>
-        <img class="cam-img" src="@_camUrl" alt="What the R1 head camera sees on the twin at the current pose" />
-        <p class="po-muted">Rendered from the twin's <code>head_rgbd</code> camera at the virtual pose. The physical robot's camera stream is not available yet: the robot has no video streamer (planned with Level 3).</p>
+        <div class="sec-hdr"><h2 class="tel-title">HEAD CAMERA (VIRTUAL ROBOT VIEW)</h2><span class="po-pill">~4 FPS</span></div>
+        <img class="cam-img" src="@_camUrl" alt="What the R1 head camera sees on the virtual robot at the current pose" />
+        <p class="po-muted">Rendered from the virtual robot's <code>head_rgbd</code> camera at the virtual pose. The physical robot's camera stream is not available yet: the robot has no video streamer (planned with Level 3).</p>
     </section>
 
     <section class="po-card">
@@ -249,7 +249,7 @@
             }
             var parts = new List<string>
             {
-                _health.Rows.FirstOrDefault(r => r.Name == "Behaviour service")?.Ok == true ? "Twin ready." : "Behaviour service has a problem.",
+                _health.Rows.FirstOrDefault(r => r.Name == "Behaviour service")?.Ok == true ? "Virtual robot ready." : "Behaviour service has a problem.",
                 Ui.RealConnected ? "Real robot connected." : "Real robot not connected.",
             };
             if (_power is { Available: true, SocPct: double soc })
@@ -296,7 +296,7 @@
     {
         "auto" => "Auto",
         "real" => "Real robot",
-        _ => "Twin",
+        _ => "Virtual robot",
     };
 
     private string SourceQuery => _source == "auto" ? string.Empty : $"source={_source}";

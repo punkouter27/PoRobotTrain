@@ -1,0 +1,46 @@
+@implements IDisposable
+@inject UiState Ui
+@inject NavigationManager Nav
+
+@* The main navigation is the five-step flow. A step opens when the one before it is done (UiState.StepUnlocked);
+   done steps show a tick, the open page is highlighted, and a locked step says what to finish first. *@
+<ol class="stepnav" aria-label="Steps">
+    @foreach (var (n, title, route) in UiState.Steps)
+    {
+        var unlocked = Ui.StepUnlocked(n);
+        var here = Path == route.TrimStart('/');
+        var cls = here ? "here" : Ui.StepDone(n) ? "done" : unlocked ? "open" : "locked";
+        <li class="stepnav__item stepnav__item--@cls">
+            @if (unlocked)
+            {
+                <a href="@route" aria-current="@(here ? "step" : null)">
+                    <span class="stepnav__n">@(Ui.StepDone(n) && !here ? "✓" : n.ToString())</span>@title
+                </a>
+            }
+            else
+            {
+                <span title="Finish step @(n - 1) first" aria-disabled="true"><span class="stepnav__n">@n</span>@title</span>
+            }
+        </li>
+    }
+</ol>
+
+@code {
+    private string Path => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+
+    protected override void OnInitialized()
+    {
+        Ui.Changed += OnChanged;
+        Nav.LocationChanged += OnLocation;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnLocation(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Ui.Changed -= OnChanged;
+        Nav.LocationChanged -= OnLocation;
+    }
+}

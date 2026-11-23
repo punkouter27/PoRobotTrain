@@ -167,7 +167,7 @@ def test_telemetry_parsed_and_monitor_lifecycle(svc, monkeypatch):
     st = svc.status()
     assert st["telemetry"]["virtual"]["actual_deg"] == 5.2
     assert not any("@telemetry" in line for line in svc.lines)
-    assert len(st["behaviours"]) == 4 and len(st["joint_names"]) == 26
+    assert len(st["behaviours"]) == 9 and len(st["joint_names"]) == 26  # 4 scripted + 5 trained head skills
 
     monkeypatch.setattr(S, "robot_stream", lambda *a, **k: iter([{"q": [0.0] * 26, "max_temp_c": 38, "bus_v": 48.0}]))
     assert svc.monitor() == {"ok": True}
@@ -203,10 +203,23 @@ def test_preview_uses_last_real_pose_for_virtual_matching(svc):
 
     assert svc.preview(P) == {"ok": True}
     cmd = svc.started[-1][1]
-    assert "--start-q-deg" in cmd
-    arg = cmd[cmd.index("--start-q-deg") + 1]
+    arg = next(c for c in cmd if c.startswith("--start-q-deg="))[len("--start-q-deg=") :]
     assert len(arg.split(",")) == 26
     assert arg.startswith("0.00,0.50,1.00")
+
+
+def test_start_pose_with_negative_first_angle_reaches_the_runner(svc):
+    """The stand pose starts with left hip pitch -5.7 deg: as a separate argv item argparse took it for a flag and
+    every practice check / run failed with 'expected one argument'."""
+    from robotcontrol.behaviours import runner
+
+    assert svc.check(P, practice=True) == {"ok": True}
+    cmd = svc.started[-1][1]
+    arg = next(c for c in cmd if c.startswith("--start-q-deg="))
+    assert arg[len("--start-q-deg=") :].startswith("-")
+    ns = runner.argparse.ArgumentParser()
+    ns.add_argument("--start-q-deg", default=None)
+    assert ns.parse_args([arg]).start_q_deg.startswith("-")
 
 
 def test_snapshot_reads_one_real_sample_over_http(svc, monkeypatch):

@@ -199,6 +199,18 @@ bool FR1UrlabBridge::Initialize(const FR1BridgeInitParams& Params)
 		}
 		Actuators.Add(Act, A);
 	}
+	ExtraBodies.Empty(Params.ExtraBodyNames.Num());
+	for (const FName& BodyName : Params.ExtraBodyNames)
+	{
+		if (UMjBody* B = ResolveBody(BodyName.ToString()))
+		{
+			ExtraBodies.Add(BodyName, B);
+		}
+		else
+		{
+			UE_LOG(LogR1Twin, Warning, TEXT("FR1UrlabBridge: body '%s' not found."), *BodyName.ToString());
+		}
+	}
 	RootBody = ResolveBody(RootBodyName.IsNone() ? FString(TEXT("pelvis")) : RootBodyName.ToString());
 	if (!RootBody.IsValid())
 	{
@@ -303,8 +315,17 @@ FVector FR1UrlabBridge::GetImuGyro() const
 bool FR1UrlabBridge::GetBodyPoseMj(FName BodyName, FVector& OutPosMeters, FQuat& OutQuatRaw) const
 {
 #if R1_WITH_URLAB && R1_URLAB_API_VERIFIED
-	// Only the root body is cached (camera tracking and IMU are the consumers).
-	if (const UMjBody* B = static_cast<const UMjBody*>(RootBody.Get()))
+	// The root body (camera tracking, IMU) plus any ExtraBodyNames resolved in Initialize.
+	const UMjBody* B = nullptr;
+	if (const TWeakObjectPtr<UObject>* Extra = ExtraBodies.Find(BodyName))
+	{
+		B = static_cast<const UMjBody*>(Extra->Get());
+	}
+	else if (BodyName.IsNone() || BodyName == RootBodyName)
+	{
+		B = static_cast<const UMjBody*>(RootBody.Get());
+	}
+	if (B)
 	{
 		OutPosMeters = MjUe::PositionToMj(B->GetWorldPosition());
 		OutQuatRaw = MjUe::QuatToMj(B->GetWorldRotation());
@@ -312,6 +333,31 @@ bool FR1UrlabBridge::GetBodyPoseMj(FName BodyName, FVector& OutPosMeters, FQuat&
 	}
 #endif
 	return false;
+}
+
+bool FR1UrlabBridge::ApplyBodyWrenchMj(FName BodyName, const FVector& ForceMj, const FVector& TorqueMj)
+{
+#if R1_WITH_URLAB && R1_URLAB_API_VERIFIED
+	const TWeakObjectPtr<UObject>* Extra = ExtraBodies.Find(BodyName);
+	if (UMjBody* B = Extra ? static_cast<UMjBody*>(Extra->Get()) : nullptr)
+	{
+		// UMjBody::ApplyForce takes Unreal axes (N, N m): forces are polar vectors (flip y), torques axial vectors.
+		B->ApplyForce(MjUe::DirectionToUe(ForceMj), MjUe::AngularVelocityToUe(TorqueMj));
+		return true;
+	}
+#endif
+	return false;
+}
+
+void FR1UrlabBridge::ClearBodyWrench(FName BodyName)
+{
+#if R1_WITH_URLAB && R1_URLAB_API_VERIFIED
+	const TWeakObjectPtr<UObject>* Extra = ExtraBodies.Find(BodyName);
+	if (UMjBody* B = Extra ? static_cast<UMjBody*>(Extra->Get()) : nullptr)
+	{
+		B->ClearForce();
+	}
+#endif
 }
 
 bool FR1UrlabBridge::IsExternallyStepped() const

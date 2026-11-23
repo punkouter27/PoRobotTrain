@@ -13,6 +13,7 @@
 #include "R1TwinGameMode.generated.h"
 
 class UR1PolicyComponent;
+class UR1SkillBrainComponent;
 class UR1DeployConfigAsset;
 class UNNEModelData;
 
@@ -73,10 +74,15 @@ public:
 private:
 	void SpawnPolicyHostIfNeeded();
 	void DisableChaosOnAllActors();
+	void SpawnSkillBrain();
 	UR1PolicyComponent* FindExistingPolicyComponent() const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<AActor> PolicyHost;
+
+	/** Scenario lab brain: runs the web app's validated head skills on the virtual R1 (simulation only). */
+	UPROPERTY(Transient)
+	TObjectPtr<UR1SkillBrainComponent> SkillBrain;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UR1PolicyComponent> PolicyComponent;

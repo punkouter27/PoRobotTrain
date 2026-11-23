@@ -23,10 +23,10 @@
             @switch (r.Kind)
             {
                 case "pose" when r.Pose is not null:
-                    <button type="button" class="po-chip active" @onclick="() => PoseAsync(r.Pose)">Preview on twin</button>
+                    <button type="button" class="po-chip active" @onclick="() => PoseAsync(r.Pose)">Preview on virtual robot</button>
                     break;
                 case "behaviour" when r.Id is not null && !r.Blocked:
-                    <a class="po-chip active" href="@($"/?behaviour={Uri.EscapeDataString(r.Id)}&amp={r.Amplitude ?? 10:0}")">Open on Control</a>
+                    <a class="po-chip active" href="@($"/?behaviour={Uri.EscapeDataString(r.Id)}&amp={r.Amplitude ?? 10:0}")">Open on Virtual | Real robot</a>
                     break;
                 case "joint" when r.Joint is not null:
                     <a class="po-chip active" href="@($"/?joint={Uri.EscapeDataString(r.Joint)}")">Show the slider</a>
@@ -67,6 +67,6 @@
     private async Task PoseAsync(string pose)
     {
         var (r, err) = await Console.PreviewPoseAsync(pose, Ui.PlayTarget);
-        _reply = _reply! with { Answer = r?.Ok == true ? $"Moving the twin to {pose.Replace('_', ' ')}." : $"Not started: {err}", Kind = "answer" };
+        _reply = _reply! with { Answer = r?.Ok == true ? $"Moving the virtual robot to {pose.Replace('_', ' ')}." : $"Not started: {err}", Kind = "answer" };
     }
 }

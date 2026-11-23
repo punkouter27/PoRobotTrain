@@ -147,6 +147,13 @@ class SimBackend(_Base):
         damping = m.dof_damping.copy()
         m.dof_damping[6:] = np.maximum(damping[6:], 5.0)
         m.dof_damping[pv] = 1e3
+        # Geared joints the real robot holds when unpowered (waist, head pitch) are held where they start, too:
+        # letting them droop here and locking them there compounded run after run on the practice twin (head
+        # pitch 0 -> 10 -> 35 deg), which no real robot does and which tripped the head-centred start check.
+        for n in self.LOCK_IF_UNPOWERED:
+            j = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, n)
+            if j >= 0 and n not in self.powered:
+                m.dof_damping[m.jnt_dofadr[j]] = 1e3
         for _ in range(int(settle_s / m.opt.timestep)):
             mujoco.mj_step(m, d)
         m.dof_damping[:] = damping

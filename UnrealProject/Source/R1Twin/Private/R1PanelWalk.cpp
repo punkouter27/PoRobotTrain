@@ -1,4 +1,4 @@
-// Behaviour panel: Level 2 walk sandbox tab (idea #20, docs/service_api.md section 3). SIMULATION ONLY.
+// Scenario lab panel: Level 2 walk sandbox tab (idea #20, docs/service_api.md section 3). SIMULATION ONLY.
 //
 // The behaviour service steps a headless MuJoCo ground scene and pushes every pose into this twin through URLab
 // puppet mode (root free joint + 26 joints), so Unreal never simulates the robot; the in-engine Level 0 policy
@@ -12,6 +12,8 @@
 #include "R1FollowCamera.h"
 #include "R1Showcase.h"
 #include "R1WalkCourse.h"
+#include "R1Room.h"
+#include "EngineUtils.h"
 #include "R1ArticulationBridge.h"
 
 #include "Engine/Engine.h"
@@ -73,7 +75,7 @@ void AR1BehaviourPanel::TickWalk(double Now)
 
 	if (WalkState.bRunning && WalkState.Mode == TEXT("policy"))
 	{
-		const FVector Cmd = WalkState.ClampCmd(!InputWalkCmd.IsNearlyZero(1e-3) ? InputWalkCmd : VoiceWalkCmd);
+		const FVector Cmd = WalkState.ClampCmd(InputWalkCmd);
 		const bool bDriving = !Cmd.IsNearlyZero(1e-3);
 		if (bDriving && Now >= NextCmdSend)
 		{
@@ -89,10 +91,6 @@ void AR1BehaviourPanel::TickWalk(double Now)
 	else
 	{
 		bWasDriving = false;
-		if (!WalkState.bRunning)
-		{
-			VoiceWalkCmd = FVector::ZeroVector;
-		}
 	}
 }
 
@@ -135,10 +133,6 @@ void AR1BehaviourPanel::ReadWalkInput()
 	if (!PC || Tab != ER1PanelTab::Walk || !WalkState.bRunning)
 	{
 		return;
-	}
-	if (PC->IsInputKeyDown(EKeys::SpaceBar))
-	{
-		VoiceWalkCmd = FVector::ZeroVector;   // Space cancels a spoken "walk forward"
 	}
 	const FR1WalkState& S = WalkState;
 	const bool bFast = PC->IsInputKeyDown(EKeys::LeftShift) || PC->IsInputKeyDown(EKeys::RightShift);
@@ -200,6 +194,10 @@ void AR1BehaviourPanel::SetWalkRunningVisuals(bool bOn)
 		// The gantry stand is a MuJoCo body of the stand scene; the robot walks away from it, so hide it.
 		Stand->SetVisibility(!bOn, /*bPropagateToChildren*/ true);
 	}
+	for (TActorIterator<AR1Room> It(GetWorld()); It; ++It)
+	{
+		It->SetActorHiddenInGame(bOn);   // the walk has its own course; the room comes back when it stops
+	}
 	APlayerController* PC = GetOwningPlayerController();
 	if (AR1FollowCamera* Cam = PC ? Cast<AR1FollowCamera>(PC->GetPawn()) : nullptr)
 	{
@@ -215,10 +213,6 @@ void AR1BehaviourPanel::SetWalkRunningVisuals(bool bOn)
 			Cam->SetLockToStand(bPrevCamLock);
 			Cam->Distance = PrevCamDistance;
 		}
-	}
-	if (!bOn)
-	{
-		VoiceWalkCmd = FVector::ZeroVector;
 	}
 	UE_LOG(LogR1Twin, Log, TEXT("R1BehaviourPanel: walk sandbox %s (stand %s, camera %s)"), bOn ? TEXT("running") : TEXT("stopped"),
 		StandBody.IsValid() ? (bOn ? TEXT("hidden") : TEXT("shown")) : TEXT("not found"), bOn ? TEXT("follows pelvis") : TEXT("restored"));
@@ -370,8 +364,8 @@ void AR1BehaviourPanel::DrawWalkTab(float X, float Inner, float& Y)
 		Y = FMath::Max(Ty, CardY + CardH) + 10.f;
 	}
 
-	DrawWrapped(TEXT("Keys (Walk tab): W/S or Up/Down forward/back, A/D sidestep, Q/E or Left/Right turn, Shift faster, Space cancels a spoken command. "
-		"Gamepad: left stick move, right stick turn. Voice: \"walk forward\", \"turn left\", \"stop\"."), X, Y, Inner, DimCol, 0.8f);
+	DrawWrapped(TEXT("Keys (Walk tab): W/S or Up/Down forward/back, A/D sidestep, Q/E or Left/Right turn, Shift faster. "
+		"Gamepad: left stick move, right stick turn. Needs the behaviour service (python -m robotcontrol.behaviours.service)."), X, Y, Inner, DimCol, 0.8f);
 }
 
 bool AR1BehaviourPanel::HandleWalkClick(FName Id)
@@ -415,10 +409,6 @@ bool AR1BehaviourPanel::HandleWalkClick(FName Id)
 	if (Id == IdWalkReset || Id == IdWalkStop)
 	{
 		const bool bStop = Id == IdWalkStop;
-		if (bStop)
-		{
-			VoiceWalkCmd = FVector::ZeroVector;
-		}
 		PostJson(bStop ? TEXT("/walk/stop") : TEXT("/walk/reset"), TEXT("{}"), [this, bStop](int32 Code, TSharedPtr<FJsonObject> J)
 		{
 			FString Err;

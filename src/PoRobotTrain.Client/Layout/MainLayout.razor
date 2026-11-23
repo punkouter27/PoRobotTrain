@@ -8,20 +8,32 @@
 
 <div class="po-shell">
     <header class="po-header">
-        <div class="po-header__brand">
+        <a class="po-header__brand" href="/" style="text-decoration:none;color:inherit" title="Home">
             <span class="po-logo">R1</span>
             <div>
                 <div class="po-title">PoRobotTrain</div>
-                <div class="po-subtitle">Unitree R1 on its stand · twin first, robot second</div>
+                <div class="po-subtitle">Train on the virtual robot, then run on the R1</div>
             </div>
-        </div>
-        @* Five places only; Robustness and Diagnostics live under Health, OpenAPI in Help (simplification #5). *@
+        </a>
+        @* The five-step flow is the navigation; the Library (every trained skill: versions, retrain, copy to robot, view)
+           opens after step 1. Health, Setup, Motions and Walk appear with Advanced, as does the Ask bar. *@
         <nav class="po-nav" aria-label="Main">
-            <NavLink href="/" Match="NavLinkMatch.All" class="po-nav__link">Control</NavLink>
-            <NavLink href="/motions" class="po-nav__link">Motions</NavLink>
-            <NavLink href="/walk" class="po-nav__link">Walk</NavLink>
-            <NavLink href="/robot-health" class="@HealthLinkClass">Health</NavLink>
-            <NavLink href="/setup" class="po-nav__link">Setup</NavLink>
+            <StepNav />
+            @if (Ui.StepDone(1))
+            {
+                <NavLink href="/library" class="po-nav__link po-nav__link--library">Library</NavLink>
+            }
+            else
+            {
+                <span class="po-nav__link po-nav__link--locked" title="Finish step 1 (Check) first">Library</span>
+            }
+            @if (Ui.Advanced)
+            {
+                <NavLink href="/robot-health" class="@HealthLinkClass">Health</NavLink>
+                <NavLink href="/setup" class="po-nav__link">Setup</NavLink>
+                <NavLink href="/motions" class="po-nav__link">Motions</NavLink>
+                <NavLink href="/walk" class="po-nav__link">Walk</NavLink>
+            }
             <HelpDrawer />
         </nav>
         <div class="po-header__right">
@@ -30,11 +42,14 @@
                 <input type="checkbox" checked="@Ui.Advanced" @onchange="e => Ui.SetAdvancedAsync((bool)e.Value!)" /> Advanced
             </label>
             <EstopButton />
-            <span class="po-stamp">v@(BuildStamp)</span>
+            @if (Ui.Advanced)
+            {
+                <span class="po-stamp">v@(BuildStamp)</span>
+            }
         </div>
     </header>
 
-    @if (!IsControlPage)
+    @if (Ui.Advanced)
     {
         <AskBar />
     }
@@ -65,7 +80,6 @@
         .FirstOrDefault(a => a.Key == "BuildVersion")?.Value ?? "dev";
 
     private string Page => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
-    private bool IsControlPage => Page.Length == 0;
     private string HealthLinkClass => Page is "robustness" or "diag" ? "po-nav__link active" : "po-nav__link";
 
     protected override async Task OnInitializedAsync()

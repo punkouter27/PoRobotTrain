@@ -1,12 +1,13 @@
 # Voice commands and spoken replies
 
-Say what you want; the panel fills in the selection and answers out loud. Same feature in both clients:
+Say what you want; the web app fills in the selection and answers out loud. (The Unreal app is the
+simulation-only scenario lab, docs/scenario_lab.md, and has no voice input.)
 
-| | Blazor control UI | Unreal twin |
-|---|---|---|
-| Listen | mic button in the "Ask in plain words" box: Web Speech API (Chrome/Edge), else Whisper tiny.en via Transformers.js, local | mic button / push-to-talk key on the panel: Windows SAPI in-process recogniser (dictation), default microphone |
-| Understand | MiniLM matcher in the browser (`assistant.js`) | service matcher `POST /assistant/interpret` (`robotcontrol/behaviours/voice_intent.py`) |
-| Answer | `speechSynthesis` | Windows SAPI voice |
+| | Web app (Blazor) |
+|---|---|
+| Listen | mic button in the "Ask in plain words" box: Web Speech API (Chrome/Edge), else Whisper tiny.en via Transformers.js, local |
+| Understand | MiniLM matcher in the browser (`assistant.js`); the service matcher `POST /assistant/interpret` (`robotcontrol/behaviours/voice_intent.py`) returns the same fields |
+| Answer | `speechSynthesis` |
 
 Both matchers return the same suggestion fields and reply templates (`docs/service_api.md` section 1).
 
