@@ -59,6 +59,25 @@ reloads the skills (picking up a just-trained or rolled-back version), switches 
 While a Python client drives URLab, the lab lets go of the actuators and waits. That covers the web app's twin
 preview with *Twin engine: Unreal*, the live mirror of a real run, and the walk sandbox.
 
+## The stand
+
+The virtual robot hangs on the R1 EDU stand the way the real one does: two posts and a crossbar behind the robot
+at mid-back height, an arm forward, and a hook that latches onto the back pack where the Jetson sits. Nothing is at
+head height, so the head turns and nods freely. The stand is drawn only; the robot is held by a pelvis weld.
+The geometry comes from `scripts/build_mjcf.py`. After changing it, rebuild the MJCF and re-import it into the
+editor (the editor must be open):
+
+```powershell
+.venv\Scripts\python.exe scripts\build_mjcf.py
+.venv\Scripts\python.exe scripts\build_web_twin.py --compress
+.venv\Scripts\python.exe scripts\ue_remote.py scripts\ue_reimport_stand.py --timeout 400
+.venv\Scripts\python.exe scripts\ue_remote.py scripts\ue_finalize_level.py
+```
+
+`ue_reimport_stand.py` replaces `/Game/Project/Agents/MuJoCoImports/scene_stand` in place. It needs
+`scripts/patches/urlab_import_folder.patch` (applied by `scripts/setup_urlab.ps1`), which makes URLab put the
+meshes next to the Blueprint instead of `/Game/MuJoCoImports`.
+
 ## Scripted check
 
 `-PanelCapture=<dir>` runs an unattended scenario and saves a screenshot of each stage, then quits:
