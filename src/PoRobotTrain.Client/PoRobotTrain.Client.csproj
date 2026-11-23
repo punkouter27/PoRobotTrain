@@ -19,7 +19,5 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
     <PackageReference Include="Radzen.Blazor" />
-    <!-- 2D joint-history heatmap; links native Skia into the WASM build (needs the wasm-tools workload) -->
-    <PackageReference Include="SkiaSharp.Views.Blazor" />
   </ItemGroup>
 </Project>

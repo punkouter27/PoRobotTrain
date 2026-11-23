@@ -6,9 +6,9 @@
 > setup and behavior. The UE 5.7 install steps and uncompiled-scaffold assumptions below
 > describe the earlier scaffold; do not use them as the current toolchain status.
 >
-> Since 2026-11-20 URLab is vendored in `UnrealProject/Plugins/UnrealRoboticsLab/` (pinned commit, this repo's
-> MuJoCo 4.0 / UE 5.8 fixes applied, third-party binaries included), so section 2 (clone + build) is no longer
-> needed: a fresh clone builds `R1TwinEditor` directly. Read `UE_5.7` as `UE_5.8` in the commands below.
+> Since 2026-11-22 `scripts/setup_urlab.ps1` does section 2 in one step (pinned upstream commit, MuJoCo 4.0.0, this
+> repo's MuJoCo 4.0 / UE 5.8 fixes, native dependencies built); the plugin folder stays untracked. Then build
+> `R1TwinEditor`. Read `UE_5.7` as `UE_5.8` in the commands below.
 
 Paths below are relative to the repository root, written `<repo>` where a command needs it.
 

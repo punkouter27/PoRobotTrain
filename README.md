@@ -75,7 +75,7 @@ Bones are driven from MuJoCo body world poses every render frame, never from joi
 
 ```
 RobotControl/           Python package `robotcontrol` (interfaces, execution, tools, training, configs)
-UnrealProject/          UE 5.8 C++ project (R1Twin), MJCF models + meshes under MJCF, URLab vendored in Plugins/
+UnrealProject/          UE 5.8 C++ project (R1Twin), MJCF models + meshes under MJCF, URLab recreated in Plugins/ by scripts/setup_urlab.ps1
 scripts/                MJCF generator and validator, Unreal editor helpers, robot setup
 web/                    static showcase site + /diag (web/build.py), deployed to swa-porobottrain
 src/                    Blazor WASM control UI + .NET API; browser 3D twin assets in Client/wwwroot/twin (docs/web_twin.md)
@@ -98,7 +98,7 @@ One-time level build (editor open, Play stopped):
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject
 .venv\Scripts\python.exe scripts\urlab_setup_scene.py --force               # level R1_Stand + MJCF import + URLab manager
 .venv\Scripts\python.exe scripts\ue_remote.py scripts\ue_finalize_level.py   # GameMode, sky, exposure, floor, PlayerStart, Save All
-.venv\Scripts\python.exe scripts\ue_remote.py scripts\ue_import_policy.py    # policy.onnx -> /Game/Humanoid/Policies (NNE asset)
+.venv\Scripts\python.exe scripts\ue_remote.py scripts\ue_import_policy.py    # policy.onnx -> /Game/Project/RL_Policies (NNE asset)
 ```
 
 Two ways to drive the robot, sharing the same ONNX, gains and joint map:
@@ -115,9 +115,10 @@ and it reclaims them when the client finishes. The follow camera frames the stan
 * The runner pushes the training physics options (5 ms step, implicitfast), resets to `home`, and auto-resets on a
   safety trip or workspace exit in simulation (never on the real robot).
 * Parity: a 20 s sweep in Unreal vs. the headless MuJoCo twin differs by at most 0.37 deg on any of the 26 joints.
-* URLab is vendored in `UnrealProject/Plugins/UnrealRoboticsLab/` at a pinned upstream commit with MuJoCo 4.0.0 and
-  this repo's compile fixes for MuJoCo 4.0 and UE 5.8 already applied (pin and provenance: the README inside the
-  plugin), so a fresh clone builds without a setup step. Runtime numbers and known issues: `docs/step5_runtime.md`.
+* URLab lives in `UnrealProject/Plugins/UnrealRoboticsLab/` but is not tracked (its own clone, ~2 GB built):
+  `powershell -ExecutionPolicy Bypass -File scripts\setup_urlab.ps1` clones the pinned upstream commit, moves MuJoCo to
+  4.0.0, applies this repo's compile fixes (`scripts/patches/urlab_mujoco4_ue58.patch`) and builds the native
+  dependencies; then build `R1TwinEditor`. Runtime numbers and known issues: `docs/step5_runtime.md`.
   The fixes cover `mjtLimited` enum
   assignments, float to bool for `active` / `actgravcomp`, and `FString(*Key)` for UE 5.8's `FSharedString` JSON keys
   in `RpcDispatcher.cpp` / `MsgpackHelpers.cpp`. Build with `-MaxParallelActions=6` if MSVC reports PCH heap errors.

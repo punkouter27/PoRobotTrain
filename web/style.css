@@ -51,6 +51,8 @@ main { flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; padding: 24px 16
   background: var(--surface); border-top: 1px solid var(--line);
   color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
 }
+/* phones: the stamp strip follows the page content instead of floating over it */
+@media (max-width: 768px) { .foot { position: static; } }
 h1 { font-size: clamp(24px, 4vw, 36px); line-height: 1.2; margin: 0 0 8px; }
 h2 { font-size: 20px; margin: 32px 0 12px; }
 .lede { color: var(--muted); font-size: 18px; margin: 0 0 16px; max-width: 70ch; }
@@ -79,5 +81,5 @@ h2 { font-size: 20px; margin: 32px 0 12px; }
 .pill[data-s="Healthy"] { border-color: var(--ok); color: var(--ok); }
 .pill[data-s="Degraded"] { border-color: var(--warn); color: var(--warn); }
 .pill[data-s="Unhealthy"] { border-color: var(--bad); color: var(--bad); }
-.pill[data-s="Checking"], .pill[data-s="Not used"] { color: var(--muted); }
+.pill[data-s="Checking"], .pill[data-s="Off"] { color: var(--muted); }
 .meta { color: var(--muted); font-size: 14px; }

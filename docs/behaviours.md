@@ -46,7 +46,7 @@ uses its twin:
 
 Start Unreal with `UnrealProject\R1Twin.uproject` and press **Play** (`R1_Stand`), or run it standalone from
 PowerShell (Git Bash rewrites `/Game/...` into a file path):
-`& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
+`& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Project/Environments/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900`
 
 On the twin the legs have no stiffness (the URLab MJCF is built for the upper-body Level 0 policy), so they hang
 and creep. The urlab backend lets them settle for 2 s before taking the start pose and leaves joints with model

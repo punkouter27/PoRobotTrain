@@ -13,7 +13,7 @@ Unreal never trains and never connects to the physical robot.
 Open `UnrealProject\R1Twin.uproject` and press **Play** (`R1_Stand`), or run it standalone:
 
 ```powershell
-& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900
+& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject /Game/Project/Environments/Levels/R1_Stand -game -windowed -ResX=1600 -ResY=900
 ```
 
 The lab needs no Python. The brains run inside Unreal through NNE (ONNX Runtime CPU, about 0.1 ms per step). Only

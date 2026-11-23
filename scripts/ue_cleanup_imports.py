@@ -5,9 +5,9 @@ import unreal
 lib = unreal.EditorAssetLibrary
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 les.new_level("/Temp/Cleanup") if hasattr(les, "new_level") else None
-for d in ("/Game/MuJoCoImports",):
+for d in ("/Game/Project/Agents/MuJoCoImports",):
     if lib.does_directory_exist(d):
         print("delete dir", d, lib.delete_directory(d))
-for p in lib.list_assets("/Game/Humanoid/Models", recursive=False, include_folder=False):
+for p in lib.list_assets("/Game/Project/Agents/Models", recursive=False, include_folder=False):
     if "scene_stand_ue" in p:
         print("delete", p, lib.delete_asset(p))

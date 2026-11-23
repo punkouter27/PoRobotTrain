@@ -5,26 +5,22 @@
 @inject UiState Ui
 
 @* Feature #19: the repo's docs/*.md in a drawer, opened on the document for the current page. *@
-<button type="button" class="po-nav__link help-btn" @onclick="ToggleAsync" aria-expanded="@_open" aria-controls="help-drawer" title="Help for this page">? Help</button>
+<RadzenButton class="po-plain po-nav__link help-btn" Click="ToggleAsync" aria-expanded="@_open" aria-controls="help-drawer" title="Help for this page">? Help</RadzenButton>
 
 @if (_open)
 {
     <aside id="help-drawer" class="help-drawer" aria-label="Help">
         <div class="help-drawer__bar">
-            <select class="assist-input" value="@_name" @onchange="PickAsync" aria-label="Document">
-                @foreach (var d in _docs)
-                {
-                    <option value="@d.Name">@d.Title</option>
-                }
-            </select>
-            <button type="button" class="po-chip" @onclick="ToggleAsync" aria-label="Close help">Close</button>
+            <RadzenDropDown TValue="string" class="assist-input" Data="@_docs" TextProperty="Title" ValueProperty="Name"
+                            Value="@_name" Change="@(v => PickAsync(v as string))" aria-label="Document" />
+            <RadzenButton class="po-plain po-chip" Click="ToggleAsync" aria-label="Close help">Close</RadzenButton>
         </div>
         @if (_error is not null)
         {
             <div class="assist-out warn">@_error</div>
         }
         <div class="help-links">
-            <button type="button" class="po-chip" @onclick="TourAsync">Take the 4-step tour</button>
+            <RadzenButton class="po-plain po-chip" Click="TourAsync">Take the 4-step tour</RadzenButton>
             <a class="po-chip" href="/scalar" target="_blank" rel="noopener">API reference (OpenAPI)</a>
         </div>
         <article class="help-md" @ref="_body"></article>
@@ -80,9 +76,9 @@
         Ui.OpenTour();
     }
 
-    private async Task PickAsync(ChangeEventArgs e)
+    private async Task PickAsync(string? name)
     {
-        _name = e.Value?.ToString() ?? _name;
+        _name = name ?? _name;
         await LoadAsync();
     }
 

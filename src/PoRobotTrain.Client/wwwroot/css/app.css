@@ -1,3 +1,13 @@
+/* Radzen (the only component library) loads into a low cascade layer, so every rule below (unlayered) wins over the
+   theme whatever its specificity. po-reset sits between them: a Radzen button with class po-plain drops the theme
+   look entirely (back to the browser default) and keeps the app's own po-chip / po-btn / ... styling. */
+@layer radzen, po-reset;
+@import url("../_content/Radzen.Blazor/css/material-dark-base.css") layer(radzen);
+@layer po-reset {
+  .rz-button.po-plain { all: revert; }
+  .rz-button.po-plain > .rz-button-box { all: revert; display: contents; }
+}
+
 :root {
   --po-bg: #0b0d12;
   --po-surface: #131720;
@@ -41,6 +51,13 @@ body {
 }
 .po-nav__link.active, .po-nav__link:hover { color: var(--po-text); background: rgba(255,255,255,.06); }
 .po-stamp { font-size: 12px; color: var(--po-muted); font-family: ui-monospace, Consolas, monospace; }
+.po-foot { margin-top: auto; display: flex; justify-content: flex-end; padding: 6px 20px 10px; }
+.field-error { display: block; color: var(--po-bad); font-size: 12px; font-weight: 600; margin-top: 2px; }
+.motion-import .rz-fileupload-choose { text-transform: none; font: inherit; font-size: 12px; letter-spacing: 0; padding: 6px 8px; border-radius: 6px; background: #252b38; color: var(--po-text); box-shadow: none; }
+.motion-import .rz-fileupload-files { display: none; }
+/* Radzen inputs carrying the app's assist-input look: the inner input inherits it instead of the theme's size */
+.rz-numeric.assist-input, .rz-dropdown.assist-input { height: auto; min-height: 0; padding: 0; display: inline-flex; align-items: center; }
+.assist-input .rz-numeric-input, .assist-input .rz-dropdown-label { font: inherit; font-size: 12px; color: var(--po-text); background: transparent; border: 0; padding: 6px 8px; height: auto; line-height: 1.45; }
 .po-main { padding: 16px 20px; max-width: 1600px; width: 100%; margin: 0 auto; }
 .dash-grid { display: grid; grid-template-columns: 440px 1fr; gap: 16px; align-items: start; }
 @media (max-width: 1080px) { .dash-grid { grid-template-columns: 1fr; } }
@@ -151,7 +168,7 @@ body {
 .stand-stage { display: flex; justify-content: center; align-items: center; background: #0a0c10; border: 1px solid var(--po-border); border-radius: 8px; overflow: hidden; min-height: 300px; }
 .stand-img { max-width: 100%; height: auto; display: block; border-radius: 6px; }
 
-/* ---- live 3D twin (Twin3DView), joint history (SkiaSharp), assistant (Transformers.js) ---- */
+/* ---- live 3D twin (Twin3DView), joint history (canvas), assistant (Transformers.js) ---- */
 .twin-stage { position: relative; height: 440px; background: #0a0c10; border: 1px solid var(--po-border); border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .twin-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 .twin-toolbar { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -166,7 +183,7 @@ body {
 .hist-body { display: grid; grid-template-columns: 92px 1fr; gap: 8px; }
 .hist-labels { display: flex; flex-direction: column; font-size: 10px; font-weight: 700; letter-spacing: .04em; }
 .hist-labels > div { padding-left: 6px; display: flex; align-items: center; overflow: hidden; white-space: nowrap; }
-.hist-canvas { width: 100%; display: block; border-radius: 4px; }
+.hist-canvas { width: 100%; display: block; border-radius: 4px; image-rendering: pixelated; background: #0a0c10; }
 .hist-scale { font-size: 11px; color: var(--po-muted); }
 .jrow--hl { outline: 2px solid #ffe066; outline-offset: 2px; border-radius: 4px; }
 .assist { display: flex; flex-direction: column; gap: 6px; }
@@ -176,13 +193,13 @@ body {
 .assist-out.warn { background: rgba(255,189,66,.08); border-color: rgba(255,189,66,.35); color: var(--po-warn); }
 .diag-sec { font-size: 12px; color: var(--po-muted); letter-spacing: .04em; text-transform: uppercase; margin: 14px 0 6px; }
 .diag-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.diag-table td { padding: 4px 6px; border-top: 1px solid var(--po-border); vertical-align: top; }
+.diag-table td { padding: 4px 6px; border-top: 1px solid var(--po-border); vertical-align: top; overflow-wrap: anywhere; }
 .diag-table td.ok { color: var(--po-ok); font-weight: 700; width: 44px; }
 .diag-table td.bad { color: var(--po-bad); font-weight: 700; width: 44px; }
 .diag-table td.num { text-align: right; font-variant-numeric: tabular-nums; width: 64px; }
 @media (max-width: 720px) { .twin-stage { height: 340px; } .hist-body { grid-template-columns: 64px 1fr; } }
 @media (max-width: 560px) { .po-header { flex-wrap: wrap; padding: 10px 16px; gap: 8px; } .po-main { padding: 12px 16px; } }
-.diag-table td.off { color: var(--po-warn); font-weight: 700; width: 44px; }
+.diag-table td.off { color: var(--po-muted); font-weight: 700; width: 44px; }
 
 /* ---- voice (#11), robustness explorer (#19), walk sandbox (#20) ---- */
 :root { --po-status-good: #0ca30c; --po-status-warn: #fab219; --po-status-crit: #d03b3b; }
@@ -262,7 +279,7 @@ kbd { font: 11px ui-monospace, Consolas, monospace; background: #242a3a; border:
 .po-pill--warn { background: rgba(255,189,66,.16); color: var(--po-warn); }
 .ops-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .ops-span2 { grid-column: 1 / -1; }
-@media (max-width: 1080px) { .ops-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1080px) { .ops-grid { grid-template-columns: minmax(0, 1fr); } }
 .ctrl-row.ops-row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .ops-select { flex: 0 1 auto; width: auto; }
 .ops-name { flex: 0 1 160px; }
@@ -363,7 +380,8 @@ kbd { font: 11px ui-monospace, Consolas, monospace; background: #242a3a; border:
   background: radial-gradient(circle, #1c2433 0 55%, #151b27 56%); border: 2px solid rgba(110,168,255,.45);
   display: flex; align-items: center; justify-content: center;
 }
-.stick.off { opacity: .45; cursor: not-allowed; }
+.stick.off { cursor: not-allowed; border-color: rgba(110,168,255,.18); }
+.stick.off .stick__knob { opacity: .4; }
 .stick__knob { width: 48px; height: 48px; border-radius: 50%; background: #6ea8ff; box-shadow: 0 2px 8px rgba(0,0,0,.5); pointer-events: none; transition: transform .08s; }
 .stick__lbl { position: absolute; bottom: -18px; font-size: 11px; color: var(--po-muted); }
 @media (max-width: 560px) {

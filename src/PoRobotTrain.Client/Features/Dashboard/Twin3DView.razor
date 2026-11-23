@@ -18,9 +18,9 @@
         @if (!Simple)
         {
         <div class="twin-toolbar">
-            <button type="button" class="po-chip @(_ghost ? "active" : string.Empty)" title="Show the virtual sim pose as a blue ghost over the physical / practice pose" @onclick="ToggleGhostAsync">Sim ghost</button>
-            <button type="button" class="po-chip @(_reach ? "active" : string.Empty)" title="Reach cloud for the selected behaviour (dim: everything the chain can reach inside joint limits; bright: what this sweep covers)" @onclick="ToggleReachAsync">Reach</button>
-            <button type="button" class="po-chip @(_sound ? "active" : string.Empty)" title="Spatial audio cues: job start/finish, faults, near-limit ticks while dragging, collision buzz, hot motors" @onclick="ToggleSoundAsync">Sound</button>
+            <RadzenButton class="@($"po-plain po-chip {(_ghost ? " active" : string.Empty)}")" title="Show the virtual sim pose as a blue ghost over the physical / practice pose" Click="ToggleGhostAsync">Sim ghost</RadzenButton>
+            <RadzenButton class="@($"po-plain po-chip {(_reach ? " active" : string.Empty)}")" title="Reach cloud for the selected behaviour (dim: everything the chain can reach inside joint limits; bright: what this sweep covers)" Click="ToggleReachAsync">Reach</RadzenButton>
+            <RadzenButton class="@($"po-plain po-chip {(_sound ? " active" : string.Empty)}")" title="Spatial audio cues: job start/finish, faults, near-limit ticks while dragging, collision buzz, hot motors" Click="ToggleSoundAsync">Sound</RadzenButton>
         </div>
         }
         @if (_info is not null && !Simple)

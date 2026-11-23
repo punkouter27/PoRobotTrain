@@ -1,6 +1,11 @@
 #include "R1Showcase.h"
 
 #include "R1RewardConfig.h"
+#include "Async/Async.h"
+#include "HAL/PlatformTime.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "Widgets/SBoxPanel.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
@@ -189,12 +194,31 @@ void UR1ShowcaseSubsystem::AddWidgets()
 
 	OverlayWidget = SNew(SBox)
 		.HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(16.f, 64.f, 16.f, 16.f))
-		.Visibility_Lambda([Weak] { return Weak.IsValid() && Weak->IsOverlayVisible() && !Weak->IsDemoActive() ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+		.Visibility_Lambda([Weak] { return Weak.IsValid() && Weak->IsOverlayVisible() && !Weak->IsDemoActive() ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
 		[
 			SNew(SBorder).BorderImage(White).BorderBackgroundColor(R1ShowcaseUi::Surface()).Padding(FMargin(14.f, 10.f))
 			[
-				SNew(STextBlock).Font(Mono).ColorAndOpacity(R1ShowcaseUi::Text())
-				.Text_Lambda([Weak] { return Weak.IsValid() ? FText::FromString(Weak->BuildOverlayText()) : FText::GetEmpty(); })
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(STextBlock).Font(Mono).ColorAndOpacity(R1ShowcaseUi::Text())
+					.Text_Lambda([Weak] { return Weak.IsValid() ? FText::FromString(Weak->BuildOverlayText()) : FText::GetEmpty(); })
+				]
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(FMargin(0.f, 8.f, 0.f, 0.f))
+				[
+					SNew(SBox).MinDesiredHeight(44.f)
+					[
+						SNew(SButton)
+						.ButtonColorAndOpacity(R1ShowcaseUi::Accent())
+						.VAlign(VAlign_Center)
+						.ToolTipText(NSLOCTEXT("R1Showcase", "BenchTip", "Steps a copy of this MuJoCo scene for 1 s: physics steps/s of one training environment on this PC"))
+						.OnClicked_Lambda([Weak] { if (Weak.IsValid()) Weak->RunBenchmark(); return FReply::Handled(); })
+						[
+							SNew(STextBlock).Font(Body).ColorAndOpacity(FLinearColor::White)
+							.Text(NSLOCTEXT("R1Showcase", "BenchLabel", "Benchmark sim speed"))
+						]
+					]
+				]
 			]
 		];
 	VC->AddViewportWidgetContent(OverlayWidget.ToSharedRef(), 1000);
@@ -290,8 +314,59 @@ FString UR1ShowcaseSubsystem::BuildOverlayText() const
 	Out += Lat >= 0.f ? FString::Printf(TEXT("Inference latency        %.2f ms (mean of %d)\n"), Lat, LatencySamples.Num())
 	                  : FString(TEXT("Inference latency        n/a (no policy step yet)\n"));
 	Out += FString::Printf(TEXT("Curriculum stage         %s\n"), CurriculumStage.IsEmpty() ? TEXT("n/a") : *CurriculumStage);
+	Out += FString::Printf(TEXT("Sim speed (bench)        %s\n"), BenchText.IsEmpty() ? TEXT("press the button below") : *BenchText);
 	Out += FString::Printf(TEXT("Demo mode                after %.0f s idle (idle %.0f s)"), IdleThreshold, IdleTime);
 	return Out;
+}
+
+void UR1ShowcaseSubsystem::RunBenchmark()
+{
+	if (bBenchRunning) return;
+	const AAMjManager* Manager = AAMjManager::GetManager();
+	UMjPhysicsEngine* Engine = Manager ? Manager->PhysicsEngine : nullptr;
+	const mjModel* Model = Engine ? Engine->GetModel() : nullptr;
+	if (!Model || !Engine->GetData())
+	{
+		BenchText = TEXT("no MuJoCo scene loaded");
+		return;
+	}
+	// Private copy of the live state, taken under the physics thread's lock; the live simulation keeps running.
+	mjModel* ModelCopy = mj_copyModel(nullptr, Model);
+	mjData* DataCopy = mj_makeData(ModelCopy);
+	{
+		FScopeLock Lock(&Engine->CallbackMutex);
+		mj_copyData(DataCopy, Model, Engine->GetData());
+	}
+	bBenchRunning = true;
+	BenchText = TEXT("running (1 s)...");
+	const TWeakObjectPtr<UR1ShowcaseSubsystem> Weak(this);
+	Async(EAsyncExecution::ThreadPool, [Weak, ModelCopy, DataCopy]
+	{
+		const double T0 = FPlatformTime::Seconds();
+		int32 Steps = 0;
+		while (Steps < 1000000 && FPlatformTime::Seconds() - T0 < 1.0)
+		{
+			mj_step(ModelCopy, DataCopy);
+			++Steps;
+		}
+		const double Seconds = FPlatformTime::Seconds() - T0;
+		const double Timestep = ModelCopy->opt.timestep;
+		mj_deleteData(DataCopy);
+		mj_deleteModel(ModelCopy);
+		AsyncTask(ENamedThreads::GameThread, [Weak, Steps, Seconds, Timestep]
+		{
+			if (Weak.IsValid()) Weak->FinishBenchmark(Steps, Seconds, Timestep);
+		});
+	});
+}
+
+void UR1ShowcaseSubsystem::FinishBenchmark(int32 Steps, double Seconds, double Timestep)
+{
+	bBenchRunning = false;
+	const double Rate = Seconds > 0.0 ? Steps / Seconds : 0.0;
+	BenchText = FString::Printf(TEXT("%.0f steps/s, %.0fx real time"), Rate, Rate * Timestep);
+	UE_LOG(LogR1Showcase, Log, TEXT("Showcase: benchmark ran %d MuJoCo steps of a scene copy in %.2f s"), Steps, Seconds);
+	UE_LOG(LogR1Showcase, Log, TEXT("Showcase: benchmark %s"), *BenchText);
 }
 
 void UR1ShowcaseSubsystem::SetOverlayVisible(bool bVisible)
@@ -326,7 +401,7 @@ void UR1ShowcaseSubsystem::Tick(float DeltaTime)
 		const float Inst = 1.f / Dt;
 		Fps = Fps <= 0.f ? Inst : FMath::Lerp(Fps, Inst, 0.05f);
 	}
-	IdleTime += Dt;
+	if (Dt < 0.5f) IdleTime += Dt;   // a long frame (shader warm-up, level load) is not idle time
 	if (!bDemoActive && IdleTime >= IdleThreshold) SetDemoActive(true);
 	if (bDemoActive)
 	{
@@ -358,7 +433,7 @@ void UR1ShowcaseSubsystem::TickCapture(float Dt)
 	const float DemoAt = IdleThreshold + 5.f;
 	switch (CaptureStep)
 	{
-	case 0: if (CaptureClock >= 8.f) { SetOverlayVisible(true); ++CaptureStep; } break;
+	case 0: if (CaptureClock >= 6.f) { SetOverlayVisible(true); if (FParse::Param(FCommandLine::Get(), TEXT("ShowcaseBench"))) RunBenchmark(); ++CaptureStep; } break;
 	case 1: if (CaptureClock >= 9.f) { Shot(TEXT("overlay_on")); ++CaptureStep; } break;
 	case 2: if (CaptureClock >= 11.f) { SetOverlayVisible(false); ++CaptureStep; } break;
 	case 3: if (CaptureClock >= 12.f) { Shot(TEXT("overlay_off")); ++CaptureStep; } break;

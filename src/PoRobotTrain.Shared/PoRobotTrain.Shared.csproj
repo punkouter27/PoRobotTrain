@@ -7,5 +7,7 @@
   <ItemGroup>
     <!-- Managed vector/quaternion maths for twin forward kinematics (no native code, runs in Blazor WASM). -->
     <PackageReference Include="Silk.NET.Maths" />
+    <!-- Form rules (Validation/), shown inline by the Client; registered by type there. -->
+    <PackageReference Include="FluentValidation" />
   </ItemGroup>
 </Project>

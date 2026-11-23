@@ -243,11 +243,13 @@ public sealed record RobotStatusDto(
     [property: JsonPropertyName("skills")] List<SkillInfoDto>? Skills = null,
     [property: JsonPropertyName("lab")] LabStatusDto? Lab = null);
 
+// The API writes camelCase (ASP.NET web defaults) and RobotJsonContext reads with exact names, so the names are pinned
+// here; without them the Blazor /diag page deserialised every field to its default ("Upstream Reachable: No").
 public sealed record DiagSnapshotDto(
-    string AppName,
-    string BuildVersion,
-    string Environment,
-    string UpstreamUrl,
-    bool UpstreamReachable,
-    string? ActiveJob,
-    int JointCount);
+    [property: JsonPropertyName("appName")] string AppName,
+    [property: JsonPropertyName("buildVersion")] string BuildVersion,
+    [property: JsonPropertyName("environment")] string Environment,
+    [property: JsonPropertyName("upstreamUrl")] string UpstreamUrl,
+    [property: JsonPropertyName("upstreamReachable")] bool UpstreamReachable,
+    [property: JsonPropertyName("activeJob")] string? ActiveJob,
+    [property: JsonPropertyName("jointCount")] int JointCount);

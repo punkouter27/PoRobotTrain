@@ -28,3 +28,7 @@ The shipped r1_level0_upperbody policy was trained with the same weights before 
 `UnrealEditor.exe <uproject> -game -windowed -ResX=1600 -ResY=900 -ShowcaseCapture=<dir> -ShowcaseTouch` writes
 `overlay_on.png`, `overlay_off.png`, `demo_a.png`, `demo_b.png` into `<dir>` (demo shots after 35 s and one dwell later),
 then quits. `-ShowcaseIdle=<s>` overrides the idle threshold.
+`-ShowcaseBench` presses the overlay's **Benchmark sim speed** button first: it steps a private copy of the live MuJoCo
+scene for 1 s on a worker thread and shows physics steps/s and x real time (one training environment's sim throughput on
+this PC; 2026-11-22, RTX 5070 Ti laptop: ~20,000 steps/s, ~40x real time). The live simulation and the robot are untouched.
+The idle clock ignores frames longer than 0.5 s (shader warm-up, level load), so they never count as idle time.

@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import pathlib
+import subprocess
 import sys
 import time
 
@@ -18,7 +20,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from export_level0 import OUT, export, run_meta  # noqa: E402
+from export_level0 import OUT, ROOT, export, run_meta  # noqa: E402
 from level0_env import Level0Config, Level0StandEnv  # noqa: E402
 from ppo import PPO, ActorCritic  # noqa: E402
 
@@ -142,5 +144,46 @@ def main():
     env.close()
 
 
+def record_run(started: float, ended: str) -> None:
+    """benchmark/runs.py: note this machine, the session and how it ended, and rebuild logs/runs.html. Never fatal;
+    skipped for benchmark/workload.py's throwaway run under logs/benchmark/."""
+    try:
+        argv = sys.argv[1:]
+        out = next((a.split("=", 1)[1] for a in argv if a.startswith("--out=")), None)
+        out = out or next((argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--out"), None)
+        out_dir = pathlib.Path(out).resolve() if out else OUT
+        bench = ROOT / "logs" / "benchmark"
+        if out_dir == bench or bench in out_dir.parents:
+            return
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(started))
+        cmd = [sys.executable, str(ROOT / "benchmark" / "runs.py"), "--record", f"level0-{stamp}", "--ended", ended]
+        cmd += ["--launcher", "RobotControl/training/train_level0.py", "--started", str(started)]
+        cmd += ["--out", str(out_dir), "--argv", json.dumps(argv)]
+        res = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=120)
+        print((res.stdout or res.stderr).strip() or f"runs grid exited {res.returncode}", flush=True)
+    except Exception as exc:  # noqa: BLE001 - the grid must never fail or change training
+        print(f"runs grid not rebuilt: {exc}", flush=True)
+
+
+def main_recorded() -> None:
+    """main(), then record the session in the training runs grid whether it finished, was stopped or crashed."""
+    started, ended = time.time(), "crashed: unknown"
+    try:
+        main()
+        ended = "finished"
+    except KeyboardInterrupt:
+        ended = "interrupted (Ctrl+C)"
+        raise
+    except SystemExit as exc:  # argparse --help / usage error: no training happened
+        ended = "" if exc.code in (0, 2, None) else f"crashed: SystemExit: {exc.code}"
+        raise
+    except BaseException as exc:
+        ended = f"crashed: {type(exc).__name__}: {exc}"[:200]
+        raise
+    finally:
+        if ended:
+            record_run(started, ended)
+
+
 if __name__ == "__main__":
-    main()
+    main_recorded()

@@ -7,5 +7,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/PoRobotTrain.Unit/PoRobotTrain.Unit.csproj" />
     <Project Path="tests/PoRobotTrain.Integration/PoRobotTrain.Integration.csproj" />
+    <Project Path="tests/PoRobotTrain.E2EUI/PoRobotTrain.E2EUI.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Browser tier. Runs against the Release publish: scripts/run-e2eui.ps1 publishes, starts the behaviour service and
+       the published app, sets BASE_URL, runs this project and stops everything. Not part of the CI workflow. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>PoRobotTrain.E2EUI</RootNamespace>
+    <AssemblyName>PoRobotTrain.E2EUI</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="Deque.AxeCore.Playwright" />
+  </ItemGroup>
+</Project>

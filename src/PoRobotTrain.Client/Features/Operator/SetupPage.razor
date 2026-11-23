@@ -1,4 +1,5 @@
 @page "/setup"
+@inject IValidator<ConnectionProfileDto> ProfileValidator
 @inject ConsoleApiClient Console
 @inject RobotApiClient Api
 @inject UiState Ui
@@ -25,7 +26,7 @@
             @foreach (var i in _pf.Items.Where(i => i.Kind == "manual"))
             {
                 <label class="check-item @(i.Ok ? "done" : string.Empty)">
-                    <input type="checkbox" checked="@i.Ok" @onchange="e => TickAsync(i.Id, (bool)e.Value!)" />
+                    <RadzenCheckBox TValue="bool" Value="@i.Ok" Change="@(v => TickAsync(i.Id, v))" />
                     <span>@i.Label <span class="po-muted">@i.Detail</span></span>
                 </label>
             }
@@ -37,8 +38,8 @@
                 }
             </table>
             <div class="ctrl-row ops-row">
-                <button type="button" class="po-chip" @onclick="RefreshPreflightAsync">Re-check</button>
-                <button type="button" class="po-chip" @onclick="ResetPreflightAsync">Clear ticks</button>
+                <RadzenButton class="po-plain po-chip" Click="RefreshPreflightAsync">Re-check</RadzenButton>
+                <RadzenButton class="po-plain po-chip" Click="ResetPreflightAsync">Clear ticks</RadzenButton>
             </div>
         }
         else if (_pfError is not null)
@@ -66,24 +67,24 @@
                 <div class="ctrl-row ops-row">
                     @foreach (var s in new[] { "real", "practice" })
                     {
-                        <button type="button" class="po-chip @(_calSource == s ? "active" : string.Empty)" @onclick="() => _calSource = s">@(s == "real" ? "Real robot" : "Virtual robot")</button>
+                        <RadzenButton class="@($"po-plain po-chip {(_calSource == s ? "active" : string.Empty)}")" Click="() => _calSource = s">@(s == "real" ? "Real robot" : "Virtual robot")</RadzenButton>
                     }
                     @foreach (var r in new[] { "zero", "home" })
                     {
-                        <button type="button" class="po-chip @(_calRef == r ? "active" : string.Empty)" @onclick="() => _calRef = r">@r</button>
+                        <RadzenButton class="@($"po-plain po-chip {(_calRef == r ? "active" : string.Empty)}")" Click="() => _calRef = r">@r</RadzenButton>
                     }
                 </div>
             </li>
             <li class="@(_step >= 2 ? "on" : string.Empty)">Read the current angles (Snapshot, read-only).
-                <div class="ctrl-row ops-row"><button type="button" class="po-btn po-btn--blue-soft" @onclick="SnapshotAsync">Read joint angles</button></div>
+                <div class="ctrl-row ops-row"><RadzenButton class="po-plain po-btn po-btn--blue-soft" Click="SnapshotAsync">Read joint angles</RadzenButton></div>
             </li>
             <li class="@(_step >= 3 ? "on" : string.Empty)">Capture offsets and review them against the twin's assumed offsets.
-                <div class="ctrl-row ops-row"><button type="button" class="po-btn po-btn--blue-soft" @onclick="CaptureAsync">Capture</button></div>
+                <div class="ctrl-row ops-row"><RadzenButton class="po-plain po-btn po-btn--blue-soft" Click="CaptureAsync">Capture</RadzenButton></div>
             </li>
             <li class="@(_step >= 4 ? "on" : string.Empty)">Store them. They are saved for review only; they are <b>not applied</b> to any controller.
                 <div class="ctrl-row ops-row">
-                    <label class="joint-pick"><input type="checkbox" @bind="_calConfirm" /> I checked every joint was on its reference</label>
-                    <button type="button" class="po-btn po-btn--teal" disabled="@(!_calConfirm || _capture?.Rows is null)" @onclick="SaveOffsetsAsync">Store offsets</button>
+                    <label class="joint-pick"><RadzenCheckBox TValue="bool" @bind-Value="_calConfirm" /> I checked every joint was on its reference</label>
+                    <RadzenButton class="po-plain po-btn po-btn--teal" Disabled="@(!_calConfirm || _capture?.Rows is null)" Click="SaveOffsetsAsync">Store offsets</RadzenButton>
                 </div>
                 @if (_capture?.Rows is null)
                 {
@@ -147,27 +148,22 @@
                             }
                         </td>
                         <td class="row-actions">
-                            <button type="button" class="po-chip" @onclick="() => TestAsync(p)">Test</button>
-                            <button type="button" class="po-chip @(n.Active == p.Name ? "active" : string.Empty)" @onclick="() => ActivateAsync(p.Name)">Use</button>
-                            <button type="button" class="po-chip" @onclick="() => EditProfile(p)">Edit</button>
-                            <button type="button" class="po-chip" @onclick="() => DeleteProfileAsync(p.Name)">Delete</button>
+                            <RadzenButton class="po-plain po-chip" Click="() => TestAsync(p)">Test</RadzenButton>
+                            <RadzenButton class="@($"po-plain po-chip {(n.Active == p.Name ? "active" : string.Empty)}")" Click="() => ActivateAsync(p.Name)">Use</RadzenButton>
+                            <RadzenButton class="po-plain po-chip" Click="() => EditProfile(p)">Edit</RadzenButton>
+                            <RadzenButton class="po-plain po-chip" Click="() => DeleteProfileAsync(p.Name)">Delete</RadzenButton>
                         </td>
                     </tr>
                 }
             </table>
             <div class="editor-meta">
-                <label>Name <input class="assist-input" @bind="_pName" /></label>
-                <label>Target <select class="assist-input" @bind="_pTarget"><option>real</option><option>urlab</option><option>sim</option></select></label>
-                <label>Host <input class="assist-input" @bind="_pHost" /></label>
-                <label>Port <input class="assist-input" type="number" @bind="_pPort" /></label>
-                <label>Interface <select class="assist-input" @bind="_pIface">
-                    <option value="">—</option>
-                    @foreach (var i in n.Interfaces ?? [])
-                    {
-                        <option value="@i.Name">@i.Name @(i.Ipv4.Count > 0 ? $"({string.Join(", ", i.Ipv4)})" : string.Empty)</option>
-                    }
-                </select></label>
-                <button type="button" class="po-btn po-btn--blue-soft" @onclick="SaveProfileAsync">Save profile</button>
+                <label>Name <RadzenTextBox class="assist-input" @bind-Value="_pName" /><FieldError Message="@ProfileError("Name")" /></label>
+                <label>Target <RadzenDropDown TValue="string" class="assist-input" Data="@Targets" @bind-Value="_pTarget" /></label>
+                <label>Host <RadzenTextBox class="assist-input" @bind-Value="_pHost" /><FieldError Message="@ProfileError("Host")" /></label>
+                <label>Port <RadzenNumeric TValue="int" class="assist-input" ShowUpDown="false" @bind-Value="_pPort" /><FieldError Message="@ProfileError("Port")" /></label>
+                <label>Interface <RadzenDropDown TValue="string" class="assist-input" @bind-Value="_pIface" TextProperty="Text" ValueProperty="Value"
+                                                 Data="@(new[] { new IfaceOption(string.Empty, "—") }.Concat((n.Interfaces ?? []).Select(i => new IfaceOption(i.Name, i.Ipv4.Count > 0 ? $"{i.Name} ({string.Join(", ", i.Ipv4)})" : i.Name))).ToList())" /></label>
+                <RadzenButton class="po-plain po-btn po-btn--blue-soft" Click="SaveProfileAsync">Save profile</RadzenButton>
             </div>
         }
         @if (_netMsg is not null)
@@ -192,6 +188,9 @@
     private readonly Dictionary<string, NetworkTestDto> _tests = [];
     private string _pName = "lab", _pTarget = "real", _pHost = "192.168.123.164", _pIface = string.Empty;
     private int _pPort = 22;
+    private static readonly string[] Targets = ["real", "urlab", "sim"];
+
+    private sealed record IfaceOption(string Value, string Text);
     private string? _netMsg;
     private bool _netOk = true;
     private readonly CancellationTokenSource _cts = new();
@@ -305,9 +304,20 @@
         (_pName, _pTarget, _pHost, _pPort, _pIface) = (p.Name, p.Target, p.Host, p.Port, p.Interface ?? string.Empty);
     }
 
+    private Dictionary<string, string> _profileErrors = [];
+
+    private string? ProfileError(string field) => _profileErrors.GetValueOrDefault(field);
+
     private async Task SaveProfileAsync()
     {
-        var (n, err) = await Console.PostAsync("network/profiles", new ProfileRequest(new ConnectionProfileDto(_pName, _pTarget, _pHost, _pPort, _pIface)),
+        var profile = new ConnectionProfileDto(_pName.Trim(), _pTarget, _pHost.Trim(), _pPort, _pIface);
+        var check = await ProfileValidator.ValidateAsync(profile);
+        _profileErrors = check.Errors.GroupBy(e => e.PropertyName).ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+        if (!check.IsValid)
+        {
+            return;
+        }
+        var (n, err) = await Console.PostAsync("network/profiles", new ProfileRequest(profile),
             Ctx.ProfileRequest, Ctx.NetworkDto);
         _netOk = n?.Ok == true;
         _netMsg = _netOk ? $"Saved profile {_pName}." : $"Not saved: {err}";

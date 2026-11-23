@@ -5,10 +5,9 @@
 @* Feature #8: software E-STOP on every page (button + Esc). Stops the job, the simulation player, the walk sandbox and
    any recording (POST /estop). The remote's L2+B (5 s) stays the real emergency stop. *@
 <div class="estop">
-    <button type="button" class="estop__btn" @onclick="StopAsync" title="Software stop of everything this app runs (Esc). Real emergency stop: remote L2+B for 5 s."
-            aria-label="Emergency stop: stop everything (Esc)">
+    <RadzenButton class="po-plain estop__btn" Click="StopAsync" title="Software stop of everything this app runs (Esc). Real emergency stop: remote L2+B for 5 s." aria-label="Emergency stop: stop everything (Esc)">
         <span aria-hidden="true">■</span> E-STOP <kbd>Esc</kbd>
-    </button>
+    </RadzenButton>
     @if (_msg is not null)
     {
         <div class="estop__toast @(_ok ? string.Empty : "bad")" role="status">@_msg</div>

@@ -34,41 +34,37 @@
         <div class="size-row">
             @if (!PracticeActive)
             {
-                <button type="button" class="po-chip @(_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = true">Real robot</button>
-                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Virtual robot preview</button>
+                <RadzenButton class="@($"po-plain po-chip {(_wantReal ? " active" : string.Empty)}")" Click="() => _wantReal = true">Real robot</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(!_wantReal ? " active" : string.Empty)}")" Click="() => _wantReal = false">Virtual robot preview</RadzenButton>
             }
             else
             {
-                <button type="button" class="po-chip @(_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = true">Virtual robot</button>
-                <button type="button" class="po-chip @(!_wantReal ? "active" : string.Empty)" @onclick="() => _wantReal = false">Virtual robot preview</button>
+                <RadzenButton class="@($"po-plain po-chip {(_wantReal ? " active" : string.Empty)}")" Click="() => _wantReal = true">Virtual robot</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(!_wantReal ? " active" : string.Empty)}")" Click="() => _wantReal = false">Virtual robot preview</RadzenButton>
             }
             @if (_wantReal)
             {
-                <button type="button"
-                        class="po-btn @(_realWriteArmed ? (PracticeActive ? "po-btn--blue" : "po-btn--orange") : (PracticeActive ? "po-btn--blue-soft" : "po-btn--orange-soft"))"
-                        style="padding:6px 10px;font-size:12px"
-                        @onclick="ToggleRealWrite">
+                <RadzenButton class="@($"po-plain po-btn {(_realWriteArmed ? (PracticeActive ? " po-btn--blue" : "po-btn--orange") : (PracticeActive ? "po-btn--blue-soft" : "po-btn--orange-soft"))}")" style="padding:6px 10px;font-size:12px" Click="ToggleRealWrite">
                     @(_realWriteArmed
                         ? (PracticeActive ? "Sliders move the virtual robot" : "Sliders move the REAL robot")
                         : "Sliders: read-only (enable)")
-                </button>
+                </RadzenButton>
                 @if (_realWriteArmed)
                 {
                     <label class="po-muted" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer">
-                        <input type="checkbox" @bind="_upperUnlocked" />
+                        <RadzenCheckBox TValue="bool" @bind-Value="_upperUnlocked" />
                         Arms/Waist
                     </label>
                 }
             }
             else
             {
-                <button type="button" class="po-chip @(_virtTarget == "urlab" ? "active" : string.Empty)" @onclick='() => _virtTarget = "urlab"'>Unreal</button>
-                <button type="button" class="po-chip @(_virtTarget == "sim" ? "active" : string.Empty)" @onclick='() => _virtTarget = "sim"'>Built-in</button>
+                <RadzenButton class="@($"po-plain po-chip {(_virtTarget == " urlab" ? "active" : string.Empty)}")" Click='() => _virtTarget = "urlab"'>Unreal</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_virtTarget == " sim" ? "active" : string.Empty)}")" Click='() => _virtTarget = "sim"'>Built-in</RadzenButton>
             }
-            <button type="button" class="po-btn @(PracticeActive ? "po-btn--blue-soft" : "po-btn--orange-soft")" style="padding:6px 10px;font-size:12px"
-                    disabled="@(!IsIdle)" @onclick="ReadPhysicalAsync">
+            <RadzenButton class="@($"po-plain po-btn {(PracticeActive ? " po-btn--blue-soft" : "po-btn--orange-soft")}")" style="padding:6px 10px;font-size:12px" Disabled="@(!IsIdle)" Click="ReadPhysicalAsync">
                 @(IsReading ? "Reading..." : (PracticeActive ? "Read virtual robot pose" : "Read robot pose"))
-            </button>
+            </RadzenButton>
             <span class="po-pill @BadgeClass">@BadgeText</span>
         </div>
     </div>
@@ -93,13 +89,13 @@
 
     @if (Simple && !_showJoints && HighlightJoint is null)
     {
-        <button type="button" class="po-chip joints-toggle" @onclick="() => _showJoints = true">Show all 26 joints (sliders and angles)</button>
+        <RadzenButton class="po-plain po-chip joints-toggle" Click="() => _showJoints = true">Show all 26 joints (sliders and angles)</RadzenButton>
     }
     else
     {
     if (Simple)
     {
-        <button type="button" class="po-chip joints-toggle" @onclick="() => _showJoints = false">Hide the joint list</button>
+        <RadzenButton class="po-plain po-chip joints-toggle" Click="() => _showJoints = false">Hide the joint list</RadzenButton>
     }
     <div class="groups-grid">
         @foreach (var grp in RobotJointCatalog.GroupOrder)
@@ -147,16 +143,16 @@
                                     <div class="fill" style="left:@($"{fillLeft:0.##}%");width:@($"{fillWidth:0.##}%");background:@barCol"></div>
                                 }
                             </div>
-                            <input type="range"
-                                   class="jslider @(_wantReal ? string.Empty : "jslider--virt")"
-                                   min="@j.MinDeg.ToString("0.0", CultureInfo.InvariantCulture)"
-                                   max="@j.MaxDeg.ToString("0.0", CultureInfo.InvariantCulture)"
-                                   step="0.5"
-                                   value="@sliderVal.ToString("0.0", CultureInfo.InvariantCulture)"
-                                   disabled="@sliderDisabled"
-                                   title="@(writable ? $"Drag to move {j.Name} ({j.MinDeg:0}° .. {j.MaxDeg:0}°)" : isLeg ? "Leg joint is stand-locked read-only" : _wantReal ? "Enable 'Write Physical R1' above to move physical joint" : "Virtual sim busy")"
-                                   @oninput="e => OnSliderInput(j.Name, e.Value?.ToString())"
-                                   @onchange="e => OnSliderCommitAsync(j.Name, e.Value?.ToString())" />
+                            @* RadzenSlider reports every step while dragging (preview only); the joint is moved once, when the
+                               pointer or key is released over it (the wrapper), like the native range input's change event. *@
+                            <div class="jslider-wrap" @onpointerup="() => CommitDragAsync(j.Name)" @onkeyup="() => CommitDragAsync(j.Name)">
+                                <RadzenSlider TValue="double" class="@($"jslider {(_wantReal ? string.Empty : "jslider--virt")}")"
+                                              Min="(decimal)j.MinDeg" Max="(decimal)j.MaxDeg" Step="0.5"
+                                              Value="@Math.Round(sliderVal, 1)" Disabled="@sliderDisabled"
+                                              title="@(writable ? $"Drag to move {j.Name} ({j.MinDeg:0}° .. {j.MaxDeg:0}°)" : isLeg ? "Leg joint is stand-locked read-only" : _wantReal ? "Enable 'Write Physical R1' above to move physical joint" : "Virtual sim busy")"
+                                              aria-label="@j.Name"
+                                              ValueChanged="@((double v) => OnSliderInput(j.Name, v.ToString(CultureInfo.InvariantCulture)))" />
+                            </div>
                         </div>
                         <span class="jang" style="color:@(isDragging ? "#fff" : rawVal is null ? "var(--po-muted)" : (margin < 0.07 && degMargin < 8.0 ? barCol : "inherit"))">
                             @(isDragging ? $"→{_draggingDeg:+0.0;-0.0;+0.0}°" : rawVal is double v ? $"{v:+0.0;-0.0;+0.0}°" : "--")
@@ -177,10 +173,10 @@
                 <span class="po-muted" style="margin-left:8px">@(_wantReal ? (PracticeActive ? "Virtual robot pose" : "Real robot pose") : "Virtual robot preview run")</span>
             </div>
             <div class="size-row">
-                <button type="button" class="po-chip @(_cam == "iso" ? "active" : string.Empty)" @onclick='() => _cam = "iso"'>3/4 Iso</button>
-                <button type="button" class="po-chip @(_cam == "front" ? "active" : string.Empty)" @onclick='() => _cam = "front"'>Front</button>
-                <button type="button" class="po-chip @(_cam == "side" ? "active" : string.Empty)" @onclick='() => _cam = "side"'>Side</button>
-                <button type="button" class="po-chip @(_cam == "back" ? "active" : string.Empty)" @onclick='() => _cam = "back"'>Back</button>
+                <RadzenButton class="@($"po-plain po-chip {(_cam == " iso" ? "active" : string.Empty)}")" Click='() => _cam = "iso"'>3/4 Iso</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_cam == " front" ? "active" : string.Empty)}")" Click='() => _cam = "front"'>Front</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_cam == " side" ? "active" : string.Empty)}")" Click='() => _cam = "side"'>Side</RadzenButton>
+                <RadzenButton class="@($"po-plain po-chip {(_cam == " back" ? "active" : string.Empty)}")" Click='() => _cam = "back"'>Back</RadzenButton>
             </div>
         </div>
         <Twin3DView Actual="ActiveTelemetry?.QDeg"
@@ -223,10 +219,10 @@
             }
             <p>Only the single joint you drag is powered (limit &amp; torque capped; legs stay stand-locked).</p>
             <div class="btn-row">
-                <button type="button" class="po-btn @(PracticeActive ? "po-btn--blue" : "po-btn--orange")" style="flex:1" @onclick="ConfirmArmWrite">
+                <RadzenButton class="@($"po-plain po-btn {(PracticeActive ? " po-btn--blue" : "po-btn--orange")}")" style="flex:1" Click="ConfirmArmWrite">
                     @(PracticeActive ? "Yes, enable practice sliders" : "Yes, enable physical sliders")
-                </button>
-                <button type="button" class="po-btn" @onclick="() => _armConfirmOpen = false">Cancel</button>
+                </RadzenButton>
+                <RadzenButton class="po-plain po-btn" Click="() => _armConfirmOpen = false">Cancel</RadzenButton>
             </div>
         </div>
     </div>
@@ -343,6 +339,11 @@
             _draggingDeg = deg;
         }
     }
+
+    private Task CommitDragAsync(string jointName) =>
+        _draggingJoint == jointName
+            ? OnSliderCommitAsync(jointName, _draggingDeg.ToString(CultureInfo.InvariantCulture))
+            : Task.CompletedTask;
 
     private async Task OnSliderCommitAsync(string jointName, string? raw)
     {

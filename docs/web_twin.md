@@ -33,7 +33,7 @@ Rerun the script whenever the MJCF, the joint map or the policy changes. `test_w
 | WebGPU compute (WGSL, CPU fallback) | reach cloud: 16k random configurations of the behaviour's joint chain inside the joint limits (dim), plus the band the selected sweep covers (bright). Head behaviours show the gaze envelope |
 | Rapier (WASM) | shape-level contact queries only, with no world and no dynamics. While a slider is dragged, the proposed pose is checked against MuJoCo's collision capsules (contacts already present in the default pose are ignored) and against the stand frame, which MuJoCo does not collide with. The result is a display-only warning |
 | Tone.js | optional spatial audio cues: job start (a harder sound for powered physical runs), done/failed, a pulse while the physical robot is powered, ticks that speed up near a joint limit while dragging, a collision buzz, hot-motor chime |
-| SkiaSharp (`SKCanvasView`) | joint-history heatmap: 26 joints × the last 240 samples, coloured by position-in-range, limit margin, or virtual-minus-physical error |
+| `<canvas>` + `js/heatmap.js` (one pixel per cell, CSS-scaled) | joint-history heatmap: 26 joints × the last 240 samples, coloured by position-in-range, limit margin, or virtual-minus-physical error |
 | Silk.NET.Maths | C# forward kinematics (`PoRobotTrain.Shared/Kinematics`) for the hand and face read-out, unit-tested against MuJoCo |
 | ONNX Runtime Web | `/diag` runs the deployed policy in the browser and compares it with the golden actions (tolerance 1e-4), plus a sha256 check and per-step latency |
 | Transformers.js (MiniLM, local) | the "Ask in plain words" box suggests a behaviour and sweep size, or points at a single joint's slider. It never starts anything. A one-time 23 MB model download happens on first use |
@@ -47,7 +47,6 @@ GL/AL alongside three.js and Tone.js, which already cover rendering and audio.
   falls back to the server PNG render. The rest of the page is unaffected.
 - WebGPU is optional. Without it the renderer uses WebGL2 and the reach cloud is computed on the CPU, with
   bit-identical random samples.
-- SkiaSharp links native code into the WASM build: install the workload once with `dotnet workload install wasm-tools`.
 - `/diag` live-probes every module, asset, GPU path and self-test listed above.
 
 ## Tests

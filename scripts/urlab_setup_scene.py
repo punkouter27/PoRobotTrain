@@ -1,6 +1,7 @@
 """Build the Level 0 stand scene in the running UE editor through URLab's RPC bridge.
 
-Creates /Game/Levels/R1_Stand, imports scene_stand.xml (floor + gantry stand + pelvis weld + R1),
+Creates the R1_Stand level (URLab bridge: /Game/Levels; the project keeps it under /Game/Project/Environments/Levels,
+move it there in the editor with fix-up redirectors after a fresh --force run), imports scene_stand.xml (floor + gantry stand + pelvis weld + R1),
 spawns it at the origin, saves the level, and frames the viewport on the robot.
 
 Usage (editor must be open with the R1Twin project):

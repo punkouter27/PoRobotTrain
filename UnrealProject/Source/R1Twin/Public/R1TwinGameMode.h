@@ -38,7 +38,7 @@ public:
 	TObjectPtr<UNNEModelData> DefaultPolicyModel;
 
 	/** Used when DefaultPolicyModel is unset. Set in Config/DefaultGame.ini:
-	 *  [/Script/R1Twin.R1TwinGameMode] DefaultPolicyModelPath=/Game/Humanoid/Policies/r1_level0_upperbody.r1_level0_upperbody */
+	 *  [/Script/R1Twin.R1TwinGameMode] DefaultPolicyModelPath=/Game/Project/RL_Policies/r1_level0_upperbody.r1_level0_upperbody */
 	UPROPERTY(Config, EditDefaultsOnly, BlueprintReadOnly, Category = "R1")
 	FSoftObjectPath DefaultPolicyModelPath;
 

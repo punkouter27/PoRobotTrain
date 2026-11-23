@@ -26,8 +26,8 @@
             @Thr.WarnMeanErrDeg.ToString("0.#", Inv)° or @Thr.WarnAcc.ToString("0", Inv) rad/s².
         </p>
         <div class="btn-row">
-            <button type="button" class="po-btn po-btn--blue" disabled="@(!CanRun)" @onclick="() => RunAsync(true)">Run quick sweep</button>
-            <button type="button" class="po-btn po-btn--blue-soft" disabled="@(!CanRun)" @onclick="() => RunAsync(false)">Run full sweep</button>
+            <RadzenButton class="po-plain po-btn po-btn--blue" Disabled="@(!CanRun)" Click="() => RunAsync(true)">Run quick sweep</RadzenButton>
+            <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!CanRun)" Click="() => RunAsync(false)">Run full sweep</RadzenButton>
             @if (!_online)
             {
                 <span class="po-muted">RobotControl service offline: start <code>python -m robotcontrol.behaviours.service</code>.</span>
@@ -100,7 +100,7 @@
                     <span class="rb-legend"><span class="rb-icon rb-icon--warn">!</span>warning</span>
                     <span class="rb-legend"><span class="rb-icon rb-icon--fail">✕</span>fail</span>
                     <span class="rb-legend"><span class="rb-nominal-key"></span>nominal</span>
-                    <button type="button" class="po-chip @(_table ? "active" : string.Empty)" aria-pressed="@_table" @onclick="() => _table = !_table">Table view</button>
+                    <RadzenButton class="@($"po-plain po-chip {(_table ? "active" : string.Empty)}")" aria-pressed="@_table" Click="() => _table = !_table">Table view</RadzenButton>
                 </div>
             </div>
             <p class="po-muted">Each row changes one factor; everything else stays nominal. Click a cell for its numbers. The bar under each cell is mean tracking error against the @Thr.MeanErrDeg.ToString("0.#", Inv)° limit.</p>
@@ -336,9 +336,7 @@
         var errFrac = c.MeanErrDeg is double e ? Math.Clamp(e / Math.Max(0.1, Thr.MeanErrDeg), 0, 1) : 1;
         var selected = _selected?.Key == key;
         var shortWhy = ShortReason(c);
-        <button type="button" class="rb-cell rb-cell--@v @(nominal ? "rb-cell--nominal" : string.Empty) @(selected ? "rb-cell--sel" : string.Empty)"
-                title="@title: @VerdictWord(c). @Reason(c)" aria-label="@title: @VerdictWord(c). @Reason(c)"
-                @onclick="() => SelectAsync(key, title, c)">
+        <RadzenButton class="@($"po-plain rb-cell rb-cell--{(v)} {(nominal ? "rb-cell--nominal" : string.Empty)} {(selected ? "rb-cell--sel" : string.Empty)}")" title="@($"{(title)}: {(VerdictWord(c))}. {(Reason(c))}")" aria-label="@($"{(title)}: {(VerdictWord(c))}. {(Reason(c))}")" Click="() => SelectAsync(key, title, c)">
             @if (levelText is not null)
             {
                 <span class="rb-lvl">@levelText@(nominal ? " · nominal" : string.Empty)</span>
@@ -350,7 +348,7 @@
                 <span class="rb-why">@shortWhy</span>
             }
             <span class="rb-bar" aria-hidden="true"><span style="width:@((errFrac * 100).ToString("0", Inv))%"></span></span>
-        </button>
+        </RadzenButton>
     };
 
     private async Task SelectAsync(string key, string title, RobustnessCellDto c)

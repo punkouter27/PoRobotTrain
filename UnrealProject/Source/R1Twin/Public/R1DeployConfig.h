@@ -111,7 +111,7 @@ struct R1TWIN_API FR1DeployConfig
  *
  * Filling it from RobotControl's deploy.yaml (planned helper `scripts/deploy_yaml_to_uasset.py`,
  * not written yet) is a UE-Python job, e.g. run with
- *   UnrealEditor-Cmd.exe R1Twin.uproject -run=pythonscript -script="scripts/deploy_yaml_to_uasset.py <deploy.yaml> /Game/Humanoid/Policies/Level0"
+ *   UnrealEditor-Cmd.exe R1Twin.uproject -run=pythonscript -script="scripts/deploy_yaml_to_uasset.py <deploy.yaml> /Game/Project/RL_Policies/Level0"
  * and inside the script roughly:
  *   cfg = unreal.R1DeployConfig()
  *   cfg.set_editor_property('joint_names', [unreal.Name(n) for n in y['joint_names']])
@@ -119,9 +119,9 @@ struct R1TWIN_API FR1DeployConfig
  *   cfg.set_editor_property('kp', y['kp']); cfg.set_editor_property('kd', y['kd'])
  *   scale = y['action_scale']; cfg.set_editor_property('action_scale', scale if isinstance(scale, list) else [scale]*len(y['joint_names']))
  *   cfg.set_editor_property('num_obs', y['num_obs']); cfg.set_editor_property('num_actions', y['num_actions'])
- *   asset = unreal.AssetToolsHelpers.get_asset_tools().create_asset('DA_Level0Deploy', '/Game/Humanoid/Policies', unreal.R1DeployConfigAsset, unreal.DataAssetFactory())
+ *   asset = unreal.AssetToolsHelpers.get_asset_tools().create_asset('DA_Level0Deploy', '/Game/Project/DataAssets', unreal.R1DeployConfigAsset, unreal.DataAssetFactory())
  *   asset.set_editor_property('config', cfg)
- *   asset.set_editor_property('policy_model', unreal.load_asset('/Game/Humanoid/Policies/level0_policy'))  # UNNEModelData from the imported .onnx
+ *   asset.set_editor_property('policy_model', unreal.load_asset('/Game/Project/RL_Policies/level0_policy'))  # UNNEModelData from the imported .onnx
  *   unreal.EditorAssetLibrary.save_loaded_asset(asset)
  * (Requires the PythonScriptPlugin enabled in R1Twin.uproject - it is.)
  */
