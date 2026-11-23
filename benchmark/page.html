@@ -76,8 +76,6 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const n = (v, d = 1) => v == null || Number.isNaN(v) ? "–" : Number(v).toFixed(d);
 const pct = (a, b) => a != null && b ? Math.round(100 * a / b) : null;
-const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
 // ------------------------------------------------------------------ verdict
 const NOTES = new Set(["at power limit"]);
@@ -157,7 +155,7 @@ const COLS = [
 ];  // the rest (power, memory bus, CPU, load before, spread, drift, startup, workload) is in each row's details
 
 let all = [], latestId = null, open = new Set();
-let sort = (() => { try { return JSON.parse(store.get("bench-sort")) || { k: "when", dir: -1 }; } catch { return { k: "when", dir: -1 }; } })();
+let sort = { k: "when", dir: -1 };  // every load starts newest run first; a column click re-sorts until the next load
 function headers() {
   $("head").innerHTML = COLS.map(c => `<th data-k="${c.k}" class="${c.num ? "num" : ""} ${c.key ? "key" : ""}">${c.label}` +
     `${sort.k === c.k ? `<span class="arrow">${sort.dir > 0 ? "▲" : "▼"}</span>` : ""}${c.sub ? `<small>${c.sub}</small>` : ""}</th>`).join("");
@@ -166,7 +164,6 @@ $("head").onclick = e => {
   const th = e.target.closest("th"); if (!th) return;
   const k = th.dataset.k, c = COLS.find(x => x.k === k);
   sort = { k, dir: sort.k === k ? -sort.dir : (c.num || k === "verdict" ? -1 : 1) };
-  store.set("bench-sort", JSON.stringify(sort));
   render();
 };
 $("rows").onclick = e => {
