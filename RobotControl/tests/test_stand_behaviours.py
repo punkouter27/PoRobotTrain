@@ -122,7 +122,12 @@ def test_extract_lowstate_telemetry():
 @pytest.mark.parametrize("behaviour", ["neck_nod", "arm_raise", "hand_wave"])
 def test_sim_stand_behaviours_complete_cleanly(behaviour):
     with tempfile.TemporaryDirectory() as d:
-        assert runner_main([behaviour, "--target", "sim", "--fast", "--amplitude", "20", "--duration", "3", "--log-dir", d]) == 0
+        assert (
+            runner_main(
+                [behaviour, "--target", "sim", "--fast", "--amplitude", "20", "--duration", "3", "--log-dir", d]
+            )
+            == 0
+        )
 
 
 def test_move_joint_smooth_ramp_and_sim_execution(capsys):

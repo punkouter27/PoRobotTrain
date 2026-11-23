@@ -8,6 +8,7 @@
 #include "R1BehaviourPanel.h"
 #include "R1PanelStyle.h"
 #include "R1SkillBrain.h"
+#include "R1Room.h"
 
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
@@ -23,6 +24,7 @@ namespace
 {
 	const FName IdReload(TEXT("lab_reload")), IdPlay(TEXT("lab_play")), IdMode(TEXT("lab_mode")), IdPush(TEXT("lab_push"));
 	const FName IdTlAdd(TEXT("tl_add")), IdTlClear(TEXT("tl_clear")), IdTlPlay(TEXT("tl_play")), IdTlLoop(TEXT("tl_loop"));
+	const FName IdPlaceRoom(TEXT("place_room")), IdPlaceOutside(TEXT("place_outside"));
 	const TCHAR* SkillPrefix = TEXT("lab_skill_");
 	const TCHAR* TlDelPrefix = TEXT("tl_del_");
 	const float Durations[] = {6.f, 12.f, 30.f};
@@ -89,6 +91,10 @@ void AR1BehaviourPanel::TickLab(double Now)
 {
 	// The web app's Library "View in Unreal" posts a play request to the behaviour service; poll it once a second.
 	// The poll also tells the web app that this lab is running (GET /lab/poll records when it was last seen).
+	if (!bPlaceApplied)
+	{
+		bPlaceApplied = ApplyPlace();   // the remembered place, once the room actor exists
+	}
 	if (Now < NextLabPoll || bLabPollInFlight)
 	{
 		return;
@@ -149,6 +155,18 @@ bool AR1BehaviourPanel::LabShowsCamera()
 {
 	UR1SkillBrainComponent* B = FindBrain();
 	return B && B->GetSkills().IsValidIndex(LabSkill) && B->GetSkills()[LabSkill].Id == TEXT("look_at");
+}
+
+bool AR1BehaviourPanel::ApplyPlace()
+{
+	const ER1Environment Env = LabPlace == TEXT("outside") ? ER1Environment::Outside : ER1Environment::Room;
+	bool bFound = false;
+	for (TActorIterator<AR1Room> It(GetWorld()); It; ++It)
+	{
+		It->SetEnvironment(Env);
+		bFound = true;
+	}
+	return bFound;
 }
 
 void AR1BehaviourPanel::RememberLab()
@@ -293,6 +311,15 @@ void AR1BehaviourPanel::DrawLabTab(float X, float Inner, float& Y)
 		}
 	}
 	Y += 4.f;
+	{
+		// where the virtual robot lives (it stays on its stand in both)
+		DrawLine(TEXT("Place"), X, Y, DimCol, 0.85f);
+		const float Gap = 6.f, W = (Inner - Gap) * 0.5f;
+		const bool bOutside = LabPlace == TEXT("outside");
+		DrawButton({IdPlaceRoom, TEXT("In a room"), {X, Y}, {W, 30.f}, true, bOutside ? ChipCol : ChipOnCol});
+		DrawButton({IdPlaceOutside, TEXT("Outside (concrete)"), {X + W + Gap, Y}, {W, 30.f}, true, bOutside ? ChipOnCol : ChipCol});
+		Y += 38.f;
+	}
 	DrawButton({IdMode, bExperiment ? TEXT("Fewer tools") : TEXT("More tools: target ball, pushes, timeline, walk"), {X, Y}, {Inner, 32.f}, true,
 		bExperiment ? ChipOnCol : ChipCol});
 	Y += 38.f;
@@ -420,6 +447,13 @@ bool AR1BehaviourPanel::HandleLabClick(FName ClickId)
 	if (S.StartsWith(TEXT("ldur_")))
 	{
 		LabDurationS = FCString::Atof(*S.Mid(5));
+		RememberLab();
+		return true;
+	}
+	if (ClickId == IdPlaceRoom || ClickId == IdPlaceOutside)
+	{
+		LabPlace = ClickId == IdPlaceOutside ? TEXT("outside") : TEXT("room");
+		ApplyPlace();
 		RememberLab();
 		return true;
 	}

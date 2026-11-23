@@ -293,10 +293,12 @@ void AR1BehaviourPanel::TickPanelCapture(double Now)
 			++CaptureStep;
 		}
 		break;
-	case 1: if (T > 15.0) { CaptureShot(TEXT("lab_watch")); ++CaptureStep; } break;
-	case 2: if (T > 16.0) { bExperiment = true; if (B) B->Push(FVector2D(1.f, 0.f)); ++CaptureStep; } break;
-	case 3: if (T > 16.25) { CaptureShot(TEXT("lab_push")); ++CaptureStep; } break;
-	case 4: if (T > 19.0)
+	case 1: if (T > 15.0) { LabPlace = TEXT("room"); ApplyPlace(); CaptureShot(TEXT("lab_watch")); ++CaptureStep; } break;
+	case 2: if (T > 15.3) { LabPlace = TEXT("outside"); ApplyPlace(); ++CaptureStep; } break;
+	case 3: if (T > 15.6) { CaptureShot(TEXT("lab_outside")); ++CaptureStep; } break;
+	case 4: if (T > 16.0) { LabPlace = TEXT("room"); ApplyPlace(); bExperiment = true; if (B) B->Push(FVector2D(1.f, 0.f)); ++CaptureStep; } break;
+	case 5: if (T > 16.25) { CaptureShot(TEXT("lab_push")); ++CaptureStep; } break;
+	case 6: if (T > 19.0)
 		{
 			if (B)
 			{
@@ -309,8 +311,8 @@ void AR1BehaviourPanel::TickPanelCapture(double Now)
 			++CaptureStep;
 		}
 		break;
-	case 5: if (T > 30.0) { CaptureShot(TEXT("lab_timeline")); ++CaptureStep; } break;
-	case 6: if (T > 31.0)
+	case 7: if (T > 30.0) { CaptureShot(TEXT("lab_timeline")); ++CaptureStep; } break;
+	case 8: if (T > 31.0)
 		{
 			if (B)
 			{
@@ -324,8 +326,8 @@ void AR1BehaviourPanel::TickPanelCapture(double Now)
 			++CaptureStep;
 		}
 		break;
-	case 7: if (T > 39.0) { CaptureShot(TEXT("lab_disturbed")); ++CaptureStep; } break;
-	case 8: if (T > 40.0)
+	case 9: if (T > 39.0) { CaptureShot(TEXT("lab_disturbed")); ++CaptureStep; } break;
+	case 10: if (T > 40.0)
 		{
 			if (B)
 			{
@@ -338,9 +340,9 @@ void AR1BehaviourPanel::TickPanelCapture(double Now)
 			++CaptureStep;
 		}
 		break;
-	case 9: if (T > 42.0) { CaptureShot(TEXT("lab_joints")); bShowJoints = false; SetTab(ER1PanelTab::Walk); ++CaptureStep; } break;
-	case 10: if (T > 45.0) { CaptureShot(TEXT("walk_tab")); ++CaptureStep; } break;
-	case 11: if (T > 46.0)
+	case 11: if (T > 42.0) { CaptureShot(TEXT("lab_joints")); bShowJoints = false; SetTab(ER1PanelTab::Walk); ++CaptureStep; } break;
+	case 12: if (T > 45.0) { CaptureShot(TEXT("walk_tab")); ++CaptureStep; } break;
+	case 13: if (T > 46.0)
 		{
 			++CaptureStep;
 			UE_LOG(LogR1Twin, Log, TEXT("R1BehaviourPanel: capture done, exiting"));

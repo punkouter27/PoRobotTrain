@@ -24,6 +24,7 @@ the **Walk (sim)** tab needs the behaviour service (`python -m robotcontrol.beha
 | Section | What it does |
 |---|---|
 | **Brain** | One button per trained skill (Hold Centre, Look At, Nod Yes, Shake No, Glance Around). A skill that has not passed its validation gate is locked; click it to see why. Pick the size (10 / 20 / 30°) and run length (6 / 12 / 30 s), then **Play**. **Reload** picks up a skill you just trained in the web app. |
+| **Place** | Where the virtual robot lives: **In a room** (an empty room around the stand) or **Outside (concrete)** (an open area with a concrete floor and expansion joints every 4 m). The robot stays on its stand in both, because the stand holds it up in the physics. Only the surroundings change, they are visual only, and the app remembers your pick. |
 | **Target** | The orange ball that **Look At** follows. *Script* repeats the web app's demo sequence. *Manual*: the arrow keys or the Left / Right / Up / Down buttons move it. *Orbit* traces a figure-8 in front of the robot. A ball outside the trained reach (±40° yaw, ±20° pitch, capped by the size) is clamped, and the result card says so. |
 | **Disturb** | **Push** the head (a real MuJoCo force on `head_yaw_link`, stronger than the 0.86 Nm yaw motor). Add 20–80 ms of **delay** and 0.5–2° of joint-angle **noise**, or weaken the head **motors** to 75 / 50 %. These test whether the brain copes. |
 | **Timeline** | Chain skills into a scene: **+ Add current** appends the selected skill, size and length. **Play timeline** runs the steps in order, and **Loop** repeats them. |
@@ -62,7 +63,7 @@ preview with *Twin engine: Unreal*, the live mirror of a real run, and the walk 
 
 `-PanelCapture=<dir>` runs an unattended scenario and saves a screenshot of each stage, then quits:
 
-1. Look At following the orbiting ball.
+1. Look At following the orbiting ball, in the room and outside on concrete.
 2. A push.
 3. A four-skill timeline.
 4. Shake No with 80 ms delay, 2° noise and half-strength motors.

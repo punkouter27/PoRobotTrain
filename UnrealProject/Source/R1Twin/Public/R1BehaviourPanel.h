@@ -145,6 +145,10 @@ private:
 	UPROPERTY(Config) float LabSizeDeg = 10.f;
 	UPROPERTY(Config) float LabDurationS = 12.f;
 	UPROPERTY(Config) bool bExperiment = false;
+	/** Where the virtual robot lives: "room" (on the stand in an empty room) or "outside" (on a concrete floor). */
+	UPROPERTY(Config) FString LabPlace = TEXT("room");
+	bool bPlaceApplied = false;    // the room actor is spawned by the game mode; applied once it is found
+	bool ApplyPlace();
 	int32 PushCount = 0;           // the Push button cycles left, right, up, down
 	void RememberLab();
 	/** Simple view shows the head camera only for skills that look at something (Look At). */

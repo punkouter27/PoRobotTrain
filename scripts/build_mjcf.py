@@ -116,12 +116,14 @@ def build_robot(jm: dict, pelvis_z: float, with_stand: bool) -> ET.Element:
     ET.SubElement(head_yaw, "camera", name="head_rgbd", pos=cam_pos, xyaxes="0 -1 0 0.34202 0 0.93969", fovy="58")
 
     if with_stand:
-        # The R1 EDU stand: posts and a crossbar BEHIND the robot at shoulder height, an arm forward and a J-hook that
-        # rests on the top of the back (the upper-back ridge, about x -0.06 m / 0.26 m above the pelvis in the home
-        # pose). Nothing passes over the head, so the head can pitch and yaw freely. Visual only (no collision): the
-        # robot is held by the pelvis weld below, exactly as before.
+        # The R1 EDU stand: two posts and a crossbar BEHIND the robot at mid-back height (below the shoulders), an
+        # arm straight forward, and a hook that latches onto a mounting plate on the back pack, where the Jetson
+        # computer sits (torso back surface about x -0.035 m, 0.10-0.25 m above the pelvis in the home pose). Nothing
+        # is at head height, so the head pitches and yaws freely. Visual only (no collision): the robot is held by
+        # the pelvis weld below, exactly as before.
         stand = ET.SubElement(wb, "body", name="stand", pos="0 0 0")
-        post_x, bar_h = -0.40, pelvis_z + 0.32
+        post_x, bar_h = -0.40, pelvis_z + 0.20
+        mount_z, back_x = pelvis_z + 0.17, -0.037
         nocol = {"contype": "0", "conaffinity": "0", "rgba": STAND_RGBA}
         for y in (-0.45, 0.45):
             ET.SubElement(
@@ -137,16 +139,16 @@ def build_robot(jm: dict, pelvis_z: float, with_stand: bool) -> ET.Element:
             **nocol,
         )
         ET.SubElement(
-            stand, "geom", type="capsule", size="0.02", fromto=fmt([post_x, 0, bar_h, -0.12, 0, bar_h]), **nocol
+            stand, "geom", type="capsule", size="0.02", fromto=fmt([post_x, 0, bar_h, -0.10, 0, bar_h]), **nocol
         )
         hook = {"contype": "0", "conaffinity": "0", "rgba": "0.6 0.6 0.1 1"}
         ET.SubElement(
             stand, "geom", type="capsule", size="0.014",
-            fromto=fmt([-0.12, 0, bar_h, -0.082, 0, pelvis_z + 0.30]), **hook,
+            fromto=fmt([-0.10, 0, bar_h, -0.055, 0, mount_z]), **hook,
         )  # fmt: skip
+        # mounting plate flush on the back pack (the Jetson's housing) that the hook latches into
         ET.SubElement(
-            stand, "geom", type="capsule", size="0.014",
-            fromto=fmt([-0.082, 0, pelvis_z + 0.30, -0.076, 0, pelvis_z + 0.262]), **hook,
+            stand, "geom", type="box", size="0.008 0.05 0.04", pos=fmt([back_x - 0.008, 0, mount_z]), **hook,
         )  # fmt: skip
         eq = ET.SubElement(mj, "equality")
         # Weld pelvis to world at its qpos0 pose (relpose omitted => initial configuration).
