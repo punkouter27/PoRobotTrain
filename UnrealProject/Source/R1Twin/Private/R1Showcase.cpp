@@ -215,7 +215,7 @@ void UR1ShowcaseSubsystem::AddWidgets()
 						.OnClicked_Lambda([Weak] { if (Weak.IsValid()) Weak->RunBenchmark(); return FReply::Handled(); })
 						[
 							SNew(STextBlock).Font(Body).ColorAndOpacity(FLinearColor::White)
-							.Text(NSLOCTEXT("R1Showcase", "BenchLabel", "Benchmark training speed"))
+							.Text(NSLOCTEXT("R1Showcase", "BenchLabel", "Benchmark sim speed"))
 						]
 					]
 				]
@@ -314,7 +314,7 @@ FString UR1ShowcaseSubsystem::BuildOverlayText() const
 	Out += Lat >= 0.f ? FString::Printf(TEXT("Inference latency        %.2f ms (mean of %d)\n"), Lat, LatencySamples.Num())
 	                  : FString(TEXT("Inference latency        n/a (no policy step yet)\n"));
 	Out += FString::Printf(TEXT("Curriculum stage         %s\n"), CurriculumStage.IsEmpty() ? TEXT("n/a") : *CurriculumStage);
-	Out += FString::Printf(TEXT("Training speed (bench)   %s\n"), BenchText.IsEmpty() ? TEXT("press the button below") : *BenchText);
+	Out += FString::Printf(TEXT("Sim speed (bench)        %s\n"), BenchText.IsEmpty() ? TEXT("press the button below") : *BenchText);
 	Out += FString::Printf(TEXT("Demo mode                after %.0f s idle (idle %.0f s)"), IdleThreshold, IdleTime);
 	return Out;
 }

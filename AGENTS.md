@@ -89,7 +89,7 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
 `/Game/Project/{Agents,DataAssets,Environments,RL_Policies}` (the R1 MuJoCo import, the reward + showcase DataAssets
 selected in `DefaultGame.ini`, the R1_Stand level, the NNE policy). Core and UI are C++ (`Source/R1Twin`), so those
 folders hold no assets. Move or rename content only in the editor (AssetTools rename + fix up redirectors), never on
-disk. The overlay's "Benchmark training speed" button steps a private copy of the MuJoCo scene for 1 s and reports
+disk. The overlay's "Benchmark sim speed" button steps a private copy of the MuJoCo scene for 1 s and reports
 steps/s; the robot and the live simulation are untouched.
 
 ### Po Game Standard (Unity / Unreal RL games)

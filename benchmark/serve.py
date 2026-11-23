@@ -2,6 +2,9 @@
 
 GET /         the page            GET /history  benchmark/history.json
 POST /run     start a Benchmark   GET /status   {running, line} (the latest "BENCH:" progress line)
+
+benchmark.ps1 -Run (or --run): no page; runs one Benchmark in this console, records it in benchmark/history.json like
+the page does, prints a summary and exits with the Workload's exit code (0 = recorded, 1 = failed).
 """
 
 from __future__ import annotations
@@ -88,7 +91,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def history_runs() -> list:
+    try:
+        return json.loads((HERE / "history.json").read_text(encoding="utf-8")).get("runs", [])
+    except (OSError, ValueError):
+        return []
+
+
+def run_once() -> int:
+    """-Run: one Benchmark in this console, no page. The Workload writes the history entry itself."""
+    if not PYTHON.exists():
+        print(f"BENCH: failed: missing {PYTHON} (set up the training environment)", flush=True)
+        return 1
+    before = len(history_runs())
+    code = subprocess.call([str(PYTHON), "-u", str(WORKLOAD)], cwd=ROOT)
+    runs = history_runs()
+    if len(runs) <= before:
+        print(f"BENCH: failed (exit {code}) - nothing was recorded in benchmark/history.json", flush=True)
+        return code or 1
+    run = runs[-1]
+    r = run.get("result")
+    if not r:  # the Workload already printed "BENCH: failed: <error>"
+        return code or 1
+    m = run.get("machine", {})
+    print(
+        f"\nBenchmark {TITLE}: {r['step_time_ms']} ms/step, {r['env_steps_per_s']} env steps/s"
+        f" (measured {r['measured_s']} s, startup {r['startup_s']} s) on {m.get('gpu') or m.get('cpu')}"
+        + ("  [machine was busy before the run]" if run.get("busy") else "")
+        + "\nRecorded in benchmark/history.json (commit it to compare machines).",
+        flush=True,
+    )
+    return code
+
+
 def main() -> None:
+    if any(a.lower() in ("-run", "--run") for a in sys.argv[1:]):
+        sys.exit(run_once())
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
     print(f"Benchmark page: {url}  (Ctrl+C to stop)", flush=True)
