@@ -11,24 +11,42 @@
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter, system-ui, sans-serif; }
   header { height:44px; display:flex; align-items:center; padding:0 16px; border-bottom:1px solid var(--line); }
   header b { font-size:15px; } header span { color:var(--muted); margin-left:8px; }
-  main { padding:16px; max-width:1440px; margin:0 auto; }
+  main { padding:16px; max-width:1800px; margin:0 auto; }
   .run { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
   button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 18px; font:600 15px inherit;
            font-family:inherit; cursor:pointer; } button:disabled { opacity:.5; cursor:wait; }
   #status { color:var(--muted); font-variant-numeric:tabular-nums; }
   .latest { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px;
             margin-bottom:16px; display:flex; gap:28px; flex-wrap:wrap; }
-  .latest[hidden] { display:none; } td.load { white-space:normal; min-width:200px; max-width:260px; }
+  .latest[hidden] { display:none; }
   .latest div { min-width:120px; } .latest small { color:var(--muted); display:block; }
   .latest strong { font-size:22px; font-variant-numeric:tabular-nums; }
-  .wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+  .tools { display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:8px; color:var(--muted); font-size:13px; }
+  .tools select { background:var(--surface); color:var(--text); border:1px solid var(--line); border-radius:6px;
+           padding:4px 8px; font:inherit; }
+  .wrap { overflow:auto; border:1px solid var(--line); border-radius:10px; max-height:75vh; }
   table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
-  th, td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:top; }
-  th { color:var(--muted); font-weight:500; background:var(--surface); position:sticky; top:0; }
-  td small { color:var(--muted); display:block; }
-  tr.other td { opacity:.45; } tr.failed td { color:var(--bad); }
+  th, td { padding:7px 10px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:top; }
+  th { color:var(--muted); font-weight:500; background:var(--surface); position:sticky; top:0; z-index:1;
+       cursor:pointer; user-select:none; }
+  th:hover { color:var(--text); } th.num, td.num { text-align:right; }
+  th .arrow { color:var(--accent); margin-left:3px; }
+  th small { display:block; font-size:11px; color:var(--muted); font-weight:400; }
+  td small { color:var(--muted); display:block; font-size:12px; }
+  tbody tr.row { cursor:pointer; } tbody tr.row:hover td { background:#161e2e; }
+  tr.other td { opacity:.55; } tr.failed td { color:var(--bad); }
+  tr.detail td { background:var(--surface); white-space:normal; color:var(--muted); font-size:13px; }
+  tr.detail b { color:var(--text); font-weight:500; }
+  .detail-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px 24px; }
   .tag { display:inline-block; padding:1px 6px; border-radius:6px; font-size:12px; background:var(--line); }
-  .busy { background:#3b2a0a; color:var(--warn); } .same { color:var(--good); }
+  .same { color:var(--good); }
+  .chip { display:inline-block; padding:1px 7px; border-radius:999px; font-size:12px; margin:0 4px 2px 0; }
+  .chip.warn { background:#3b2a0a; color:var(--warn); } .chip.note { background:var(--line); color:var(--muted); }
+  .chip.ok { background:#0f2e22; color:var(--good); }
+  .hot { color:var(--warn); }
+  th.key { color:var(--text); font-weight:700; background:#1b2140; } th.key small { color:#b4b8f5; }
+  td.key { background:rgba(99,102,241,.09); font-size:15px; } td.key b { font-weight:700; }
+  .latest .key strong { color:#a5a8ff; }
   pre { color:var(--muted); font-size:12px; white-space:pre-wrap; max-height:160px; overflow:auto; }
 </style>
 </head>
@@ -40,9 +58,15 @@
     <span id="status">loading...</span>
   </div>
   <div class="latest" id="latest" hidden></div>
+  <div class="tools">
+    <label>Machine <select id="machine"><option value="">all</option></select></label>
+    <label><input type="checkbox" id="sameWorkload"> only the latest workload</label>
+    <label><input type="checkbox" id="showFailed" checked> show failed runs</label>
+    <span id="count"></span>
+    <span>Click a column to sort, a row for its details.</span>
+  </div>
   <div class="wrap"><table>
-    <thead><tr><th>When</th><th>Machine</th><th>Step time</th><th>Sim / Learn</th><th>Env steps/s</th>
-      <th>Workload</th><th>Load before</th><th>Load during</th></tr></thead>
+    <thead><tr id="head"></tr></thead>
     <tbody id="rows"></tbody>
   </table></div>
   <pre id="log"></pre>
@@ -50,38 +74,143 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const n = (v, d = 1) => v == null ? "–" : Number(v).toFixed(d);
-const load = l => !l || !Object.keys(l).length ? "–" :
-  `GPU ${n(l.gpu_pct, 0)}% · VRAM ${n(l.vram_used_gb)} GB · ${n(l.gpu_temp_c, 0)}°C · ${n(l.sm_clock_mhz, 0)} MHz` +
-  `<small>CPU ${n(l.cpu_pct, 0)}% · RAM ${n(l.ram_used_gb)} GB${l.on_battery ? " · ON BATTERY" : ""}` +
-  `${l.gpu_processes?.length ? ` · <span title="${esc(l.gpu_processes.join(", "))}">${l.gpu_processes.length} apps on GPU</span>` : ""}</small>`;
+const n = (v, d = 1) => v == null || Number.isNaN(v) ? "–" : Number(v).toFixed(d);
+const pct = (a, b) => a != null && b ? Math.round(100 * a / b) : null;
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+// ------------------------------------------------------------------ verdict
+const NOTES = new Set(["at power limit"]);
+function verdictOf(r) {  // rows recorded before the verdict existed get an estimate from what they did record
+  if (!r.ok) return { chips: [], estimated: false };
+  if (r.verdict) return { chips: r.verdict, estimated: false };
+  const d = r.load_during || {}, chips = [];
+  if (r.busy) chips.push("busy before");
+  if (d.on_battery) chips.push("on battery");
+  if ((d.gpu_temp_c ?? 0) >= 85) chips.push("throttled (thermal)");
+  return { chips, estimated: true };
+}
+const warnings = r => verdictOf(r).chips.filter(c => !NOTES.has(c)).length;
+function verdictHtml(r) {
+  if (!r.ok) return "failed";
+  const v = verdictOf(r);
+  if (!v.chips.length) return v.estimated ? '<span class="chip note" title="recorded before the verdict existed">not assessed</span>'
+                                          : '<span class="chip ok">clean</span>';
+  return v.chips.map(c => `<span class="chip ${NOTES.has(c) ? "note" : "warn"}">${esc(c)}</span>`).join("") +
+    (v.estimated ? '<small>estimated from older readings</small>' : "");
+}
+
+// ------------------------------------------------------------------ details
+const reasons = r => !r ? "" : Array.isArray(r) ? r.join(", ") :
+  Object.entries(r).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${Math.round(v * 100)}% of the time`).join(", ");
+const loadText = l => !l || !Object.keys(l).length ? "–" : [
+  `GPU ${n(l.gpu_pct, 0)}% busy · VRAM ${n(l.vram_used_gb)} GB · ${n(l.gpu_temp_c, 0)}°C · ${n(l.sm_clock_mhz, 0)} MHz` +
+    (l.sm_clock_max_mhz ? ` (${l.clock_pct_of_max ?? pct(l.sm_clock_mhz, l.sm_clock_max_mhz)}% of ${n(l.sm_clock_max_mhz, 0)} max)` : ""),
+  l.power_w != null && `${n(l.power_w, 0)} of ${n(l.power_limit_w, 0)} W · ${esc(l.pstate || "")} · memory bus ${n(l.gpu_mem_pct, 0)}%` +
+    `${l.pcie ? ` · PCIe ${esc(l.pcie)}` : ""}${l.display_active ? " · drives the display" : ""}`,
+  reasons(l.clock_reasons) && `slowed by: ${esc(reasons(l.clock_reasons))}`,
+  `CPU ${n(l.cpu_pct, 0)}%${l.cpu_max_core_pct != null ? ` · busiest core ${n(l.cpu_max_core_pct, 0)}%` : ""}` +
+    `${l.trainer_thread_pct != null ? ` · trainer thread ${n(l.trainer_thread_pct, 0)}%` : ""}` +
+    `${l.trainer_cpu_cores != null ? ` · trainer process ${n(l.trainer_cpu_cores)} cores` : ""} · RAM ${n(l.ram_used_gb)} GB` +
+    `${l.on_battery ? " · ON BATTERY" : ""}`,
+  l.gpu_processes?.length && `other apps on the GPU: ${esc(l.gpu_processes.join(", "))}`,
+].filter(Boolean).join("<br>");
+const ctx = c => !c ? "–" : [c.power_plan && `${esc(c.power_plan)} power plan`, c.power_mode && `${esc(c.power_mode)} mode`,
+  c.gpu_scheduling != null && `hardware GPU scheduling ${c.gpu_scheduling ? "on" : "off"}`].filter(Boolean).join(" · ") || "–";
+const detail = r => `<div class="detail-grid">
+  <div><b>Load during the run</b><br>${loadText(r.load_during)}</div>
+  <div><b>Load before the run</b><br>${loadText(r.load_before)}</div>
+  <div><b>Machine</b><br>${esc(r.machine.cpu)}<br>${esc(r.machine.gpu || "no NVIDIA GPU")} · ${n(r.machine.vram_gb, 0)} GB ·
+    driver ${esc(r.machine.gpu_driver || "–")}<br>${n(r.machine.ram_gb, 0)} GB RAM · ${esc(r.machine.os)}<br>${ctx(r.context)}</div>
+  <div><b>Result</b><br>${r.result ? `measured ${n(r.result.measured_s)} s · ${n(r.result.steps_measured, 0)} steps` +
+    `${r.result.blocks_measured ? ` in ${r.result.blocks_measured} blocks` : ""} · startup ${n(r.result.startup_s)} s` +
+    `<br>step per block p50 ${n(r.result.step_p50_ms, 1)} · p95 ${n(r.result.step_p95_ms, 1)} ms · sim drift ` +
+    `${r.result.sim_drift_pct == null ? "– (needs 4+ blocks)" : `${r.result.sim_drift_pct > 0 ? "+" : ""}${n(r.result.sim_drift_pct, 0)}% (last vs first quarter)`}`
+    : esc(r.error)}
+    <br>commit ${esc(r.git_commit || "–")} · ${esc(Object.entries(r.versions || {}).map(([k, v]) => `${k} ${v}`).join(", "))}</div>
+  <div><b>Workload ${esc(r.workload_id)}</b>${(r.workload_changes || []).length ?
+    `<br>changed from the previous run:<br>${r.workload_changes.map(esc).join("<br>")}` : "<br>same as the previous run"}</div>
+</div>`;
+
+// ------------------------------------------------------------------ columns
+const D = r => r.load_during || {}, R = r => r.result || {};
+const COLS = [
+  { k: "when", label: "When", get: r => r.when, html: r => esc(r.when.replace("T", " ").slice(0, 16)) },
+  { k: "machine", label: "Machine", get: r => r.machine.hostname,
+    html: r => `${esc(r.machine.hostname)}<small>${esc((r.machine.gpu || "no NVIDIA GPU").replace("NVIDIA GeForce ", ""))}</small>` },
+  { k: "step", label: "Step time", sub: "ms", num: true, get: r => R(r).step_time_ms,
+    html: r => r.result ? n(R(r).step_time_ms, 2) : esc(r.error || "").slice(0, 60) },
+  { k: "sim", label: "Sim / Learn", sub: "ms (sorts by Sim)", num: true, get: r => r.workload.split ? null : R(r).sim_ms,
+    html: r => !r.result ? "–" : r.workload.split ? '<small title="Sim and Learn run as one jitted step">jitted</small>'
+                                                   : `${n(R(r).sim_ms, 2)} / ${n(R(r).learn_ms, 2)}` },
+  { k: "eps", label: "Env steps/s", sub: "training speed · compare this", num: true, key: true, get: r => R(r).env_steps_per_s,
+    html: r => r.result ? `<b>${Number(R(r).env_steps_per_s).toLocaleString()}</b>` : "–" },
+  { k: "verdict", label: "Verdict", get: r => r.ok ? warnings(r) : 99, html: verdictHtml },
+  { k: "gpu", label: "GPU busy", sub: "%", num: true, get: r => D(r).gpu_pct, html: r => n(D(r).gpu_pct, 0) },
+  { k: "temp", label: "GPU temp", sub: "°C peak", num: true, get: r => D(r).gpu_temp_c,
+    html: r => `<span class="${(D(r).gpu_temp_c ?? 0) >= 85 ? "hot" : ""}">${n(D(r).gpu_temp_c, 0)}</span>` },
+  { k: "clock", label: "GPU clock", sub: "MHz (% of max)", num: true, get: r => D(r).sm_clock_mhz,
+    html: r => { const p = D(r).clock_pct_of_max ?? pct(D(r).sm_clock_mhz, D(r).sm_clock_max_mhz);
+                 return `${n(D(r).sm_clock_mhz, 0)}${p != null ? ` <small style="display:inline">(${p}%)</small>` : ""}`; } },
+  { k: "thread", label: "Trainer thread", sub: "% of a core", num: true, get: r => D(r).trainer_thread_pct,
+    html: r => `<span class="${(D(r).trainer_thread_pct ?? 0) >= 85 ? "hot" : ""}">${n(D(r).trainer_thread_pct, 0)}</span>` },
+];  // the rest (power, memory bus, CPU, load before, spread, drift, startup, workload) is in each row's details
+
+let all = [], latestId = null, open = new Set();
+let sort = (() => { try { return JSON.parse(store.get("bench-sort")) || { k: "when", dir: -1 }; } catch { return { k: "when", dir: -1 }; } })();
+function headers() {
+  $("head").innerHTML = COLS.map(c => `<th data-k="${c.k}" class="${c.num ? "num" : ""} ${c.key ? "key" : ""}">${c.label}` +
+    `${sort.k === c.k ? `<span class="arrow">${sort.dir > 0 ? "▲" : "▼"}</span>` : ""}${c.sub ? `<small>${c.sub}</small>` : ""}</th>`).join("");
+}
+$("head").onclick = e => {
+  const th = e.target.closest("th"); if (!th) return;
+  const k = th.dataset.k, c = COLS.find(x => x.k === k);
+  sort = { k, dir: sort.k === k ? -sort.dir : (c.num || k === "verdict" ? -1 : 1) };
+  store.set("bench-sort", JSON.stringify(sort));
+  render();
+};
+$("rows").onclick = e => {
+  const tr = e.target.closest("tr.row"); if (!tr) return;
+  const id = tr.dataset.id; open.has(id) ? open.delete(id) : open.add(id); render();
+};
+for (const id of ["machine", "sameWorkload", "showFailed"]) $(id).onchange = render;
+
+function render() {
+  headers();
+  const col = COLS.find(c => c.k === sort.k) || COLS[0];
+  const host = $("machine").value;
+  const rows = all.filter(r => (!host || r.machine.hostname === host) && ($("showFailed").checked || r.ok) &&
+                               (!$("sameWorkload").checked || r.workload_id === latestId));
+  rows.sort((a, b) => {
+    const x = col.get(a), y = col.get(b);
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
+  });
+  $("count").textContent = `${rows.length} of ${all.length} runs`;
+  $("rows").innerHTML = rows.map(r => {
+    const id = r.when + r.machine.hostname;
+    const cls = !r.ok ? "failed" : r.workload_id === latestId ? "" : "other";
+    return `<tr class="row ${cls}" data-id="${esc(id)}">${COLS.map(c => `<td class="${c.num ? "num" : ""} ${c.key ? "key" : ""}">${c.html(r)}</td>`).join("")}</tr>` +
+      (open.has(id) ? `<tr class="detail"><td colspan="${COLS.length}">${detail(r)}</td></tr>` : "");
+  }).join("") || `<tr><td colspan="${COLS.length}">No benchmarks match. Press Run Benchmark.</td></tr>`;
+}
 
 async function history() {
   const h = await (await fetch("/history")).json();
-  const runs = h.runs.slice(-20).reverse();
-  const newest = runs.find(r => r.ok);
-  $("rows").innerHTML = runs.map(r => {
-    const same = newest && r.workload_id === newest.workload_id;
-    const res = r.result;
-    const changes = (r.workload_changes || []).join("\n");
-    return `<tr class="${!r.ok ? "failed" : same ? "" : "other"}">
-      <td>${esc(r.when.replace("T", " ").slice(0, 16))}</td>
-      <td>${esc(r.machine.hostname)}<small>${esc(r.machine.gpu || "no NVIDIA GPU")} · ${n(r.machine.vram_gb, 0)} GB</small>
-          <small>${esc(r.machine.cpu)}</small></td>
-      <td>${res ? `<b>${n(res.step_time_ms, 2)} ms</b><small>startup ${n(res.startup_s)} s</small>` : esc(r.error)}</td>
-      <td>${!res ? "–" : r.workload.split ? `<small title="${esc(r.workload.split)}">not split (jitted)</small>` : `${n(res.sim_ms, 2)} / ${n(res.learn_ms, 2)} ms`}</td>
-      <td>${res ? Number(res.env_steps_per_s).toLocaleString() : "–"}</td>
-      <td><span class="tag ${same ? "same" : ""}" title="${esc(JSON.stringify(r.workload, null, 1))}">${esc(r.workload_id)}</span>
-          ${changes ? `<small title="${esc(changes)}">changed: ${esc(r.workload_changes.length)} setting(s)</small>` : ""}</td>
-      <td class="load">${r.busy ? '<span class="tag busy">busy before</span> ' : ""}${load(r.load_before)}</td>
-      <td class="load">${load(r.load_during)}</td></tr>`;
-  }).join("") || `<tr><td colspan="8">No benchmarks yet. Press Run Benchmark.</td></tr>`;
+  all = h.runs;
+  const newest = [...all].reverse().find(r => r.ok);
+  latestId = newest?.workload_id;
+  const hosts = [...new Set(all.map(r => r.machine.hostname))].sort();
+  const cur = $("machine").value;
+  $("machine").innerHTML = '<option value="">all</option>' + hosts.map(x => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
+  render();
   if (newest) {
     const r = newest.result;
     $("latest").hidden = false;
-    $("latest").innerHTML = `<div><small>Latest step time</small><strong>${n(r.step_time_ms, 2)} ms</strong></div>
+    $("latest").innerHTML = `<div class="key"><small>Training speed (compare this)</small><strong>${Number(r.env_steps_per_s).toLocaleString()} env steps/s</strong></div>
+      <div><small>Step time</small><strong>${n(r.step_time_ms, 2)} ms</strong></div>
       <div><small>Sim / Learn</small><strong>${newest.workload.split ? "not split" : `${n(r.sim_ms, 2)} / ${n(r.learn_ms, 2)}`}</strong></div>
-      <div><small>Env steps / s</small><strong>${Number(r.env_steps_per_s).toLocaleString()}</strong></div>
+      <div><small>Verdict</small><strong style="font-size:15px">${verdictHtml(newest)}</strong></div>
       <div><small>Machine</small><strong>${esc(newest.machine.hostname)}</strong></div>
       <div><small>Workload</small><strong>${esc(newest.workload.num_envs ?? "")} envs</strong></div>`;
   }

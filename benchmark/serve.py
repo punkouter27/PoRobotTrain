@@ -117,7 +117,7 @@ def run_once() -> int:
     print(
         f"\nBenchmark {TITLE}: {r['step_time_ms']} ms/step, {r['env_steps_per_s']} env steps/s"
         f" (measured {r['measured_s']} s, startup {r['startup_s']} s) on {m.get('gpu') or m.get('cpu')}"
-        + ("  [machine was busy before the run]" if run.get("busy") else "")
+        + f"\nVerdict: {', '.join(run.get('verdict') or []) or 'clean'}"
         + "\nRecorded in benchmark/history.json (commit it to compare machines).",
         flush=True,
     )
