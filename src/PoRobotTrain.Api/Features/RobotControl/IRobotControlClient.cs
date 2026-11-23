@@ -24,6 +24,12 @@ public interface IRobotControlClient
     Task<CommandResultDto> WalkResetAsync(CancellationToken ct = default);
     Task<CommandResultDto> WalkStopAsync(CancellationToken ct = default);
 
+    // simulation features in the walk sandbox (docs/sim_features.md)
+    Task<CommandResultDto> WalkThrowAsync(WalkThrowRequest request, CancellationToken ct = default);
+    Task<CommandResultDto> WalkReplayAsync(WalkReplayRequest request, CancellationToken ct = default);
+    Task<CommandResultDto> WalkFilterAsync(WalkFilterRequest request, CancellationToken ct = default);
+    Task<CommandResultDto> WalkScenarioAsync(WalkScenarioRequest request, CancellationToken ct = default);
+
     // operator console (docs/service_api.md sections 4-7): forwarded unchanged, status code and body included
     Task<ForwardResult> ForwardAsync(HttpMethod method, string pathAndQuery, byte[]? body, CancellationToken ct = default);
 }

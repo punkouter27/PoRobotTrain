@@ -2,6 +2,11 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "HAL/FileManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
+#include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -72,6 +77,74 @@ namespace R1PanelJsonDetail
 		return true;
 	}
 
+	bool ReadVec2(const TArray<TSharedPtr<FJsonValue>>* A, FVector2D& Out)
+	{
+		if (!A || A->Num() < 2)
+		{
+			return false;
+		}
+		Out = FVector2D((*A)[0]->AsNumber(), (*A)[1]->AsNumber());
+		return true;
+	}
+
+	/** Numbers of an array field (null entries become 0). */
+	void Floats(const TSharedPtr<FJsonObject>& J, const TCHAR* Field, TArray<float>& Out)
+	{
+		Out.Reset();
+		if (const TArray<TSharedPtr<FJsonValue>>* A = Arr(J, Field))
+		{
+			for (const TSharedPtr<FJsonValue>& V : *A)
+			{
+				double D = 0.0;
+				Out.Add(V.IsValid() && V->TryGetNumber(D) ? static_cast<float>(D) : 0.f);
+			}
+		}
+	}
+
+	void Strings(const TSharedPtr<FJsonObject>& J, const TCHAR* Field, TArray<FString>& Out)
+	{
+		Out.Reset();
+		if (const TArray<TSharedPtr<FJsonValue>>* A = Arr(J, Field))
+		{
+			for (const TSharedPtr<FJsonValue>& V : *A)
+			{
+				FString S;
+				if (V.IsValid() && V->TryGetString(S)) Out.Add(S);
+			}
+		}
+	}
+
+	const TSharedPtr<FJsonObject>* ObjValue(const TSharedPtr<FJsonValue>& V)
+	{
+		const TSharedPtr<FJsonObject>* P = nullptr;
+		return V.IsValid() && V->TryGetObject(P) && P && P->IsValid() ? P : nullptr;
+	}
+
+	void ReadFall(const TSharedPtr<FJsonObject>& F, FR1FallAnalysis& Out)
+	{
+		Out.bValid = true;
+		Out.TFall = Num(F, TEXT("t_fall"), 0.f);
+		Out.TUnstable = Num(F, TEXT("t_unstable"), Out.TFall);
+		Out.LeadS = Num(F, TEXT("lead_s"), Out.TFall - Out.TUnstable);
+		Out.Reason = Str(F, TEXT("reason"));
+		Out.Cause = Str(F, TEXT("cause"));
+		if (const TArray<TSharedPtr<FJsonValue>>* H = Arr(F, TEXT("history")))
+		{
+			for (const TSharedPtr<FJsonValue>& V : *H)
+			{
+				if (const TSharedPtr<FJsonObject>* P = ObjValue(V))
+				{
+					FR1FallSample Smp;
+					Smp.T = Num(*P, TEXT("t"), 0.f);
+					Smp.bHasMargin = OptNum(*P, TEXT("cp_margin_m"), Smp.CpMarginM);
+					Smp.TiltDeg = Num(*P, TEXT("tilt_deg"), 0.f);
+					Smp.Height = Num(*P, TEXT("height"), 0.f);
+					Out.History.Add(Smp);
+				}
+			}
+		}
+	}
+
 	void ReadRange(const TSharedPtr<FJsonObject>& Lim, const TCHAR* Field, float& Lo, float& Hi)
 	{
 		const TArray<TSharedPtr<FJsonValue>>* A = Arr(Lim, Field);
@@ -98,6 +171,7 @@ uint32 FR1WalkState::GeometryHash() const
 		H = HashCombine(H, GetTypeHash(B.Name));
 		H = HashCombine(H, GetTypeHash(B.PosMj));
 		H = HashCombine(H, GetTypeHash(B.HalfSizeMj));
+		H = HashCombine(H, GetTypeHash(FVector4(B.QuatW, B.QuatX, B.QuatY, B.QuatZ)));
 	}
 	return H;
 }

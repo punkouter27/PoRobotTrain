@@ -23,7 +23,7 @@ public sealed class EveryRouteTests(BrowserFixture fx)
     public static TheoryData<string, int> Routes()
     {
         var data = new TheoryData<string, int>();
-        foreach (var route in new[] { "/", "/motions", "/walk", "/robot-health", "/setup", "/diag", "/robustness", "/no-such-page" })
+        foreach (var route in new[] { "/", "/step/1", "/step/2", "/step/3", "/step/4", "/step/5", "/library", "/motions", "/walk", "/robot-health", "/setup", "/diag", "/robustness", "/no-such-page" })
         {
             data.Add(route, 1366);
             data.Add(route, 390);

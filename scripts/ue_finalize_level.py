@@ -63,11 +63,16 @@ if TAG not in [str(t) for t in tags]:
 print("articulation:", art.get_actor_label(), "tags", [str(t) for t in art.tags])
 
 # --- lighting (Rotator args: roll, pitch, yaw)
+# urlab_setup_scene.py spawns a sun and a fill light on every run; keep one of each (two atmosphere suns make
+# Unreal print a ForwardShadingPriority warning over the HUD).
 sun = None
-for a in eas.get_all_level_actors():
-    if isinstance(a, unreal.DirectionalLight):
-        sun = a
-        break
+for cls in (unreal.DirectionalLight, unreal.PointLight):
+    found = [a for a in eas.get_all_level_actors() if isinstance(a, cls)]
+    for extra in found[1:]:
+        print("removed duplicate", extra.get_actor_label())
+        eas.destroy_actor(extra)
+    if cls is unreal.DirectionalLight and found:
+        sun = found[0]
 if sun is None:
     sun = ensure(unreal.DirectionalLight, "R1_Sun", (0, 0, 500), (0, -50, 120))
 sun.set_actor_rotation(unreal.Rotator(0, -45, 135), False)

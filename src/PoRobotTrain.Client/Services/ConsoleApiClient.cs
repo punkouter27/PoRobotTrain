@@ -114,4 +114,26 @@ public sealed class ConsoleApiClient(HttpClient http)
 
     public Task<(MotionResultDto? Value, string? Error)> PreviewPoseAsync(string name, string target) =>
         PostAsync("poses/preview", new NameTargetRequest(name, target), Ctx.NameTargetRequest, Ctx.MotionResultDto);
+
+    // ---- simulation features (docs/sim_features.md): scenario scripts, duel, gap check, montage, taught poses
+    public Task<(ScenariosDto? Value, string? Error)> ScenariosAsync() => GetAsync("scenarios", Ctx.ScenariosDto);
+
+    public Task<(DuelResponseDto? Value, string? Error)> DuelAsync(DuelRequest req) =>
+        PostAsync("skills/duel", req, Ctx.DuelRequest, Ctx.DuelResponseDto);
+
+    public Task<(RunsDto? Value, string? Error)> RunsAsync() => GetAsync("runs", Ctx.RunsDto);
+
+    public Task<(GapResultDto? Value, string? Error)> GapAsync(GapRequest req) =>
+        PostAsync("gap", req, Ctx.GapRequest, Ctx.GapResultDto);
+
+    public Task<(MontageDto? Value, string? Error)> MontageAsync(string skill) =>
+        GetAsync("skills/montage?skill=" + Uri.EscapeDataString(skill), Ctx.MontageDto);
+
+    public Task<(TaughtPosesDto? Value, string? Error)> TaughtPosesAsync() => GetAsync("poses", Ctx.TaughtPosesDto);
+
+    public Task<(TaughtPoseResultDto? Value, string? Error)> SaveTaughtPoseAsync(TaughtPoseRequest req) =>
+        PostAsync("poses", req, Ctx.TaughtPoseRequest, Ctx.TaughtPoseResultDto);
+
+    public Task<(CommandResultDto? Value, string? Error)> DeleteTaughtPoseAsync(TaughtPoseDto pose) =>
+        PostAsync("poses/delete", new TaughtPoseDeleteRequest(pose.Id!.Value), Ctx.TaughtPoseDeleteRequest, Ctx.CommandResultDto);
 }

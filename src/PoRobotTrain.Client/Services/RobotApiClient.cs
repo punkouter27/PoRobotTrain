@@ -107,6 +107,19 @@ public sealed class RobotApiClient(HttpClient http)
     public Task<CommandResultDto> WalkStopAsync(CancellationToken ct = default) =>
         PostAsync("/api/robot/walk/stop", new EmptyBody(), RobotJsonContext.Default.EmptyBody, ct);
 
+    // ---- simulation features in the walk sandbox (docs/sim_features.md)
+    public Task<CommandResultDto> WalkThrowAsync(WalkThrowRequest req, CancellationToken ct = default) =>
+        PostAsync("/api/robot/walk/throw", req, RobotJsonContext.Default.WalkThrowRequest, ct);
+
+    public Task<CommandResultDto> WalkReplayAsync(WalkReplayRequest req, CancellationToken ct = default) =>
+        PostAsync("/api/robot/walk/replay", req, RobotJsonContext.Default.WalkReplayRequest, ct);
+
+    public Task<CommandResultDto> WalkFilterAsync(WalkFilterRequest req, CancellationToken ct = default) =>
+        PostAsync("/api/robot/walk/filter", req, RobotJsonContext.Default.WalkFilterRequest, ct);
+
+    public Task<CommandResultDto> WalkScenarioAsync(WalkScenarioRequest req, CancellationToken ct = default) =>
+        PostAsync("/api/robot/walk/scenario", req, RobotJsonContext.Default.WalkScenarioRequest, ct);
+
     private static async Task<string> ProblemTextAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         try

@@ -34,10 +34,10 @@
                             {
                                 var sel = b.Id == _behaviour;
                                 var locked = b.Kind == "trained" && !b.Ready;
-                                <button type="button" class="po-chip @(sel ? "active" : string.Empty)" disabled="@(locked || (!IsIdle && !sel))"
-                                        title="@(locked ? "Needs training: open Skills" : PlainOf(b.Desc))" @onclick="() => SelectAsync(b.Id, _amp)">
+                                <RadzenButton class="@($"po-plain po-chip {(sel ? "active" : string.Empty)}")" Disabled="@(locked || (!IsIdle && !sel))"
+                                        title="@(locked ? "Needs training: open Skills" : PlainOf(b.Desc))" Click="() => SelectAsync(b.Id, _amp)">
                                     @b.Label@(locked ? " (needs training)" : string.Empty)
-                                </button>
+                                </RadzenButton>
                             }
                         </div>
                     </div>
@@ -49,7 +49,7 @@
                     @foreach (var amp in Sizes)
                     {
                         var sel = Math.Abs(_amp - amp) < 0.01;
-                        <button type="button" class="po-chip @(sel ? "active" : string.Empty)" disabled="@(!IsIdle && !sel)" @onclick="() => SelectAsync(_behaviour, amp)">@($"{amp:0}°")</button>
+                        <RadzenButton class="@($"po-plain po-chip {(sel ? "active" : string.Empty)}")" Disabled="@(!IsIdle && !sel)" Click="() => SelectAsync(_behaviour, amp)">@($"{amp:0}°")</RadzenButton>
                     }
                 </div>
             }
@@ -62,9 +62,9 @@
     {
         <section class="po-card mc-next">
             <div class="mc-next__row">
-                <button type="button" class="po-btn po-btn--blue mc-next__btn" disabled="@(!IsIdle || !Ready)" @onclick="PlayVirtualAsync">
+                <RadzenButton class="po-plain po-btn po-btn--blue mc-next__btn" Disabled="@(!IsIdle || !Ready)" Click="PlayVirtualAsync">
                     @(IsIdle ? $"▶ Play {Info?.Label}{(SessionVersion is int sv ? $" (session v{sv})" : string.Empty)} on the virtual robot" : Busy)
-                </button>
+                </RadzenButton>
                 <div class="mc-next__why @StatusClass">@VirtualStatus</div>
                 @if (Ui.StepDone(4))
                 {
@@ -91,9 +91,9 @@
             }
             else
             {
-                <button type="button" class="po-btn @(NextStep >= 1 ? "po-btn--orange" : "po-btn--blue") mc-next__btn" disabled="@(!IsIdle || !Ready)" @onclick="NextAsync">
+                <RadzenButton class="@($"po-plain po-btn {(NextStep >= 1 ? "po-btn--orange" : "po-btn--blue")} mc-next__btn")" Disabled="@(!IsIdle || !Ready)" Click="NextAsync">
                     @NextLabel
-                </button>
+                </RadzenButton>
             }
             <div class="mc-next__why @StatusClass">@StatusText</div>
         </div>
@@ -113,8 +113,8 @@
                 @if (Ui.Advanced)
                 {
                     <div class="mc-engine">
-                        <button type="button" class="po-chip @(Ui.Engine == "builtin" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("builtin")'>Built-in</button>
-                        <button type="button" class="po-chip @(Ui.Engine == "unreal" ? "active" : string.Empty)" @onclick='() => Ui.SetEngineAsync("unreal")'>Unreal</button>
+                        <RadzenButton class="@($"po-plain po-chip {(Ui.Engine == "builtin" ? "active" : string.Empty)}")" Click='() => Ui.SetEngineAsync("builtin")'>Built-in</RadzenButton>
+                        <RadzenButton class="@($"po-plain po-chip {(Ui.Engine == "unreal" ? "active" : string.Empty)}")" Click='() => Ui.SetEngineAsync("unreal")'>Unreal</RadzenButton>
                     </div>
                 }
             </div>
@@ -145,8 +145,8 @@
     {
         <section class="po-card mc-adv">
             <div class="btn-row">
-                <button type="button" class="po-btn po-btn--teal" disabled="@(!IsIdle)" @onclick="MonitorAsync">@(IsJob("monitor") ? "Live view on…" : "Live view (no motor power)")</button>
-                <label class="po-muted"><input type="checkbox" @bind="_ghost" /> Virtual robot as a ghost over the real robot (purple = differs by more than 2°)</label>
+                <RadzenButton class="po-plain po-btn po-btn--teal" Disabled="@(!IsIdle)" Click="MonitorAsync">@(IsJob("monitor") ? "Live view on…" : "Live view (no motor power)")</RadzenButton>
+                <label class="po-muted"><RadzenCheckBox TValue="bool" @bind-Value="_ghost" /> Virtual robot as a ghost over the real robot (purple = differs by more than 2°)</label>
             </div>
             <div class="mc-gates">
                 @Gate("Validated", Ready, Info?.Kind == "trained" ? (Ready ? "passed" : "train first") : "scripted")
@@ -173,8 +173,8 @@
             <p>@(PracticeActive ? "The real robot is not connected, so this runs on the virtual robot. Nothing physical moves." : $"Only {PoweredText} will be powered. The right side shows the robot's measured joints while it moves.")</p>
             <p>Skill: <b>@(Info?.Label)</b>@(Sizes.Count > 0 ? $" ({EffAmp:0}°)" : string.Empty). Robot hanging on its stand, area clear, remote in your hand?</p>
             <div class="btn-row">
-                <button type="button" class="po-btn po-btn--orange" style="flex:1" @onclick="RunAsync">@(PracticeActive ? "Yes, run the practice step" : "Yes, move the REAL robot")</button>
-                <button type="button" class="po-btn" @onclick="() => _confirmOpen = false">Cancel</button>
+                <RadzenButton class="po-plain po-btn po-btn--orange" style="flex:1" Click="RunAsync">@(PracticeActive ? "Yes, run the practice step" : "Yes, move the REAL robot")</RadzenButton>
+                <RadzenButton class="po-plain po-btn" Click="() => _confirmOpen = false">Cancel</RadzenButton>
             </div>
         </div>
     </div>

@@ -1,4 +1,5 @@
 using PoRobotTrain.Shared.Contracts;
+using PoRobotTrain.Shared.Validation;
 
 namespace PoRobotTrain.Api.Features.RobotControl;
 
@@ -46,7 +47,8 @@ public static class RobotEndpoints
             await ExecuteAsync(() => client.GetWalkStateAsync(ct)));
 
         group.MapPost("/walk/start", async (WalkStartRequest? req, IRobotControlClient client, CancellationToken ct) =>
-            await ExecuteCommandAsync(() => client.WalkStartAsync(req ?? new WalkStartRequest(), ct)));
+            Refuse(WalkStart, req ?? new WalkStartRequest())
+            ?? await ExecuteCommandAsync(() => client.WalkStartAsync(req ?? new WalkStartRequest(), ct)));
 
         group.MapPost("/walk/command", async (WalkCommandRequest req, IRobotControlClient client, CancellationToken ct) =>
             await ExecuteCommandAsync(() => client.WalkCommandAsync(req, ct)));
@@ -56,6 +58,22 @@ public static class RobotEndpoints
 
         group.MapPost("/walk/stop", async (IRobotControlClient client, CancellationToken ct) =>
             await ExecuteCommandAsync(() => client.WalkStopAsync(ct)));
+
+        // simulation features (docs/sim_features.md): props, replay, action filter, scenario scripts. Checked here with
+        // the same validators the page uses, then forwarded; the service checks again.
+        group.MapPost("/walk/throw", async (WalkThrowRequest req, IRobotControlClient client, CancellationToken ct) =>
+            Refuse(WalkThrow, req) ?? await ExecuteCommandAsync(() => client.WalkThrowAsync(req, ct)));
+
+        group.MapPost("/walk/replay", async (WalkReplayRequest req, IRobotControlClient client, CancellationToken ct) =>
+            Refuse(WalkReplay, req) ?? await ExecuteCommandAsync(() => client.WalkReplayAsync(req, ct)));
+
+        group.MapPost("/walk/filter", async (WalkFilterRequest req, IRobotControlClient client, CancellationToken ct) =>
+            Refuse(WalkFilter, req) ?? await ExecuteCommandAsync(() => client.WalkFilterAsync(req, ct)));
+
+        group.MapPost("/walk/scenario", async (WalkScenarioRequest req, IRobotControlClient client, CancellationToken ct) =>
+            req.Stop != true && string.IsNullOrWhiteSpace(req.Id)
+                ? Results.BadRequest(new CommandResultDto(false, "Pick a scenario."))
+                : await ExecuteCommandAsync(() => client.WalkScenarioAsync(req, ct)));
 
         MapConsole(group);
 
@@ -86,6 +104,8 @@ public static class RobotEndpoints
         "motions/record", "motions/{name}", "motions/{name}/export", "player", "calibration/offsets", "network",
         "preflight", "docs", "docs/{name}", "assistant/chat/history",
         "skills", "skills/detail",
+        // simulation features (docs/sim_features.md): scenario list, logged runs, training montage
+        "scenarios", "runs", "skills/montage",
     ];
 
     internal static readonly string[] ConsolePosts =
@@ -95,6 +115,8 @@ public static class RobotEndpoints
         "calibration/capture", "calibration/save", "network/test", "network/profiles", "network/profiles/delete",
         "network/active", "preflight", "preflight/reset", "assistant/chat", "assistant/chat/reset",
         "skills/train", "skills/activate", "skills/push", "lab/play",
+        // simulation features (docs/sim_features.md): policy duel, sim-to-real gap check, taught head poses
+        "skills/duel", "gap", "poses", "poses/delete",
     ];
 
     private static void MapConsole(RouteGroupBuilder group)
@@ -171,6 +193,18 @@ public static class RobotEndpoints
         {
             return false;
         }
+    }
+
+    private static readonly WalkStartRequestValidator WalkStart = new();
+    private static readonly WalkThrowRequestValidator WalkThrow = new();
+    private static readonly WalkReplayRequestValidator WalkReplay = new();
+    private static readonly WalkFilterRequestValidator WalkFilter = new();
+
+    /// <summary>400 with the first rule broken (same shape as a service refusal), or null when the request is valid.</summary>
+    private static IResult? Refuse<T>(FluentValidation.IValidator<T> validator, T request)
+    {
+        var result = validator.Validate(request);
+        return result.IsValid ? null : Results.BadRequest(new CommandResultDto(false, result.Errors[0].ErrorMessage));
     }
 
     private static async Task<IResult> ExecuteAsync<T>(Func<Task<T>> action)

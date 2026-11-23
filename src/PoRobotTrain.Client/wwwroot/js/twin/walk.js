@@ -278,6 +278,11 @@ class WalkDriver {
     return this._pollOnce();
   }
 
+  /** #2: draw CoM, capture point, support polygon and contact forces on the 3D view. */
+  setPhysicsOverlay(on) {
+    this.twin?.setPhysicsOverlay(!!on);
+  }
+
   dispose() {
     this.disposed = true;
     clearInterval(this.sendTimer);

@@ -402,6 +402,95 @@ class Twin {
     }
     w.nextIndex = state.checkpoint ? state.checkpoint.index : -1;
     w.running = !!state.running;
+    try {
+      this._syncProps(state.props);
+      this._syncPhysics(state.physics);
+    } catch (e) {
+      console.warn("[twin] walk overlay", e); // display only; the robot keeps drawing
+    }
+  }
+
+  /** #9 thrown objects: one mesh per prop id (ball: size [r]; box: half sizes), MuJoCo world, quat wxyz. */
+  _syncProps(props) {
+    const map = (this.propMeshes ??= new Map());
+    const seen = new Set();
+    for (const p of Array.isArray(props) ? props : []) {
+      if (!Array.isArray(p?.pos)) continue;
+      const key = `${p.id}:${p.kind}`;
+      seen.add(key);
+      let mesh = map.get(key);
+      if (!mesh) {
+        const s = p.size ?? [];
+        const geo = p.kind === "box"
+          ? new THREE.BoxGeometry(2 * (s[0] ?? 0.125), 2 * (s[1] ?? s[0] ?? 0.125), 2 * (s[2] ?? s[0] ?? 0.125))
+          : new THREE.SphereGeometry(s[0] ?? 0.1, 20, 14);
+        mesh = new THREE.Mesh(geo, new THREE.MeshStandardNodeMaterial({ color: p.kind === "box" ? "#d9822b" : "#e8505b", roughness: 0.6 }));
+        mesh.castShadow = true;
+        this.zUp.add(mesh);
+        map.set(key, mesh);
+      }
+      mesh.position.set(...p.pos);
+      if (Array.isArray(p.quat) && p.quat.length === 4) mesh.quaternion.set(p.quat[1], p.quat[2], p.quat[3], p.quat[0]);
+    }
+    for (const [key, mesh] of map) {
+      if (seen.has(key)) continue;
+      this.zUp.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+      map.delete(key);
+    }
+  }
+
+  /** #2 physics overlay (toggle setPhysicsOverlay): CoM, capture point, support polygon, contact force arrows. */
+  _syncPhysics(ph) {
+    if (!this.physicsGroup) {
+      const g = (this.physicsGroup = new THREE.Group());
+      g.visible = !!this.physicsOn;
+      const dot = (col, r) => new THREE.Mesh(new THREE.SphereGeometry(r, 16, 10), new THREE.MeshBasicNodeMaterial({ color: col, depthTest: false, transparent: true }));
+      this.phCom = dot("#ffe066", 0.04);
+      this.phComFloor = dot("#ffe066", 0.025);
+      this.phCp = dot("#ff5c57", 0.035);
+      const lines = (col) => {
+        const l = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ color: col, depthTest: false, transparent: true }));
+        l.frustumCulled = false;
+        l.renderOrder = 5;
+        return l;
+      };
+      this.phSupport = lines("#52d984");
+      this.phForces = lines("#3dc7f2");
+      for (const o of [this.phCom, this.phComFloor, this.phCp]) o.renderOrder = 5;
+      g.add(this.phCom, this.phComFloor, this.phCp, this.phSupport, this.phForces);
+      this.zUp.add(g);
+    }
+    const set = (line, pts) => line.geometry.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    const com = ph?.com;
+    this.phCom.visible = this.phComFloor.visible = Array.isArray(com);
+    if (Array.isArray(com)) {
+      this.phCom.position.set(...com);
+      this.phComFloor.position.set(com[0], com[1], 0.01);
+    }
+    const cp = ph?.capture_point;
+    this.phCp.visible = Array.isArray(cp);
+    if (Array.isArray(cp)) this.phCp.position.set(cp[0], cp[1], 0.012);
+    const hull = Array.isArray(ph?.support) ? ph.support : [];
+    const seg = [];
+    for (let i = 0; i < hull.length && hull.length > 1; i++) {
+      const a = hull[i], b = hull[(i + 1) % hull.length];
+      seg.push(a[0], a[1], 0.01, b[0], b[1], 0.01);
+    }
+    set(this.phSupport, seg);
+    const f = [];
+    for (const c of Array.isArray(ph?.contacts) ? ph.contacts : []) {
+      if (!Array.isArray(c?.pos) || !Array.isArray(c?.force)) continue;
+      const k = 0.0015; // m per N: the robot's weight (~250 N) draws about 0.4 m
+      f.push(...c.pos, c.pos[0] + k * c.force[0], c.pos[1] + k * c.force[1], c.pos[2] + k * c.force[2]);
+    }
+    set(this.phForces, f);
+  }
+
+  setPhysicsOverlay(on) {
+    this.physicsOn = !!on;
+    if (this.physicsGroup) this.physicsGroup.visible = this.physicsOn;
   }
 
   walkJson(json) {

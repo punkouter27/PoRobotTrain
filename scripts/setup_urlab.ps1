@@ -30,6 +30,8 @@ if ((git -C $plugin log -1 --format=%s) -ne $localSubject) {
     Invoke-Git -C (Join-Path $plugin 'third_party/MuJoCo/src') fetch --quiet --tags origin
     Invoke-Git -C (Join-Path $plugin 'third_party/MuJoCo/src') checkout --quiet $MujocoTag
     Invoke-Git -C $plugin apply $patch
+    # imported meshes go next to the Blueprint (/Game/Project/Agents/MuJoCoImports), see scripts/ue_reimport_stand.py
+    Invoke-Git -C $plugin apply (Join-Path $root 'scripts/patches/urlab_import_folder.patch')
     Invoke-Git -C $plugin add Source third_party/MuJoCo/src
     Invoke-Git -C $plugin -c user.name=PoRobotTrain -c user.email=porobottrain@localhost commit --quiet -m $localSubject
     Write-Host "URLab: $UrlabCommit + $patch + MuJoCo $MujocoTag committed locally"

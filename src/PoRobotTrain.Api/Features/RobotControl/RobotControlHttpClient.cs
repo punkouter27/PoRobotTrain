@@ -74,6 +74,18 @@ public sealed class RobotControlHttpClient(HttpClient http) : IRobotControlClien
     public Task<CommandResultDto> WalkStopAsync(CancellationToken ct = default) =>
         PostAsync("/walk/stop", new { }, ct);
 
+    public Task<CommandResultDto> WalkThrowAsync(WalkThrowRequest request, CancellationToken ct = default) =>
+        PostAsync("/walk/throw", request, ct);
+
+    public Task<CommandResultDto> WalkReplayAsync(WalkReplayRequest request, CancellationToken ct = default) =>
+        PostAsync("/walk/replay", request, ct);
+
+    public Task<CommandResultDto> WalkFilterAsync(WalkFilterRequest request, CancellationToken ct = default) =>
+        PostAsync("/walk/filter", request, ct);
+
+    public Task<CommandResultDto> WalkScenarioAsync(WalkScenarioRequest request, CancellationToken ct = default) =>
+        PostAsync("/walk/scenario", request, ct);
+
     public async Task<ForwardResult> ForwardAsync(HttpMethod method, string pathAndQuery, byte[]? body, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(method, pathAndQuery);

@@ -50,9 +50,9 @@
                 @Row(false, "Connection", "not checked yet", pending: true)
             }
             <div class="btn-row">
-                <button type="button" class="po-btn po-btn--orange-soft" disabled="@(!Ui.Online || Looking || !string.IsNullOrEmpty(Ui.Status?.Job))" @onclick="LookAsync">
+                <RadzenButton class="po-plain po-btn po-btn--orange-soft" Disabled="@(!Ui.Online || Looking || !string.IsNullOrEmpty(Ui.Status?.Job))" Click="LookAsync">
                     @(Looking ? "Looking…" : Ui.RealConnected ? "Read again" : "Look again")
-                </button>
+                </RadzenButton>
                 <a class="po-btn po-btn--blue-soft" href="/robot-health">Full health details</a>
             </div>
         </section>

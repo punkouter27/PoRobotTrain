@@ -41,13 +41,13 @@
                 <span class="po-pill @StateClass(s.State)">@StateText(s.State)</span>
             </div>
             <div class="lib-actions">
-                <button type="button" class="po-btn po-btn--blue-soft" disabled="@(s.State != "ready")" @onclick="() => ViewUnrealAsync(s)">View in Unreal</button>
-                <button type="button" class="po-btn po-btn--orange-soft" disabled="@(s.State != "ready" || !IsIdle)" title="Copies the active version only; nothing moves" @onclick="() => PushAsync(s.Id)">
+                <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(s.State != "ready")" Click="() => ViewUnrealAsync(s)">View in Unreal</RadzenButton>
+                <RadzenButton class="po-plain po-btn po-btn--orange-soft" Disabled="@(s.State != "ready" || !IsIdle)" title="Copies the active version only; nothing moves" Click="() => PushAsync(s.Id)">
                     @(IsJob("push") && _busySkill == s.Id ? "Copying…" : "Copy to robot")
-                </button>
-                <button type="button" class="po-btn" disabled="@(!IsIdle)" @onclick="() => TrainAsync(s.Id)">
+                </RadzenButton>
+                <RadzenButton class="po-plain po-btn" Disabled="@(!IsIdle)" Click="() => TrainAsync(s.Id)">
                     @(IsJob("train") && _busySkill == s.Id ? "Training…" : s.State == "untrained" ? "Train" : "Train a new session")
-                </button>
+                </RadzenButton>
             </div>
 
             <div class="lib-table-wrap">
@@ -72,10 +72,10 @@
                                     {
                                         <a class="po-btn po-btn--blue lib-play" href="@PlayHref(s.Id, v.Version)" title="Plays exactly this session on the virtual robot">▶ Play</a>
                                     }
-                                    <button type="button" class="lib-link" @onclick="() => ToggleAsync(s.Id, v.Version)">@(open ? "Hide results" : "Results")</button>
+                                    <RadzenButton class="po-plain lib-link" Click="() => ToggleAsync(s.Id, v.Version)">@(open ? "Hide results" : "Results")</RadzenButton>
                                     @if (v.Passed && !v.Active)
                                     {
-                                        <button type="button" class="lib-link" disabled="@(!IsIdle)" @onclick="() => ActivateAsync(s.Id, v.Version)">Make active</button>
+                                        <RadzenButton class="po-plain lib-link" Disabled="@(!IsIdle)" Click="() => ActivateAsync(s.Id, v.Version)">Make active</RadzenButton>
                                     }
                                 </td>
                             </tr>

@@ -101,9 +101,13 @@ public sealed record JobProgressDto(
 
 // ------------------------------------------------------------------------------------- walk sandbox (#20)
 
+/// <summary>course: flat | loop | procedural; mode: policy | hold | free_hold (no harness: topples). Seed and difficulty
+/// (0..1) only matter for procedural and are left out of the body when null (docs/sim_features.md).</summary>
 public sealed record WalkStartRequest(
     [property: JsonPropertyName("course")] string Course = "loop",
-    [property: JsonPropertyName("mode")] string Mode = "policy");
+    [property: JsonPropertyName("mode")] string Mode = "policy",
+    [property: JsonPropertyName("seed"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? Seed = null,
+    [property: JsonPropertyName("difficulty"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Difficulty = null);
 
 public sealed record WalkCommandRequest(
     [property: JsonPropertyName("vx")] double Vx = 0,
@@ -162,4 +166,17 @@ public sealed record WalkStateDto(
     [property: JsonPropertyName("lap")] WalkLapDto? Lap = null,
     [property: JsonPropertyName("geometry")] WalkGeometryDto? Geometry = null,
     [property: JsonPropertyName("puppet")] WalkPuppetDto? Puppet = null,
-    [property: JsonPropertyName("error")] string? Error = null);
+    [property: JsonPropertyName("error")] string? Error = null,
+    // simulation features (docs/sim_features.md); null when no sim exists or the service predates them
+    [property: JsonPropertyName("seed")] long? Seed = null,
+    [property: JsonPropertyName("difficulty")] double? Difficulty = null,
+    [property: JsonPropertyName("physics")] WalkPhysicsDto? Physics = null,
+    [property: JsonPropertyName("motors")] WalkMotorsDto? Motors = null,
+    [property: JsonPropertyName("thermal")] WalkThermalDto? Thermal = null,
+    [property: JsonPropertyName("battery")] WalkBatteryDto? Battery = null,
+    [property: JsonPropertyName("action_filter")] WalkActionFilterDto? ActionFilter = null,
+    [property: JsonPropertyName("props")] List<WalkPropDto>? Props = null,
+    [property: JsonPropertyName("fall_analysis")] WalkFallAnalysisDto? FallAnalysis = null,
+    [property: JsonPropertyName("falls_log")] List<WalkFallLogDto>? FallsLog = null,
+    [property: JsonPropertyName("replay")] WalkReplayStateDto? Replay = null,
+    [property: JsonPropertyName("scenario")] WalkScenarioStateDto? Scenario = null);

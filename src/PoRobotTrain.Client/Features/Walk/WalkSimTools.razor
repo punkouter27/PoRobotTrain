@@ -1,0 +1,230 @@
+@using System.Globalization
+@inject RobotApiClient Api
+@inject ConsoleApiClient ConsoleApi
+@inject IValidator<WalkThrowRequest> ThrowValidator
+@inject IValidator<WalkReplayRequest> ReplayValidator
+@inject IValidator<WalkFilterRequest> FilterValidator
+
+@* Simulation-only tools for the walk sandbox (docs/sim_features.md): throw objects (#9), slow-motion replay (#12),
+   action filter (#15) and scenario scripts (#18). Each one only talks to the headless MuJoCo walk sandbox. *@
+<div class="sub-section sub-section--virtual walk-tools">
+    <div class="sec-hdr">
+        <span class="sub-title sub-title--virtual">THROW</span>
+        <span class="po-muted">balls and boxes at the robot</span>
+    </div>
+    <div class="size-row">
+        <RadzenButton class="@($"po-plain po-chip {(_throwKind == "ball" ? "active" : string.Empty)}")" aria-pressed="@(_throwKind == "ball")" Click='() => _throwKind = "ball"'>Ball (0.45 kg)</RadzenButton>
+        <RadzenButton class="@($"po-plain po-chip {(_throwKind == "box" ? "active" : string.Empty)}")" aria-pressed="@(_throwKind == "box")" Click='() => _throwKind = "box"'>Box (2 kg)</RadzenButton>
+    </div>
+    <div class="size-row">
+        @foreach (var (deg, label) in Directions)
+        {
+            <RadzenButton class="@($"po-plain po-chip {(Math.Abs(_throwFrom - deg) < 0.01 ? "active" : string.Empty)}")" Click="() => _throwFrom = deg">@label</RadzenButton>
+        }
+    </div>
+    <div class="walk-form">
+        <label>Speed (m/s) <RadzenNumeric TValue="double" class="assist-input" ShowUpDown="false" Step="0.5" @bind-Value="_throwSpeed" /><FieldError Message="@Err(_throwErrors, "Speed")" /></label>
+        <label>From (°, 90 = left) <RadzenNumeric TValue="double" class="assist-input" ShowUpDown="false" Step="15" @bind-Value="_throwFrom" /><FieldError Message="@Err(_throwErrors, "FromDeg")" /></label>
+    </div>
+    <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!Running || _busy)" Click="ThrowAsync">Throw @_throwKind</RadzenButton>
+</div>
+
+<div class="sub-section sub-section--virtual walk-tools">
+    <div class="sec-hdr">
+        <span class="sub-title sub-title--virtual">REPLAY</span>
+        <span class="po-pill @(ReplayActive ? "po-pill--blue" : string.Empty)">@(ReplayActive ? "REPLAYING" : "LIVE")</span>
+    </div>
+    <div class="walk-form">
+        <label>Last (s) <RadzenNumeric TValue="double" class="assist-input" ShowUpDown="false" Step="1" @bind-Value="_replaySeconds" /><FieldError Message="@Err(_replayErrors, "Seconds")" /></label>
+        <label>Speed (x) <RadzenNumeric TValue="double" class="assist-input" ShowUpDown="false" Step="0.05" @bind-Value="_replaySpeed" /><FieldError Message="@Err(_replayErrors, "Speed")" /></label>
+    </div>
+    <div class="btn-row">
+        <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!Running || _busy || ReplayActive)" Click="ReplayAsync">Replay last @(_replaySeconds.ToString("0.#", Inv)) s at @(_replaySpeed.ToString("0.##", Inv))x</RadzenButton>
+        <RadzenButton class="po-plain po-btn" Disabled="@(!ReplayActive || _busy)" Click="StopReplayAsync">Stop replay</RadzenButton>
+    </div>
+    <label class="walk-check">
+        <RadzenCheckBox TValue="bool" Value="@AutoReplay" Disabled="@(!Running || _busy)" Change="@((bool v) => SetAutoReplayAsync(v))" />
+        Auto replay on fall (3 s at 0.25x, 1 s after every fall)
+    </label>
+    <div class="po-muted">The simulation pauses while it replays and carries on afterwards.</div>
+</div>
+
+<div class="sub-section sub-section--virtual walk-tools">
+    <div class="sec-hdr">
+        <span class="sub-title sub-title--virtual">ACTION FILTER</span>
+        <span class="po-pill @(State?.ActionFilter?.Apply == true ? "po-pill--orange" : string.Empty)">@(State?.ActionFilter?.Apply == true ? "APPLIED" : "VIEW ONLY")</span>
+    </div>
+    <div class="walk-form">
+        <label>Alpha (0-1) <RadzenNumeric TValue="double" class="assist-input" ShowUpDown="false" Step="0.05" @bind-Value="_alpha" /><FieldError Message="@Err(_filterErrors, "Alpha")" /></label>
+        <label class="walk-check"><RadzenCheckBox TValue="bool" @bind-Value="_apply" /> Apply to the walk sim</label>
+    </div>
+    <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!Running || _busy)" Click="FilterAsync">Set filter</RadzenButton>
+    <div class="po-muted">Low-pass (EMA) of the policy action. The shipped policies were trained without it, so applying it can change how they walk.</div>
+</div>
+
+<div class="sub-section sub-section--virtual walk-tools">
+    <div class="sec-hdr">
+        <span class="sub-title sub-title--virtual">SCENARIO</span>
+        <span class="po-pill @(ScenarioRunning ? "po-pill--blue" : string.Empty)">@(ScenarioRunning ? "PLAYING" : State?.Scenario is { Done: true } ? "DONE" : "OFF")</span>
+    </div>
+    @if (_scenariosError is not null)
+    {
+        <div class="why">Scenarios unavailable: @_scenariosError</div>
+    }
+    else if (_scenarios is null)
+    {
+        <div class="po-muted">Loading scenarios…</div>
+    }
+    else if (_scenarios.Count == 0)
+    {
+        <div class="po-muted">No walk scenarios in RobotControl/scenarios.</div>
+    }
+    else
+    {
+        <RadzenDropDown TValue="string" class="assist-input" Data="@ScenarioOptions" TextProperty="Text" ValueProperty="Value" @bind-Value="_scenarioId" aria-label="Walk scenario" />
+        @if (SelectedScenario is { } sc)
+        {
+            <div class="po-muted">@sc.Description @(sc.DurationS is double d ? $"({d:0.#} s)" : string.Empty)</div>
+        }
+        <div class="btn-row">
+            <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!Online || _busy || string.IsNullOrEmpty(_scenarioId))" Click="PlayScenarioAsync">Play scenario</RadzenButton>
+            <RadzenButton class="po-plain po-btn" Disabled="@(!ScenarioRunning || _busy)" Click="StopScenarioAsync">Stop script</RadzenButton>
+        </div>
+    }
+    @if (State?.Scenario is { } run)
+    {
+        var total = _scenarios?.FirstOrDefault(s => s.Id == run.Id)?.DurationS;
+        var pct = total is > 0 && run.T is double rt ? Math.Clamp(100.0 * rt / total.Value, 0, 100) : run.Steps > 0 ? 100.0 * run.Step / run.Steps : 0;
+        <div class="rb-progress" role="progressbar" aria-label="Scenario progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@pct.ToString("0", Inv)">
+            <div class="rb-progress__bar" style="width:@pct.ToString("0.#", Inv)%"></div>
+        </div>
+        <div class="po-muted">@run.Id: step @Math.Min(run.Step, run.Steps) / @run.Steps · @(run.T is double t ? $"{t:0.0} s" : "—")@(total is double tt ? $" of {tt:0.#} s" : string.Empty)@(run.Done ? " · done" : string.Empty)</div>
+    }
+    <div class="po-muted">A scenario (re)starts the sandbox with its own course and mode, then plays its steps on sim time.</div>
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+    private static readonly (double Deg, string Label)[] Directions = [(0, "Front"), (90, "Left"), (180, "Behind"), (-90, "Right")];
+
+    [Parameter] public WalkStateDto? State { get; set; }
+    [Parameter] public bool Online { get; set; }
+    [Parameter] public EventCallback<string?> OnToast { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+
+    private string _throwKind = "ball";
+    private double _throwSpeed = 4.0;
+    private double _throwFrom = 90;
+    private double _replaySeconds = 3.0;
+    private double _replaySpeed = 0.25;
+    private bool? _autoReplay;
+    private double _alpha = 0.5;
+    private bool _apply;
+    private bool _filterSeeded;
+    private bool _busy;
+    private List<ScenarioInfoDto>? _scenarios;
+    private string? _scenariosError;
+    private string? _scenarioId;
+    private Dictionary<string, string> _throwErrors = [];
+    private Dictionary<string, string> _replayErrors = [];
+    private Dictionary<string, string> _filterErrors = [];
+
+    private bool Running => State?.Running ?? false;
+    private bool ReplayActive => State?.Replay?.Active ?? false;
+    private bool AutoReplay => _autoReplay ?? State?.Replay?.AutoOnFall ?? false;
+    private bool ScenarioRunning => State?.Scenario is { Done: false };
+    private ScenarioInfoDto? SelectedScenario => _scenarios?.FirstOrDefault(s => s.Id == _scenarioId);
+    private List<SelectOption> ScenarioOptions => (_scenarios ?? []).Select(s => new SelectOption(s.Id, s.Name ?? s.Id)).ToList();
+
+    private static string? Err(Dictionary<string, string> errors, string field) => errors.GetValueOrDefault(field);
+
+    private static Dictionary<string, string> Errors(FluentValidation.Results.ValidationResult r) =>
+        r.Errors.GroupBy(e => e.PropertyName).ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (list, err) = await ConsoleApi.ScenariosAsync();
+        _scenarios = list?.Scenarios?.Where(s => s.Target is null or "walk").ToList();
+        _scenariosError = _scenarios is null ? err ?? "no reply" : null;
+        _scenarioId = _scenarios?.FirstOrDefault()?.Id;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // start the filter form from what the sim uses, once
+        if (!_filterSeeded && State?.ActionFilter is { } f)
+        {
+            _filterSeeded = true;
+            _alpha = f.Alpha;
+            _apply = f.Apply;
+        }
+        if (_autoReplay is bool a && State?.Replay is { } r && r.AutoOnFall == a)
+        {
+            _autoReplay = null; // the service caught up; follow it again
+        }
+    }
+
+    private async Task<bool> SendAsync(Func<Task<CommandResultDto>> call, string okText)
+    {
+        _busy = true;
+        try
+        {
+            var res = await call();
+            await OnToast.InvokeAsync(res.Ok ? okText : res.Error ?? "Refused.");
+            await OnRefresh.InvokeAsync();
+            return res.Ok;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ThrowAsync()
+    {
+        var req = new WalkThrowRequest(_throwKind, _throwSpeed, _throwFrom);
+        _throwErrors = Errors(await ThrowValidator.ValidateAsync(req));
+        if (_throwErrors.Count == 0)
+        {
+            await SendAsync(() => Api.WalkThrowAsync(req), $"Threw a {_throwKind} at {_throwSpeed:0.#} m/s from {_throwFrom:0}°.");
+        }
+    }
+
+    private async Task ReplayAsync()
+    {
+        var req = new WalkReplayRequest(Seconds: _replaySeconds, Speed: _replaySpeed);
+        _replayErrors = Errors(await ReplayValidator.ValidateAsync(req));
+        if (_replayErrors.Count == 0)
+        {
+            await SendAsync(() => Api.WalkReplayAsync(req), $"Replaying the last {_replaySeconds:0.#} s at {_replaySpeed:0.##}x.");
+        }
+    }
+
+    private Task StopReplayAsync() =>
+        SendAsync(() => Api.WalkReplayAsync(new WalkReplayRequest(Stop: true)), "Replay stopped; the simulation carries on.");
+
+    private async Task SetAutoReplayAsync(bool on)
+    {
+        _autoReplay = on;
+        if (!await SendAsync(() => Api.WalkReplayAsync(new WalkReplayRequest(AutoOnFall: on)), on ? "Auto replay on fall is on." : "Auto replay on fall is off."))
+        {
+            _autoReplay = null;
+        }
+    }
+
+    private async Task FilterAsync()
+    {
+        var req = new WalkFilterRequest(_alpha, _apply);
+        _filterErrors = Errors(await FilterValidator.ValidateAsync(req));
+        if (_filterErrors.Count == 0)
+        {
+            await SendAsync(() => Api.WalkFilterAsync(req), _apply ? $"Filtered action (alpha {_alpha:0.##}) now drives the walk sim." : $"Filter alpha {_alpha:0.##}, shown beside the raw action only.");
+        }
+    }
+
+    private Task PlayScenarioAsync() =>
+        SendAsync(() => Api.WalkScenarioAsync(new WalkScenarioRequest(Id: _scenarioId)), $"Playing scenario {SelectedScenario?.Name ?? _scenarioId}.");
+
+    private Task StopScenarioAsync() =>
+        SendAsync(() => Api.WalkScenarioAsync(new WalkScenarioRequest(Stop: true)), "Scenario script stopped; the sandbox keeps running.");
+}

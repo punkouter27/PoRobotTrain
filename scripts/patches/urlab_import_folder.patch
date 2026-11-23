@@ -1,0 +1,18 @@
+diff --git a/Source/URLabEditor/Private/MujocoGenerationAction.cpp b/Source/URLabEditor/Private/MujocoGenerationAction.cpp
+index 82a0167..e0a6029 100644
+--- a/Source/URLabEditor/Private/MujocoGenerationAction.cpp
++++ b/Source/URLabEditor/Private/MujocoGenerationAction.cpp
+@@ -125,7 +125,13 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
+ 	FString XMLDir = FPaths::GetPath(XMLPath);
+ 	USCS_Node* SceneRoot = BP->SimpleConstructionScript->GetDefaultSceneRootNode();
+ 
++	// PoRobotTrain: mesh/material assets go next to the imported Blueprint (<bp folder>/<name>_Assets), so an import
++	// into a project folder such as /Game/Project/Agents/MuJoCoImports stays together. Default imports are unchanged.
+ 	FString BaseContentPath = TEXT("/Game/MuJoCoImports/");
++	if (BP->GetOutermost())
++	{
++		BaseContentPath = FPackageName::GetLongPackagePath(BP->GetOutermost()->GetName()) + TEXT("/");
++	}
+ 	FString BaseName = FPaths::GetBaseFilename(XMLPath);
+ 	if (BaseName.IsEmpty())
+ 		BaseName = TEXT("MemModel");

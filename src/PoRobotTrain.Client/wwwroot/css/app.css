@@ -80,7 +80,7 @@ body {
 .po-chip { padding: 6px 8px; font-size: 12px; }
 .po-chip.active { background: #e6ebf5; color: #0e1118; }
 .po-btn:disabled, .po-chip:disabled { opacity: .45; cursor: not-allowed; background: #292d38 !important; color: var(--po-muted); }
-.po-btn--blue { background: var(--po-blue); }
+.po-btn--blue { background: #2266d0; }   /* 4.8:1 with the button text (--po-blue is 4.1:1) */
 .po-btn--blue-soft { background: #1e4278; font-size: 12px; }
 .po-btn--orange { background: var(--po-orange); }
 .po-btn--orange-soft { background: var(--po-soft-orange); }

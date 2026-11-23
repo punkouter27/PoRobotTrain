@@ -25,7 +25,7 @@
             <span class="po-pill @(Training ? "po-pill--blue" : _online ? "po-pill--ok" : "po-pill--bad")">@(Training ? "TRAINING" : _online ? "READY" : "OFFLINE")</span>
         </div>
         <div class="btn-row">
-            <button type="button" class="po-btn po-btn--blue-soft" disabled="@(!IsIdle)" @onclick='() => TrainAsync("all")'>Train all (≈20 min)</button>
+            <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!IsIdle)" Click='() => TrainAsync("all")'>Train all (≈20 min)</RadzenButton>
             @if (!_online)
             {
                 <span class="po-muted">Behaviour service offline: start <code>python -m robotcontrol.behaviours.service</code>.</span>
@@ -68,7 +68,7 @@
                 <div class="po-muted">@c.Desc</div>
                 <div class="sk-metrics"><span>Max size: @c.MaxDeg.ToString("0", Inv)°</span></div>
                 <div class="btn-row">
-                    <button type="button" class="po-btn po-btn--blue" @onclick="() => Use(c.Id)">Use</button>
+                    <RadzenButton class="po-plain po-btn po-btn--blue" Click="() => Use(c.Id)">Use</RadzenButton>
                 </div>
             </section>
         }
@@ -103,10 +103,10 @@
                     <div class="why">@(Ui.Advanced ? s.Reason : WhyPlain(s.State))</div>
                 }
                 <div class="btn-row">
-                    <button type="button" class="po-btn po-btn--blue" disabled="@(s.State != "ready")" title="@(s.State == "ready" ? "Open Virtual | Real robot with this skill" : "Train it first")" @onclick="() => Use(s.Id)">Use</button>
-                    <button type="button" class="po-btn po-btn--blue-soft" disabled="@(!IsIdle)" @onclick="() => TrainAsync(s.Id)">
+                    <RadzenButton class="po-plain po-btn po-btn--blue" Disabled="@(s.State != "ready")" title="@(s.State == "ready" ? "Open Virtual | Real robot with this skill" : "Train it first")" Click="() => Use(s.Id)">Use</RadzenButton>
+                    <RadzenButton class="po-plain po-btn po-btn--blue-soft" Disabled="@(!IsIdle)" Click="() => TrainAsync(s.Id)">
                         @(IsTrainingSkill(s.Id) ? "Training…" : s.State == "untrained" ? "Train" : "Retrain")
-                    </button>
+                    </RadzenButton>
                 </div>
             </section>
         }
