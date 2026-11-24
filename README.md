@@ -82,7 +82,13 @@ src/                    Blazor WASM control UI + .NET API; browser 3D twin asset
 docs/                   setup and procedures
 external/               reference clones (unitree_mujoco, unitree_sdk2_python, unitree_rl_mjlab, urlab_bridge) - not committed
 logs/                   training logs, validation reports - not committed
+SCREENSHOTS/            before/after reports for UI changes (<feature>_report.html), made by scripts/screenshots.ps1
 ```
+
+UI changes get a before/after report in [`SCREENSHOTS/`](SCREENSHOTS/):
+`powershell -ExecutionPolicy Bypass -File scripts/screenshots.ps1 -Feature <name> [-Before <git ref> | -BeforeDir <PNGs>]`
+shoots the local Release publish at 1366x768 and 390x844 (never the live site) and writes
+`SCREENSHOTS/<feature>_report.html` with one side-by-side `<feature>_sidebyside.png` (AGENTS.md part 3).
 
 ## Sources
 

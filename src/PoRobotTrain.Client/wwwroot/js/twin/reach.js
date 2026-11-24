@@ -3,6 +3,7 @@
 // limits and returns the fingertip/face point for each one, so the 3D view can show where a behaviour can
 // possibly reach (dim cloud) and the narrow band the selected behaviour actually sweeps (bright cloud).
 import { DEG, qAxisAngle, qMul, qRotate } from "./fk.js";
+import { classifyAdapter, toleranceFor } from "./gpu_tolerance.js";
 
 const MAX_LINKS = 8;
 const WGSL = /* wgsl */ `
@@ -84,7 +85,7 @@ async function getGpu() {
     const device = await adapter.requestDevice();
     const module = device.createShaderModule({ code: WGSL });
     const pipeline = await device.createComputePipelineAsync({ layout: "auto", compute: { module, entryPoint: "main" } });
-    gpu = { device, pipeline };
+    gpu = { device, pipeline, adapter: classifyAdapter(adapter.info) };
   } catch (e) {
     console.warn("[twin] WebGPU compute unavailable, using CPU reach sampling", e);
     gpu = false;
@@ -156,10 +157,11 @@ export async function computeReach(spec) {
   return { points: reachCpu(spec), backend: "cpu", ms: performance.now() - t0 };
 }
 
-/** GPU vs CPU agreement on the first `n` samples (only meaningful when WebGPU is present). */
+/** GPU vs CPU agreement on the first `n` samples (only meaningful when WebGPU is present). The tolerance depends on
+ *  the adapter (gpu_tolerance.js): 0.1 mm discrete or unknown, 0.5 mm integrated; the result names the adapter. */
 export async function selfTest(spec, n = 256) {
   const g = await getGpu();
-  if (!g) return { ok: true, backend: "cpu", note: "WebGPU not available; CPU path only" };
+  if (!g) return { ok: true, backend: "cpu", note: "WebGPU not available; CPU path only", adapter: { kind: "none", label: "CPU (no WebGPU adapter)" } };
   const small = { ...spec, count: n };
   const a = await reachGpu(g, small);
   const b = reachCpu(small);
@@ -167,5 +169,6 @@ export async function selfTest(spec, n = 256) {
   for (let i = 0; i < n; i++) {
     for (let k = 0; k < 3; k++) maxErr = Math.max(maxErr, Math.abs(a[i * 4 + k] - b[i * 4 + k]));
   }
-  return { ok: maxErr < 1e-4, backend: "webgpu", maxErrM: maxErr, samples: n };
+  const tolM = toleranceFor(g.adapter.kind);
+  return { ok: maxErr < tolM, backend: "webgpu", maxErrM: maxErr, tolM, adapter: g.adapter, samples: n };
 }

@@ -49,7 +49,9 @@ export async function capabilities() {
       if (!navigator.gpu) throw new Error("navigator.gpu missing: twin uses WebGL2 + CPU reach sampling");
       const a = await navigator.gpu.requestAdapter();
       if (!a) throw new Error("no adapter: twin uses WebGL2 + CPU reach sampling");
-      return a.info?.description || a.info?.vendor || "adapter ok";
+      const { classifyAdapter } = await import("./gpu_tolerance.js");
+      const c = classifyAdapter(a.info);
+      return `${c.label} (${c.kind})`;
     })),
   });
   return rows;
@@ -122,8 +124,11 @@ export async function selfTests() {
         seed: 3,
       };
       const r = await reach.selfTest(spec);
-      if (!r.ok) throw new Error(`GPU/CPU differ by ${(r.maxErrM * 1000).toFixed(3)} mm`);
-      return r.backend === "webgpu" ? `WebGPU = CPU within ${(r.maxErrM * 1e6).toFixed(1)} µm` : r.note;
+      const on = `${r.adapter.label} (${r.adapter.kind})`;
+      if (!r.ok) throw new Error(`GPU/CPU differ by ${(r.maxErrM * 1000).toFixed(3)} mm > tol ${(r.tolM * 1000).toFixed(1)} mm on ${on}`);
+      return r.backend === "webgpu"
+        ? `WebGPU = CPU within ${(r.maxErrM * 1e6).toFixed(1)} µm (tol ${(r.tolM * 1000).toFixed(1)} mm) on ${on}`
+        : `${r.note} · ran on ${r.adapter.label}`;
     })),
   });
   return rows;

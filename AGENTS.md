@@ -225,3 +225,17 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_urlab.ps1
 # the log then has "R1Policy step" / "R1Policy perf" lines and the overlay shows reward and latency).
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject -game -windowed -ResX=1600 -ResY=900 -ForceRes -ShowcaseCapture=$env:TEMP\r1cap -ShowcaseTouch -ShowcaseBench -unattended
 ```
+
+UI changes: the before/after report under `SCREENSHOTS/` is one command. It Release-publishes this tree and the
+`-Before` ref (default `HEAD~1`, a temporary worktree), runs each with the behaviour service in simulation, shoots `/`,
+`/diag`, `/skills` (or `-Routes`) at 1366x768 and 390x844 in headless Edge (never the live site), or takes `-BeforeDir`
+PNGs named `*_<route>_<W>x<H>.png` (e.g. a `-ShowcaseCapture` folder renamed that way):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\screenshots.ps1 -Feature <name> [-Before <ref> | -BeforeDir <dir>] [-Routes /walk] [-Notes "..."]
+# -> SCREENSHOTS/<feature>_report.html, <feature>_sidebyside.png, <feature>_{before,after}_<route>_<W>x<H>.png
+```
+
+/diag's "Reach kernel (WebGPU vs CPU)" row names the adapter that ran and its tolerance (`js/twin/gpu_tolerance.js`,
+owner decision 2026-11-24): 0.1 mm on a discrete or unclassified GPU, up to 0.5 mm on an integrated one;
+`tests/test_reach_tolerance.py` runs `reach_tolerance.test.mjs` with node.

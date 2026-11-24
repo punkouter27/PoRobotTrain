@@ -14,6 +14,7 @@
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Components/Sensors/MjSensor.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #endif
 
 // =====================================================================================================
@@ -395,8 +396,27 @@ void FR1UrlabBridge::StartInEngineSession()
 	{
 		if (K == TEXT("home") || K.EndsWith(TEXT("_home"))) { Home = K; break; }
 	}
-	const bool bReset = !Home.IsEmpty() && Art->ResetToKeyframe(Home);
-	if (AAMjManager* M = AAMjManager::GetManager()) { M->SetPaused(false); }
+	// ResetToKeyframe writes qpos/qvel/ctrl and runs mj_forward on the LIVE mjData from this (game) thread, while
+	// URLab's async physics thread runs mj_step on the same mjData under CallbackMutex. Unlocked, the two share
+	// mjData's stack/arena: the 9:16 Level 0 run crashed 2 of 2 times inside mujoco.dll (once in this mj_forward, once
+	// in the physics thread's mj_step), because the policy host and the skill brain each start a session on frame 1
+	// while the physics thread is already stepping. Take the physics thread's lock, as R1Showcase's benchmark does.
+	bool bReset = false;
+	AAMjManager* M = AAMjManager::GetManager();
+	if (!Home.IsEmpty())
+	{
+		UMjPhysicsEngine* Engine = M ? M->PhysicsEngine : nullptr;
+		if (Engine)
+		{
+			FScopeLock Lock(&Engine->CallbackMutex);
+			bReset = Art->ResetToKeyframe(Home);
+		}
+		else
+		{
+			bReset = Art->ResetToKeyframe(Home);   // no physics thread yet: nothing to race with
+		}
+	}
+	if (M) { M->SetPaused(false); }
 	UE_LOG(LogR1Twin, Log, TEXT("FR1UrlabBridge: in-engine session started (reset to '%s': %s, physics unpaused)"),
 		*Home, bReset ? TEXT("ok") : TEXT("failed"));
 #endif
