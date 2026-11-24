@@ -46,8 +46,10 @@ def test_every_hinge_is_limited_to_the_joint_map():
 def test_actuators_are_pd_position_servos():
     m = _model()
     assert m.nu == 26
-    assert set(m.actuator_gaintype) == {mujoco.mjtGain.mjGAIN_FIXED}
-    assert set(m.actuator_biastype) == {mujoco.mjtBias.mjBIAS_AFFINE}  # bias = -kp*q - kd*qdot: a PD servo
+    assert {int(g) for g in m.actuator_gaintype} == {int(mujoco.mjtGain.mjGAIN_FIXED)}
+    assert {int(b) for b in m.actuator_biastype} == {
+        int(mujoco.mjtBias.mjBIAS_AFFINE)
+    }  # bias = -kp*q - kd*qdot: a PD servo
     assert np.all(m.actuator_gainprm[:, 0] == -m.actuator_biasprm[:, 1])  # same kp in gain and bias
 
 
