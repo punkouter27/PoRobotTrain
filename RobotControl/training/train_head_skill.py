@@ -36,6 +36,7 @@ import yaml
 from .. import LOGS_DIR, MODELS_DIR, PROJECT_ROOT
 from ..behaviours import head_skills as hs
 from .head_skill_env import HeadSkillConfig, HeadSkillEnv
+from .level0_env import format_penalties
 from .ppo import PPO, ActorCritic
 
 DEFAULT_ITERS = {"hold_centre": 120, "look_at": 300, "nod_yes": 250, "shake_no": 250, "glance_around": 300}
@@ -201,6 +202,7 @@ def train(
                     f"std {std:.3f} | {fps:6.0f} steps/s | {row[1]:6.0f} s",
                     flush=True,
                 )
+                print(f"[{skill_id}] penalties | {format_penalties(infos)}", flush=True)
     finally:
         logf.close()
         env.close()

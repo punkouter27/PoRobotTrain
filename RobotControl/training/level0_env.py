@@ -56,6 +56,37 @@ def load_reward_config(path: pathlib.Path = REWARD_CONFIG) -> tuple[dict[str, fl
 
 _PEN, _CUR = load_reward_config()
 
+PENALTY_KEYS = ("pen_torque_sq", "pen_joint_ang_vel_sq", "pen_action_rate_sq", "pen_foot_slip")
+
+
+def penalty_terms(
+    cfg,
+    frc: np.ndarray,
+    dq: np.ndarray,
+    action: np.ndarray,
+    prev_action: np.ndarray,
+    foot_slip_sq: np.ndarray | None = None,
+) -> dict[str, np.ndarray]:
+    """The four reward_config.json penalties, each weighted, per env (shape (num_envs,)).
+
+    torque_sq = sum(actuator force^2), joint_ang_vel_sq = sum(qvel^2), action_rate_sq = |a_t - a_{t-1}|^2,
+    foot_slip = sum of feet planar speed^2 while in contact. ``foot_slip_sq`` is None on the stand (no foot contact),
+    so ``pen_foot_slip`` is 0 there. The trainers log the per-iteration mean of each term separately.
+    """
+    n = frc.shape[0]
+    slip = np.zeros(n) if foot_slip_sq is None else np.asarray(foot_slip_sq, dtype=np.float64)
+    return {
+        "pen_torque_sq": cfg.w_torque * np.sum(frc**2, axis=1),
+        "pen_joint_ang_vel_sq": cfg.w_joint_vel * np.sum(dq**2, axis=1),
+        "pen_action_rate_sq": cfg.w_action_rate * np.sum((action - prev_action) ** 2, axis=1),
+        "pen_foot_slip": getattr(cfg, "w_foot_slip", _PEN["foot_slip"]) * slip,
+    }
+
+
+def format_penalties(infos: list[dict]) -> str:
+    """One log fragment with the mean of each penalty term over an iteration's step infos."""
+    return " ".join(f"{k} {np.mean([i[k] for i in infos]):.4g}" for k in PENALTY_KEYS)
+
 
 @dataclass
 class Level0Config:
@@ -288,12 +319,13 @@ class Level0StandEnv:
             [CONTROLLED_JOINTS.index("head_yaw_joint"), CONTROLLED_JOINTS.index("right_shoulder_pitch_joint")]
         ] = 0
         r_hold = self.cfg.w_hold * np.sum(((self.q - self.default) ** 2) * hold_mask, axis=1)
-        r_rate = self.cfg.w_action_rate * np.sum((self.last_action - self.prev_action) ** 2, axis=1)
-        r_vel = self.cfg.w_joint_vel * np.sum(self.dq**2, axis=1)
+        pen = penalty_terms(self.cfg, self.frc, self.dq, self.last_action, self.prev_action)
+        r_rate = pen["pen_action_rate_sq"]
+        r_vel = pen["pen_joint_ang_vel_sq"]
         r_acc = self.cfg.w_joint_acc * np.sum(acc**2, axis=1)
         over = np.clip(self.q - self.soft_hi, 0, None) + np.clip(self.soft_lo - self.q, 0, None)
         r_lim = self.cfg.w_limits * np.sum(over, axis=1)
-        r_tau = self.cfg.w_torque * np.sum(self.frc**2, axis=1)
+        r_tau = pen["pen_torque_sq"]
         r_accv = self.cfg.w_acc_violation * np.sum(np.abs(acc) > self.cfg.acc_limit, axis=1)
         reward = r_track + r_hold + r_rate + r_vel + r_acc + r_lim + r_tau + r_accv
 
@@ -316,6 +348,7 @@ class Level0StandEnv:
             "r_acc": r_acc.mean(),
             "r_lim": r_lim.mean(),
             "r_tau": r_tau.mean(),
+            **{k: float(v.mean()) for k, v in pen.items()},
             "timeouts": timeout,
             "curriculum": self.curriculum,
         }

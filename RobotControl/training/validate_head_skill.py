@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from .. import LOGS_DIR
+from .. import LOGS_DIR, PROJECT_ROOT
 from ..behaviours import head_skills as hs
 
 # mean tracking error bars (deg): nominal, randomised, runtime path
@@ -149,7 +149,9 @@ def _runtime_rollout(skill_id: str, onnx_path: Path, seed: int = 0) -> dict:
         "abort": abort,
         "mean_err_deg": round(float(e[m].mean()), 3) if m.any() else None,
         "max_err_deg": round(float(e[m].max()), 3) if m.any() else None,
-        "log": str(log_path),
+        "log": log_path.relative_to(
+            PROJECT_ROOT
+        ).as_posix(),  # repo-relative: no local absolute paths in committed files
     }
 
 

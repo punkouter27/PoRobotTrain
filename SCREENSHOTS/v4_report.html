@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v4 audit report</title>
+<style>
+:root{--bg:#f6f6f4;--fg:#1d1d1f;--dim:#5c5c66;--card:#fff;--line:#e0e0e4}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf0;--dim:#a0a0aa;--card:#1d1d22;--line:#303038}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+p,li{color:var(--dim)} figure{margin:12px 0 24px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
+img{width:100%;height:auto;border-radius:4px;display:block} figcaption{font-size:13px;color:var(--dim);margin-top:6px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.row{grid-template-columns:1fr}}
+.narrow{max-width:460px} code{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>v4 audit: overlay labels, idle clock, /diag pill</h1>
+<p>2026-11-23. Unreal: R1TwinEditor Development, <code>-game -ShowcaseCapture -ShowcaseTouch -ShowcaseBench</code> at
+1600×900 and 450×800 on an i7-10750H / RTX 2060 laptop. The five HUD anchors of the scenario lab panel (Brain, Target,
+Disturb, STOP, Details; <code>R1BehaviourPanel.h</code>) are unchanged: only the Tab overlay gained one row.</p>
+
+<h2>Unreal Tab overlay: before</h2>
+<div class="row">
+<figure><img src="v4_before_unreal_overlay_1600x900.png" alt="Overlay before, landscape"><figcaption>Before: the benchmark row gave steps/s without saying what was measured on.</figcaption></figure>
+<figure class="narrow"><img src="v4_before_unreal_overlay_450x800.png" alt="Overlay before, portrait"><figcaption>Before, 9:16.</figcaption></figure>
+</div>
+
+<h2>Unreal Tab overlay: after</h2>
+<div class="row">
+<figure><img src="v4_after_unreal_overlay_policy_1600x900.png" alt="Overlay after with the Level 0 policy running"><figcaption>After, with the Level 0 policy on (command-line override <code>bRunLevel0PolicyOnPlay=True</code>, simulation only): reward, NNE latency 0.12 ms, curriculum stage, and the new <b>Bench measured on</b> row (CPU, one thread, simulation; never the robot). Log: <code>R1Policy perf: 242 steps in 5.01 s (48.3 Hz), NNE inference avg 0.120 ms</code>.</figcaption></figure>
+<figure class="narrow"><img src="v4_after_unreal_overlay_450x800.png" alt="Overlay after, portrait"><figcaption>After, 9:16 (default config, no policy on Play): the new row fits the panel.</figcaption></figure>
+</div>
+<figure><img src="v4_after_unreal_demo_1600x900.png" alt="Demo mode after 30 s idle"><figcaption>Demo mode after 30 s idle. The idle clock now ignores frames longer than 0.25 s (was 0.5 s); automation test <code>R1Twin.Showcase.IdleClockIgnoresLongFrames</code> passes.</figcaption></figure>
+
+<h2>Blazor /diag</h2>
+<figure class="narrow"><img src="v4_after_diag_390.png" alt="Diagnostics page at 390 px"><figcaption>After: the pill counts FAIL rows only (it used to count grey OFF rows too, so it said "2 FAILING" with one failure). The one FAIL is real on this laptop: the WebGPU reach kernel on the Intel UHD iGPU differs from the CPU by 0.24 mm (tolerance 0.1 mm).</figcaption></figure>
+</main>
+</body>
+</html>

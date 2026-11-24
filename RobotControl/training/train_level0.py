@@ -21,7 +21,7 @@ import torch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from export_level0 import OUT, ROOT, export, run_meta  # noqa: E402
-from level0_env import Level0Config, Level0StandEnv  # noqa: E402
+from level0_env import Level0Config, Level0StandEnv, format_penalties  # noqa: E402
 from ppo import PPO, ActorCritic  # noqa: E402
 
 
@@ -136,6 +136,7 @@ def main():
                 f"maxacc {row[6]:6.1f} | cur {env.curriculum:.2f} | std {row[13]:.3f} | lr {stats['lr']:.1e} | {fps:7.0f} fps",
                 flush=True,
             )
+            print(f"it {it:5d} | penalties | {format_penalties(infos)}", flush=True)
         if it % 200 == 0:
             torch.save(ac.state_dict(), args.out / f"model_{it}.pt")
     logf.close()

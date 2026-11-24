@@ -17,8 +17,11 @@ public sealed class RobotApiIntegrationTests
         public bool FailUpstream { get; set; }
         public string? LastPreviewTarget { get; private set; }
 
+        public int StatusCalls { get; private set; }
+
         public Task<RobotStatusDto> GetStatusAsync(CancellationToken ct = default)
         {
+            StatusCalls++;
             if (FailUpstream)
             {
                 throw new HttpRequestException("upstream offline");
@@ -223,6 +226,34 @@ public sealed class RobotApiIntegrationTests
         Assert.Equal(HttpStatusCode.OK, root.StatusCode);
         var html = await root.Content.ReadAsStringAsync();
         Assert.Contains("blazor.webassembly.js", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HealthAndDiagShareOneCachedServiceProbe()
+    {
+        var fake = new FakeRobotControlClient();
+        using var factory = CreateFactory(fake);
+        using var client = factory.CreateClient();
+
+        var health = await client.GetStringAsync("/health");
+        Assert.Contains("\"status\":\"Healthy\"", health, StringComparison.Ordinal);
+        Assert.Contains("behaviour-service", health, StringComparison.Ordinal);
+        Assert.True((await client.GetFromJsonAsync<DiagSnapshotDto>("/api/diag"))!.UpstreamReachable);
+        await client.GetStringAsync("/health");
+        Assert.Equal(1, fake.StatusCalls); // one probe serves both endpoints for 60 s
+    }
+
+    [Fact]
+    public async Task HealthIsDegradedButServedWhenTheServiceIsDown()
+    {
+        var fake = new FakeRobotControlClient { FailUpstream = true };
+        using var factory = CreateFactory(fake);
+        using var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/health");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains("\"status\":\"Degraded\"", await resp.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.False((await client.GetFromJsonAsync<DiagSnapshotDto>("/api/diag"))!.UpstreamReachable);
     }
 
     [Fact]

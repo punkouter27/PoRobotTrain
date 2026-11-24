@@ -1,3 +1,4 @@
+using FluentValidation;
 using PoRobotTrain.Shared.Contracts;
 using PoRobotTrain.Shared.Validation;
 
@@ -46,8 +47,8 @@ public static class RobotEndpoints
         group.MapGet("/walk/state", async (IRobotControlClient client, CancellationToken ct) =>
             await ExecuteAsync(() => client.GetWalkStateAsync(ct)));
 
-        group.MapPost("/walk/start", async (WalkStartRequest? req, IRobotControlClient client, CancellationToken ct) =>
-            Refuse(WalkStart, req ?? new WalkStartRequest())
+        group.MapPost("/walk/start", async (WalkStartRequest? req, IValidator<WalkStartRequest> validator, IRobotControlClient client, CancellationToken ct) =>
+            Refuse(validator, req ?? new WalkStartRequest())
             ?? await ExecuteCommandAsync(() => client.WalkStartAsync(req ?? new WalkStartRequest(), ct)));
 
         group.MapPost("/walk/command", async (WalkCommandRequest req, IRobotControlClient client, CancellationToken ct) =>
@@ -61,14 +62,14 @@ public static class RobotEndpoints
 
         // simulation features (docs/sim_features.md): props, replay, action filter, scenario scripts. Checked here with
         // the same validators the page uses, then forwarded; the service checks again.
-        group.MapPost("/walk/throw", async (WalkThrowRequest req, IRobotControlClient client, CancellationToken ct) =>
-            Refuse(WalkThrow, req) ?? await ExecuteCommandAsync(() => client.WalkThrowAsync(req, ct)));
+        group.MapPost("/walk/throw", async (WalkThrowRequest req, IValidator<WalkThrowRequest> validator, IRobotControlClient client, CancellationToken ct) =>
+            Refuse(validator, req) ?? await ExecuteCommandAsync(() => client.WalkThrowAsync(req, ct)));
 
-        group.MapPost("/walk/replay", async (WalkReplayRequest req, IRobotControlClient client, CancellationToken ct) =>
-            Refuse(WalkReplay, req) ?? await ExecuteCommandAsync(() => client.WalkReplayAsync(req, ct)));
+        group.MapPost("/walk/replay", async (WalkReplayRequest req, IValidator<WalkReplayRequest> validator, IRobotControlClient client, CancellationToken ct) =>
+            Refuse(validator, req) ?? await ExecuteCommandAsync(() => client.WalkReplayAsync(req, ct)));
 
-        group.MapPost("/walk/filter", async (WalkFilterRequest req, IRobotControlClient client, CancellationToken ct) =>
-            Refuse(WalkFilter, req) ?? await ExecuteCommandAsync(() => client.WalkFilterAsync(req, ct)));
+        group.MapPost("/walk/filter", async (WalkFilterRequest req, IValidator<WalkFilterRequest> validator, IRobotControlClient client, CancellationToken ct) =>
+            Refuse(validator, req) ?? await ExecuteCommandAsync(() => client.WalkFilterAsync(req, ct)));
 
         group.MapPost("/walk/scenario", async (WalkScenarioRequest req, IRobotControlClient client, CancellationToken ct) =>
             req.Stop != true && string.IsNullOrWhiteSpace(req.Id)
@@ -195,13 +196,8 @@ public static class RobotEndpoints
         }
     }
 
-    private static readonly WalkStartRequestValidator WalkStart = new();
-    private static readonly WalkThrowRequestValidator WalkThrow = new();
-    private static readonly WalkReplayRequestValidator WalkReplay = new();
-    private static readonly WalkFilterRequestValidator WalkFilter = new();
-
     /// <summary>400 with the first rule broken (same shape as a service refusal), or null when the request is valid.</summary>
-    private static IResult? Refuse<T>(FluentValidation.IValidator<T> validator, T request)
+    private static IResult? Refuse<T>(IValidator<T> validator, T request)
     {
         var result = validator.Validate(request);
         return result.IsValid ? null : Results.BadRequest(new CommandResultDto(false, result.Errors[0].ErrorMessage));

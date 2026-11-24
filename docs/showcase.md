@@ -31,4 +31,5 @@ then quits. `-ShowcaseIdle=<s>` overrides the idle threshold.
 `-ShowcaseBench` presses the overlay's **Benchmark sim speed** button first: it steps a private copy of the live MuJoCo
 scene for 1 s on a worker thread and shows physics steps/s and x real time (one training environment's sim throughput on
 this PC; 2026-11-22, RTX 5070 Ti laptop: ~20,000 steps/s, ~40x real time). The live simulation and the robot are untouched.
-The idle clock ignores frames longer than 0.5 s (shader warm-up, level load), so they never count as idle time.
+The idle clock (`R1IdleClock.h`) ignores frames longer than 0.25 s (shader warm-up, level load), so they never count as
+idle time; the automation test `R1Twin.Showcase.IdleClockIgnoresLongFrames` feeds it a 5 s and a 0.26 s frame.

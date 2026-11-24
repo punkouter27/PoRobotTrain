@@ -45,7 +45,9 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
 - Reward penalty weights (torque², joint angular velocity², action rate, foot slip) and the curriculum
   thresholds live in `RobotControl/configs/reward_config.json`; `Level0Config` reads them and the Unreal
   DataAsset mirrors them (a pytest checks parity). Level 0 hangs on a stand, so `foot_slip` is inactive there.
-  The shipped Level 0 policy predates the file; changing a weight does not retrain it.
+  The shipped Level 0 policy predates the file; changing a weight does not retrain it. Each weighted penalty is also
+  logged on its own (`pen_torque_sq`, `pen_joint_ang_vel_sq`, `pen_action_rate_sq`, `pen_foot_slip` in the env's step
+  info and a `penalties |` line in the trainers' console log; `level0_env.penalty_terms`, tested in `test_reward_config.py`).
 
 ### Blazor control UI (`src/`, Profile A)
 
@@ -63,16 +65,20 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
   `@layer radzen, po-reset`), `po-plain` drops the theme look, so the app's `po-chip` / `po-btn` styling stays. Inputs
   are `RadzenTextBox` / `RadzenNumeric` / `RadzenDropDown` / `RadzenCheckBox` / `RadzenSlider` / `RadzenFileInput`.
   Allowed exceptions (no other raw form controls): read-only data tables (`<table class="diag-table">` on Health,
-  Setup, Diagnostics, Robustness, the keyframe grid). The three.js / WebGPU twin `<canvas>`, the joint-history
+  Setup, Diagnostics, Robustness, the keyframe grid; `<table class="lib-table">` on the Library). The Radzen theme
+  CSS is loaded once, by the first `@import` of `app.css` (a browser test, `RadzenCssTests`, checks it). The three.js / WebGPU twin `<canvas>`, the joint-history
   `<canvas>` and SVG charts are drawings, not form controls.
 - Joint sliders move a joint once, on release (pointer up / key up over the slider), never on every drag step.
 - Form rules are FluentValidation validators in `src/PoRobotTrain.Shared/Validation` (same rules as the behaviour
-  service), registered BY TYPE in the Client `Program.cs` (no assembly scan, trimming-safe) and shown inline with
+  service), registered BY TYPE (`AddScoped<IValidator<X>, XValidator>`) in the Client and the Api `Program.cs` (no
+  assembly scan, trimming-safe; the Api endpoints take them from DI) and shown inline with
   `FieldError`. No `alert()` / `confirm()`.
 - One layout (`MainLayout`: title top-left, E-STOP top-right, version stamp in the footer after the content), a
   NotFound page, loading / empty / error states. API endpoints live in `Features/*` modules (`MapXEndpoints`), Serilog,
-  `/health`. `/diag` probes the behaviour service and the browser runtime live; capabilities that are off on purpose
-  (WebGPU, speech recognition) show a grey OFF and do not fail the page.
+  `/health` (ASP.NET health checks). `/health` and `/api/diag` share ONE cached probe of the behaviour service
+  (`Features/Diagnostics/ServiceHealthReport.cs`: GET /status, kept 60 s while reachable, 5 s while not; the service
+  down = `Degraded`, still 200). `/diag` also probes the browser runtime live; capabilities that are off on purpose
+  (WebGPU, speech recognition) show a grey OFF, are not counted in the FAILING pill and do not fail the page.
 - Sign-in: none today (local operator console next to the robot). Profile A asks for Microsoft Entra; that needs an
   owner decision because the console also hosts the software E-STOP and may run offline next to the robot.
 - The control UI is NOT deployed; only the static showcase (`web/`) is.
@@ -94,7 +100,7 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
 |---|---|---|---|
 | No Entra sign-in on the localhost robot console (it holds the software E-STOP and may run offline) — proposed 2026-11-22, awaiting owner decision | Profile A asks for Microsoft Entra | — | add Entra sign-in if the owner decides so |
 | URLab gitlink from owner commit `f03c5e7` replaced by `scripts/setup_urlab.ps1` (same pinned upstream + patches, MuJoCo 4.0.0); folder git-ignored | the gitlink pointed at a local-only commit, so fresh clones could not build; v3 forbids submodules | `9dc0eb7` 2026-11-22 (local) | revert `9dc0eb7`'s `.gitignore`/index change for a true vendored copy |
-| Radzen exceptions: read-only `<table class="diag-table">` tables; the twin and joint-history `<canvas>` and SVG charts are drawings | allowed kinds (Profile A) | `03ff3b2` 2026-11-22 (local) | — |
+| Radzen exceptions: read-only `<table class="diag-table">` / `lib-table` tables; the twin and joint-history `<canvas>` and SVG charts are drawings | allowed kinds (Profile A) | `03ff3b2` 2026-11-22 (local) | — |
 | /diag (control UI and showcase): capabilities off on purpose (WebGPU, speech recognition; the showcase's switched-off row) show a grey **Off**, not counted | not faults | `03ff3b2`, `8b5dd01` 2026-11-22 (local) | — |
 | Control UI: version stamp in the footer after the content; showcase: sticky 20 px footer on desktop, static on phones | a fixed stamp covered content on phones | `03ff3b2`, `8b5dd01` 2026-11-22 (local) | `git revert` the stamp part |
 | `bRunLevel0PolicyOnPlay=False` kept: on a normal Play the overlay shows reward/latency as n/a | owner decision 2026-11-15 | — | set it to True |
@@ -193,8 +199,9 @@ every publish. Tests never write into tracked files.
 
 The sequence below verifies the repo; for the non-Unreal part in one line:
 `.venv\Scripts\python.exe -m ruff check . && .venv\Scripts\python.exe -m pytest && dotnet build PoRobotTrain.slnx -c Release && dotnet test tests\PoRobotTrain.Unit -c Release --no-build && dotnet test tests\PoRobotTrain.Integration -c Release --no-build && powershell -ExecutionPolicy Bypass -File scripts\run-e2eui.ps1`.
-Last full run (2026-11-22): pytest 150 passed; Release build 0 warnings; Unit 25/25; Integration 27/27; E2EUI 19/19
-(4 runs in a row); R1TwinEditor build succeeded.
+Last full run (2026-11-23): pytest 243 passed / 1 skipped (the montage test needs torch); Release build 0 warnings;
+Unit 88/88; Integration 31/31; E2EUI 36/36 (3 runs in a row); R1TwinEditor build succeeded; Unreal automation 2/2.
+Pillow is a dev dependency (training montage, synthetic camera and their tests): `uv pip install --python .venv\Scripts\python.exe pillow`.
 
 ```powershell
 # Python (repo root; .venv as in README)
@@ -211,6 +218,10 @@ powershell -ExecutionPolicy Bypass -File scripts\run-e2eui.ps1   # browser tier 
 # Unreal: URLab once per clone, then the editor target
 powershell -ExecutionPolicy Bypass -File scripts\setup_urlab.ps1
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" R1TwinEditor Win64 Development "-Project=$PWD\UnrealProject\R1Twin.uproject" -WaitMutex -MaxParallelActions=6
-# Unreal runtime check: overlay + benchmark + demo mode screenshots (also -ResX=450 -ResY=800), docs/showcase.md
+# Unreal automation tests (R1Twin.*; they render: never add -nullrhi). Editor closed first.
+& "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$PWD\UnrealProject\R1Twin.uproject" -ExecCmds="Automation RunTests R1Twin; Quit" -unattended -nopause -NoSound -ReportExportPath="$env:TEMP\r1auto"
+# Unreal runtime check: overlay + benchmark + demo mode screenshots (also -ResX=450 -ResY=800), docs/showcase.md.
+# Add -ini:Game:[/Script/R1Twin.R1TwinGameMode]:bRunLevel0PolicyOnPlay=True to see the Level 0 policy run (sim only;
+# the log then has "R1Policy step" / "R1Policy perf" lines and the overlay shows reward and latency).
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" UnrealProject\R1Twin.uproject -game -windowed -ResX=1600 -ResY=900 -ForceRes -ShowcaseCapture=$env:TEMP\r1cap -ShowcaseTouch -ShowcaseBench -unattended
 ```

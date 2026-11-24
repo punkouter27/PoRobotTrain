@@ -5,7 +5,7 @@ version = "0.1.0"
 requires-python = ">=3.8"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff==0.17.6"]
+dev = ["pytest>=8.0", "ruff==0.17.6", "pillow>=11"]  # pillow: training montage + synthetic camera tools and their tests
 
 [tool.pytest.ini_options]
 testpaths = ["RobotControl/tests", "tests"]

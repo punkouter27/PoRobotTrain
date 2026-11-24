@@ -17,6 +17,7 @@
 #include "Engine/DataAsset.h"
 #include "Engine/DeveloperSettings.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "R1IdleClock.h"
 #include "R1Showcase.generated.h"
 
 class SWidget;
@@ -98,7 +99,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Showcase") void ToggleOverlay() { SetOverlayVisible(!bOverlayVisible); }
 	UFUNCTION(BlueprintPure, Category = "Showcase") bool IsOverlayVisible() const { return bOverlayVisible; }
 	UFUNCTION(BlueprintPure, Category = "Showcase") bool IsDemoActive() const { return bDemoActive; }
-	UFUNCTION(BlueprintPure, Category = "Showcase") float GetIdleSeconds() const { return IdleTime; }
+	UFUNCTION(BlueprintPure, Category = "Showcase") float GetIdleSeconds() const { return IdleClock.Seconds; }
 	UFUNCTION(BlueprintPure, Category = "Showcase") float GetFps() const { return Fps; }
 	UFUNCTION(BlueprintPure, Category = "Showcase") float GetMeanInferenceMs() const;
 	/**
@@ -110,7 +111,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Showcase") void RunBenchmark();
 	UFUNCTION(BlueprintPure, Category = "Showcase") FString GetBenchmarkText() const { return BenchText; }
 	/** Starts demo mode now (e.g. a level opened by demo mode keeps showing it). */
-	UFUNCTION(BlueprintCallable, Category = "Showcase") void StartDemo() { IdleTime = IdleThreshold; SetDemoActive(true); }
+	UFUNCTION(BlueprintCallable, Category = "Showcase") void StartDemo() { IdleClock.Seconds = IdleThreshold; SetDemoActive(true); }
 	/** Any real input: leaves demo mode and restarts the idle timer. */
 	void NotifyUserInput();
 
@@ -148,7 +149,7 @@ private:
 	bool bOverlayVisible = false;
 	bool bDemoActive = false;
 	bool bTouchButton = false;
-	float IdleTime = 0.f;
+	FR1IdleClock IdleClock;   // ignores frames > 0.25 s (R1IdleClock.h)
 	float IdleThreshold = 30.f;
 	float CameraTime = 0.f;
 	int32 CameraIndex = 0;
@@ -162,6 +163,7 @@ private:
 
 	bool bBenchRunning = false;
 	FString BenchText;
+	FString BenchHardware;   // what the benchmark ran on: simulation, one MuJoCo scene copy on this CPU
 
 	FString CaptureDir;
 	float CaptureClock = 0.f;

@@ -31,7 +31,7 @@
     <div class="sec-hdr">
         <h2 class="tel-title">BROWSER RUNTIME (3D VIRTUAL ROBOT, CHECKS, LOCAL AI)</h2>
         <span class="po-pill @(Overall switch { true => "po-pill--ok", false => "po-pill--bad", _ => string.Empty })">
-            @(Overall switch { true => "ALL CHECKS PASS", false => $"{_rows.Count(r => !r.Ok)} FAILING", _ => "RUNNING…" })
+            @(Overall switch { true => "ALL CHECKS PASS", false => $"{_rows.Count(r => !r.Ok && !IsOptional(r))} FAILING", _ => "RUNNING…" })
         </span>
     </div>
     <p class="po-muted">Probed live from this browser now. Nothing here moves the robot.</p>

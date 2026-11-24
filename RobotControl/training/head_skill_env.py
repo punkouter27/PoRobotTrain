@@ -22,7 +22,7 @@ from mujoco import rollout
 from ..behaviours import head_skills as hs
 from ..configs.joint_map import JointMap
 from ..configs.sim_calibration import SimCalibration
-from .level0_env import _PEN
+from .level0_env import _PEN, penalty_terms
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MODEL_XML = ROOT / "UnrealProject/MJCF/r1_twin_stand_train.xml"
@@ -264,12 +264,13 @@ class HeadSkillEnv:
         e = self.q - ref_next
         r_track = c.w_track * np.mean(np.exp(-(e**2) / c.sigma_coarse**2), axis=1)
         r_fine = c.w_track_fine * np.mean(np.exp(-(e**2) / c.sigma_fine**2), axis=1)
-        r_rate = c.w_action_rate * np.sum((self.last_action - self.prev_action) ** 2, axis=1)
-        r_vel = c.w_joint_vel * np.sum(self.dq**2, axis=1)
+        pen = penalty_terms(c, self.frc, self.dq, self.last_action, self.prev_action)
+        r_rate = pen["pen_action_rate_sq"]
+        r_vel = pen["pen_joint_ang_vel_sq"]
         r_acc = c.w_joint_acc * np.sum(acc**2, axis=1)
         over = np.clip(self.q - self.soft_hi, 0, None) + np.clip(self.soft_lo - self.q, 0, None)
         r_lim = c.w_limits * np.sum(over, axis=1)
-        r_tau = c.w_torque * np.sum(self.frc**2, axis=1)
+        r_tau = pen["pen_torque_sq"]
         r_accv = c.w_acc_violation * np.sum(np.abs(acc) > c.acc_limit, axis=1)
         reward = r_track + r_fine + r_rate + r_vel + r_acc + r_lim + r_tau + r_accv
 
@@ -286,6 +287,7 @@ class HeadSkillEnv:
             "max_acc": float(np.abs(acc).max()),
             "r_track": float((r_track + r_fine).mean()),
             "max_frc": float(np.abs(self.frc).max()),
+            **{k: float(v.mean()) for k, v in pen.items()},
         }
         obs = self.get_obs()
         done_ids = np.where(done)[0]

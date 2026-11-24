@@ -315,7 +315,8 @@ FString UR1ShowcaseSubsystem::BuildOverlayText() const
 	                  : FString(TEXT("Inference latency        n/a (no policy step yet)\n"));
 	Out += FString::Printf(TEXT("Curriculum stage         %s\n"), CurriculumStage.IsEmpty() ? TEXT("n/a") : *CurriculumStage);
 	Out += FString::Printf(TEXT("Sim speed (bench)        %s\n"), BenchText.IsEmpty() ? TEXT("press the button below") : *BenchText);
-	Out += FString::Printf(TEXT("Demo mode                after %.0f s idle (idle %.0f s)"), IdleThreshold, IdleTime);
+	if (!BenchHardware.IsEmpty()) Out += FString::Printf(TEXT("Bench measured on        %s\n"), *BenchHardware);
+	Out += FString::Printf(TEXT("Demo mode                after %.0f s idle (idle %.0f s)"), IdleThreshold, IdleClock.Seconds);
 	return Out;
 }
 
@@ -365,6 +366,15 @@ void UR1ShowcaseSubsystem::FinishBenchmark(int32 Steps, double Seconds, double T
 	bBenchRunning = false;
 	const double Rate = Seconds > 0.0 ? Steps / Seconds : 0.0;
 	BenchText = FString::Printf(TEXT("%.0f steps/s, %.0fx real time"), Rate, Rate * Timestep);
+	// honest label: a simulation measurement (one MuJoCo scene copy, one CPU thread), not the robot and not the GPU
+	FString Cpu = FPlatformMisc::GetCPUBrand();
+	int32 At = INDEX_NONE;
+	if (Cpu.FindChar(TEXT('@'), At)) Cpu.LeftInline(At);   // drop the clock ("@ 2.60GHz")
+	Cpu.ReplaceInline(TEXT("(R)"), TEXT(""));
+	Cpu.ReplaceInline(TEXT("(TM)"), TEXT(""));
+	Cpu.ReplaceInline(TEXT(" CPU"), TEXT(""));
+	BenchHardware = Cpu.TrimStartAndEnd().Left(24) + TEXT(", 1 thread, sim");
+	UE_LOG(LogR1Showcase, Log, TEXT("Showcase: benchmark hardware %s"), *BenchHardware);
 	UE_LOG(LogR1Showcase, Log, TEXT("Showcase: benchmark ran %d MuJoCo steps of a scene copy in %.2f s"), Steps, Seconds);
 	UE_LOG(LogR1Showcase, Log, TEXT("Showcase: benchmark %s"), *BenchText);
 }
@@ -376,7 +386,7 @@ void UR1ShowcaseSubsystem::SetOverlayVisible(bool bVisible)
 
 void UR1ShowcaseSubsystem::NotifyUserInput()
 {
-	IdleTime = 0.f;
+	IdleClock.Reset();
 	if (bDemoActive) SetDemoActive(false);
 }
 
@@ -401,8 +411,8 @@ void UR1ShowcaseSubsystem::Tick(float DeltaTime)
 		const float Inst = 1.f / Dt;
 		Fps = Fps <= 0.f ? Inst : FMath::Lerp(Fps, Inst, 0.05f);
 	}
-	if (Dt < 0.5f) IdleTime += Dt;   // a long frame (shader warm-up, level load) is not idle time
-	if (!bDemoActive && IdleTime >= IdleThreshold) SetDemoActive(true);
+	IdleClock.Advance(Dt);   // a frame > 0.25 s (shader warm-up, level load) is not idle time
+	if (!bDemoActive && IdleClock.Reached(IdleThreshold)) SetDemoActive(true);
 	if (bDemoActive)
 	{
 		const UR1ShowcaseConfig* Cfg = UR1ShowcaseSettings::GetShowcaseConfig();
@@ -421,7 +431,7 @@ void UR1ShowcaseSubsystem::Shot(const TCHAR* Name)
 {
 	const FString File = FPaths::Combine(CaptureDir, FString::Printf(TEXT("%s.png"), Name));
 	FScreenshotRequest::RequestScreenshot(File, /*bShowUI*/ true, /*bAddFilenameSuffix*/ false);
-	UE_LOG(LogR1Showcase, Log, TEXT("Showcase: screenshot %s (overlay %d, demo %d, idle %.1f s)"), *File, bOverlayVisible ? 1 : 0, bDemoActive ? 1 : 0, IdleTime);
+	UE_LOG(LogR1Showcase, Log, TEXT("Showcase: screenshot %s (overlay %d, demo %d, idle %.1f s)"), *File, bOverlayVisible ? 1 : 0, bDemoActive ? 1 : 0, IdleClock.Seconds);
 }
 
 void UR1ShowcaseSubsystem::TickCapture(float Dt)

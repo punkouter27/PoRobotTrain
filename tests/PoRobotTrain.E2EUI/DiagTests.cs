@@ -32,8 +32,9 @@ public sealed class DiagTests(BrowserFixture fx)
             await Assertions.Expect(off.First).ToHaveTextAsync("OFF");
             var color = await off.First.EvaluateAsync<string>("e => getComputedStyle(e).color");
             Assert.Equal(await page.EvaluateAsync<string>(MutedColorScript), color);
+            // the pill is final once it stops saying RUNNING; it counts FAIL rows only (OFF rows are not failures)
             var failing = await page.Locator("td.bad").CountAsync();
-            await Assertions.Expect(pill).ToHaveTextAsync(failing == 0 ? "ALL CHECKS PASS" : $"{failing} FAILING");
+            await Assertions.Expect(pill).ToHaveTextAsync(failing == 0 ? "ALL CHECKS PASS" : $"{failing} FAILING", new() { Timeout = 10000 });
             Assert.Empty(errors);
         }
         finally

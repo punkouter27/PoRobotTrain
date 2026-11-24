@@ -47,7 +47,7 @@ namespace
 	const FLinearColor SimCol(0.55f, 0.62f, 1.f, 1.f);
 	const FLinearColor ForceCol(1.f, 0.55f, 0.15f, 1.f);
 
-	FName Id(const TCHAR* Prefix, int32 I) { return FName(*FString::Printf(TEXT("%s%d"), Prefix, I)); }
+	FName SimChipId(const TCHAR* Prefix, int32 I) { return FName(*FString::Printf(TEXT("%s%d"), Prefix, I)); }   // own name: R1PanelLab.cpp has an Id() too (unity builds)
 
 	FString Pretty(const FString& Joint)
 	{
@@ -419,7 +419,7 @@ void AR1BehaviourPanel::DrawWalkSimControls(float X, float Inner, float& Y)
 		const float ChipW = FMath::Max(36.f, (X + Inner - CX - 3.f * 4.f) / 4.f);
 		for (int32 i = 0; i < UE_ARRAY_COUNT(Difficulties); ++i)
 		{
-			DrawButton({Id(DiffPrefix, i), FString::Printf(TEXT("%.0f%%"), Difficulties[i] * 100.f), {CX, Y}, {ChipW, 28.f}, !S.bRunning,
+			DrawButton({SimChipId(DiffPrefix, i), FString::Printf(TEXT("%.0f%%"), Difficulties[i] * 100.f), {CX, Y}, {ChipW, 28.f}, !S.bRunning,
 				FMath::IsNearlyEqual(Cur, Difficulties[i], 0.01f) ? ChipOnCol : ChipCol});
 			CX += ChipW + 4.f;
 		}
@@ -445,7 +445,7 @@ void AR1BehaviourPanel::DrawWalkSimControls(float X, float Inner, float& Y)
 		const float ChipW = FMath::Max(48.f, (X + Inner - CX - 3.f * 4.f) / 4.f);
 		for (int32 i = 0; i < 4; ++i)
 		{
-			DrawButton({Id(FromPrefix, i), FromLabels[i], {CX, Y}, {ChipW, 28.f}, true, ThrowFrom == i ? ChipOnCol : ChipCol});
+			DrawButton({SimChipId(FromPrefix, i), FromLabels[i], {CX, Y}, {ChipW, 28.f}, true, ThrowFrom == i ? ChipOnCol : ChipCol});
 			CX += ChipW + 4.f;
 		}
 		if (!bCan)
@@ -473,7 +473,7 @@ void AR1BehaviourPanel::DrawWalkSimControls(float X, float Inner, float& Y)
 			float TW = 0.f, TH = 0.f;
 			GetTextSize(I.Name, TW, TH, Font, 0.9f);
 			const bool bSel = S.Scenario.bValid && S.Scenario.Id == I.Id;
-			DrawButton({Id(WalkScnPrefix, i), TW + 12.f > ChipW ? I.Id : I.Name, {X + LabelW + (i % PerRow) * (ChipW + 4.f), Y}, {ChipW, 28.f},
+			DrawButton({SimChipId(WalkScnPrefix, i), TW + 12.f > ChipW ? I.Id : I.Name, {X + LabelW + (i % PerRow) * (ChipW + 4.f), Y}, {ChipW, 28.f},
 				bServiceOnline && Job.IsEmpty(), bSel ? ChipOnCol : ChipCol});
 		}
 		if (bPlaying)
@@ -594,7 +594,7 @@ void AR1BehaviourPanel::DrawLabSimCard(float X, float& Y, float W)
 			float TW = 0.f, TH = 0.f;
 			GetTextSize(Sc.Name, TW, TH, Font, 0.9f);
 			const bool bOn = R.ScenarioName == Sc.Name;
-			const FName Bid = Id(LabScnPrefix, i);
+			const FName Bid = SimChipId(LabScnPrefix, i);
 			DrawButton({Bid, TW + 12.f > ChipW ? Sc.Id : Sc.Name, {X + (i % PerRow) * (ChipW + 4.f), Y}, {ChipW, 28.f}, !R.bExternal, bOn ? ChipOnCol : ChipCol});
 			if (R.bExternal)
 			{

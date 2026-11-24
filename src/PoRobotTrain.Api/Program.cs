@@ -1,6 +1,9 @@
+using FluentValidation;
 using Microsoft.Extensions.Options;
 using PoRobotTrain.Api.Features.Diagnostics;
 using PoRobotTrain.Api.Features.RobotControl;
+using PoRobotTrain.Shared.Contracts;
+using PoRobotTrain.Shared.Validation;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -37,6 +40,17 @@ try
         client.Timeout = RobotServiceTimeoutHandler.Ceiling; // per request: 5 s, longer for the skill tools (handler below)
         client.DefaultRequestHeaders.ConnectionClose = true; // Python BaseHTTPRequestHandler closes HTTP/1.0 sockets per response
     }).AddHttpMessageHandler(() => new RobotServiceTimeoutHandler());
+
+    // One cached behaviour-service probe shared by /health and /api/diag (Features/Diagnostics/ServiceHealthReport.cs).
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton<ServiceHealthReport>();
+    builder.Services.AddHealthChecks().AddCheck<BehaviourServiceHealthCheck>("behaviour-service");
+
+    // Request validators, registered by type (no assembly scan; same rules as the Client and the service).
+    builder.Services.AddScoped<IValidator<WalkStartRequest>, WalkStartRequestValidator>();
+    builder.Services.AddScoped<IValidator<WalkThrowRequest>, WalkThrowRequestValidator>();
+    builder.Services.AddScoped<IValidator<WalkReplayRequest>, WalkReplayRequestValidator>();
+    builder.Services.AddScoped<IValidator<WalkFilterRequest>, WalkFilterRequestValidator>();
 
     var app = builder.Build();
 
