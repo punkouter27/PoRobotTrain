@@ -1,7 +1,7 @@
 name: Test & Deploy Showcase
 
 # The one workflow. Push to master: Python checks (ruff, pytest) -> .NET format/build/tests -> build the showcase site
-# (web/build.py) -> deploy it to the Azure Static Web App swa-porobottrain (resource group PoShared) -> check / and
+# (web/build.py) -> deploy it to the Azure Static Web App swa-porobottrain (resource group PoRobotTrain) -> check / and
 # /diag live (X-Commit header = this commit). Pull requests get the checks and the build, never a deploy. The Unreal
 # project is built locally (GitHub's runners have no Unreal Engine) after scripts/setup_urlab.ps1 recreates URLab.
 #

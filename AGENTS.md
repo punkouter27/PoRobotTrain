@@ -81,11 +81,11 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
 
 - `.github/workflows/deploy.yml` (the only workflow): on push to `master` it runs the Python checks (ruff, pytest),
   the .NET checks (format, Release build with 0 warnings, Unit, Integration), builds the showcase site
-  (`web/build.py`), deploys it to the Azure Static Web App `swa-porobottrain` (resource group `PoShared`, secret
+  (`web/build.py`), deploys it to the Azure Static Web App `swa-porobottrain` (resource group `PoRobotTrain`, secret
   `AZURE_STATIC_WEB_APPS_API_TOKEN`) and checks `/`, `/diag` and the `X-Commit` header (= the pushed commit) live.
 - The Unreal twin is built and tested locally (GitHub's runners have no Unreal Engine). URLab is not tracked:
   `scripts/setup_urlab.ps1` recreates it (pinned upstream commit + MuJoCo 4.0.0 + `scripts/patches/`).
-- **Hosting:** Azure Static Web App `swa-porobottrain` (RG `PoShared`), Free tier; the control UI is not hosted. Never
+- **Hosting:** Azure Static Web App `swa-porobottrain` (RG `PoRobotTrain`), Free tier; the control UI is not hosted. Never
   run test suites against the live site; live checks = at most 6 page loads + /diag + X-Commit.
 
 ### Deliberate deviations
