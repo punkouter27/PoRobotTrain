@@ -312,6 +312,132 @@
     "throttled (thermal)"
    ],
    "workload_changes": []
+  },
+  {
+   "when": "2026-11-26T12:04:42-05:00",
+   "ok": true,
+   "error": null,
+   "machine": {
+    "hostname": "C4T4V44",
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13850HX (28 threads)",
+    "gpu": "NVIDIA RTX 2000 Ada Generation Laptop GPU",
+    "vram_gb": 8.0,
+    "ram_gb": 63.8,
+    "gpu_driver": "581.95",
+    "os": "Windows 11 (10.0.26100)"
+   },
+   "load_before": {
+    "cpu_pct": 8,
+    "cpu_max_core_pct": 70,
+    "trainer_cpu_cores": 0.0,
+    "trainer_thread_pct": 0,
+    "ram_used_gb": 28.1,
+    "gpu_pct": 0.0,
+    "gpu_mem_pct": 0.0,
+    "vram_used_gb": 1.3,
+    "gpu_temp_c": 69.0,
+    "sm_clock_mhz": 2115.0,
+    "sm_clock_max_mhz": 3105.0,
+    "power_w": 17.91,
+    "power_limit_w": 62.97,
+    "pstate": "P3",
+    "clock_reasons": [
+     "power cap",
+     "thermal (sw)"
+    ],
+    "display_active": true,
+    "pcie": "gen 4 x8",
+    "on_battery": false,
+    "gpu_processes": [
+     "Code.exe",
+     "Creative Cloud UI Helper.exe",
+     "CrossDeviceResume.exe",
+     "Docker Desktop.exe",
+     "PhoneExperienceHost.exe",
+     "SearchHost.exe",
+     "ShellExperienceHost.exe",
+     "ShellHost.exe",
+     "StartMenuExperienceHost.exe",
+     "TeamViewer.exe",
+     "TextInputHost.exe",
+     "ZSATray.exe",
+     "[Insufficient Permissions]",
+     "explorer.exe",
+     "ms-teams.exe",
+     "msedge.exe",
+     "msedgewebview2.exe"
+    ]
+   },
+   "load_during": {
+    "cpu_pct": 44.1,
+    "cpu_max_core_pct": 77.7,
+    "trainer_cpu_cores": 8.8,
+    "trainer_thread_pct": 65.6,
+    "ram_used_gb": 28.9,
+    "gpu_pct": 15.6,
+    "gpu_mem_pct": 5.7,
+    "vram_used_gb": 1.4,
+    "gpu_temp_c": 72.0,
+    "sm_clock_mhz": 1373.6,
+    "sm_clock_max_mhz": 3105.0,
+    "clock_pct_of_max": 44,
+    "power_w": 16.3,
+    "power_limit_w": 55.0,
+    "pstate": "P5",
+    "clock_reasons": {},
+    "display_active": true,
+    "pcie": "gen 4 x8",
+    "on_battery": false,
+    "samples": 7
+   },
+   "busy": false,
+   "workload_id": "db91bb",
+   "workload": {
+    "repo": "PoRobotTrain",
+    "trainer": "PoRobotTrain PPO (RobotControl/training/ppo.py), torch 2.11.0+cu128",
+    "script": "RobotControl/training/train_level0.py",
+    "args": "--iters 1500 --num-envs 512 --horizon 24 --seed 0 --out logs/benchmark/level0",
+    "num_envs": 512,
+    "horizon": 24,
+    "net": [
+     256,
+     128,
+     64
+    ],
+    "obs": 23,
+    "actions": 7,
+    "config_hash": "cdde6d"
+   },
+   "result": {
+    "step_time_ms": 14.632,
+    "sim_ms": 9.936,
+    "learn_ms": 4.695,
+    "env_steps_per_s": 34993,
+    "steps_measured": 696,
+    "measured_s": 10.18,
+    "startup_s": 20.1,
+    "step_p50_ms": 14.563,
+    "step_p95_ms": 16.311,
+    "sim_drift_pct": -2.8,
+    "blocks_measured": 29
+   },
+   "git_commit": "ad68aaa",
+   "versions": {
+    "python": "3.11.18",
+    "torch": "2.11.0+cu128",
+    "mujoco": "4.0.0",
+    "device": "cuda",
+    "mujoco_threads": 27
+   },
+   "context": {
+    "power_plan": "Balanced",
+    "power_mode": null,
+    "gpu_scheduling": null
+   },
+   "verdict": [
+    "low clock"
+   ],
+   "workload_changes": []
   }
  ]
 }
