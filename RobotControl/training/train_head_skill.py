@@ -129,6 +129,10 @@ def export(ac: ActorCritic, env: HeadSkillEnv, out: Path, meta: dict) -> Path:
         "metadata": meta,
     }
     (out / "deploy.yaml").write_text(yaml.safe_dump(deploy, sort_keys=False), encoding="utf-8")
+
+    from policy_guard import check as guard_check  # UNITE R10/R11: gate every export
+
+    guard_check(onnx_path)
     return onnx_path
 
 

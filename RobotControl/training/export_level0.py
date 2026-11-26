@@ -195,6 +195,10 @@ def export(ac: ActorCritic, env: Level0StandEnv, out: pathlib.Path, meta: dict):
     }
     (out / "deploy.yaml").write_text(yaml.safe_dump(deploy, sort_keys=False))
 
+    from policy_guard import check as guard_check  # UNITE R10/R11: gate every export
+
+    guard_check(onnx_path)
+
     with torch.no_grad():
         baseline_rollout(lambda o: wrapper(torch.from_numpy(o)).numpy(), out / "baseline_rollout.npz")
     print(f"exported {onnx_path} ({onnx_path.stat().st_size / 1e3:.1f} kB), deploy.yaml, baseline_rollout.npz")

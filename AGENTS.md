@@ -16,6 +16,10 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
 - Keep training, MuJoCo simulation, Unreal / URLab, and hardware interfaces
   aligned with the same model, timing, joint map, and ONNX deployment contract.
   Do not silently reorder or reinterpret observations, actions, or motor slots.
+- The interface shape and hashes are pinned in `contracts.lock.json` (re-pin with
+  `scripts/pin_contract.py`, a deliberate act); new exports are gated by
+  `RobotControl/training/policy_guard.py`; every existing policy is listed in
+  `agents/registry.json`. See `docs/cross_compatibility.md`.
 - MuJoCo / URLab owns simulated physics; Unreal Chaos must not simulate the
   robot. Preserve the documented 5 ms physics step and 50 Hz policy rate.
 - Keep the Level 0 scope bounded to the stand-mounted upper-body policy and
