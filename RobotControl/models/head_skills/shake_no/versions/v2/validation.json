@@ -1,0 +1,40 @@
+{
+  "skill": "shake_no",
+  "passed": false,
+  "failures": [
+    "nominal mean error 4.12 deg >= 3.0 deg",
+    "randomised mean error 4.08 deg >= 4.0 deg",
+    "runtime twin mean error 4.084 deg >= 4.0 deg"
+  ],
+  "policy_sha256": "114157a55e77c65121c5f15634e2343c4ca5c55b9e8366a2cb6643c7b384f190",
+  "validated_at": "2026-11-27T08:56:53",
+  "bars_deg": {
+    "nominal": 3.0,
+    "randomised": 4.0,
+    "runtime": 4.0,
+    "other_joints": 5.0
+  },
+  "metrics": {
+    "onnx_parity": 3.5762786865234375e-07,
+    "nominal": {
+      "mean_err_deg": 4.117,
+      "max_err_deg": 7.298,
+      "other_joint_max_deg": 1.326,
+      "max_torque_nm": 0.099
+    },
+    "randomised": {
+      "mean_err_deg": 4.076,
+      "max_err_deg": 7.42,
+      "other_joint_max_deg": 1.674,
+      "max_torque_nm": 0.286
+    },
+    "runtime": {
+      "exit_code": 0,
+      "abort": "",
+      "mean_err_deg": 4.084,
+      "max_err_deg": 7.481,
+      "log": "logs/head_skills/validate_shake_no.csv"
+    },
+    "track_err_deg": 4.084
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "creature": "unitree_r1_a5",
+  "policy": "policy.onnx",
+  "policy_sha256": "f03ddfe0599cb883ecfbb6caa92f9931d58625bee1489503a52fae60761b929c",
+  "interface_sha256": "526e01aaf5153f7f09ba111503b759f78491b8e85f8f9071fd6a829e754536d1",
+  "morphology_sha256": "0b5f92d3fe7ebecc194f81e7959a07f78b46f553806a4932a23bd523f0d76972",
+  "physics_sha256": "5f730f00ab76f3ca67fb68a1bd77ac4f3eac4fc1ca1da1d270d9abdba3077bde",
+  "n_obs": 131,
+  "n_action": 28,
+  "opset": 17,
+  "verified_at": "2026-11-27T13:30:21Z"
+}

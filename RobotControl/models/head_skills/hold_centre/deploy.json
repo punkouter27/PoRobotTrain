@@ -2,12 +2,17 @@
  "policy_name": "r1_head_hold_centre",
  "skill": "hold_centre",
  "label": "Hold Centre",
+ "interface": "unite_131_28",
  "step_dt": 0.02,
- "num_obs": 9,
- "num_actions": 2,
+ "num_obs": 131,
+ "num_actions": 28,
  "joint_names": [
   "head_pitch_joint",
   "head_yaw_joint"
+ ],
+ "role_indices": [
+  25,
+  26
  ],
  "motor_slots": [
   29,
@@ -36,65 +41,81 @@
  "soft_limit_factor": 0.9,
  "observations": [
   {
+   "name": "root_lin_vel",
+   "size": 3
+  },
+  {
+   "name": "root_ang_vel",
+   "size": 3
+  },
+  {
+   "name": "projected_gravity",
+   "size": 3
+  },
+  {
    "name": "joint_pos_rel",
-   "size": 2
+   "size": 28
   },
   {
    "name": "joint_vel",
-   "size": 2
+   "size": 28
   },
   {
    "name": "last_action",
-   "size": 2
+   "size": 28
+  },
+  {
+   "name": "role_mask",
+   "size": 28
   },
   {
    "name": "command",
-   "size": 3
+   "size": 10
   }
  ],
  "command": "hold: [0,0,0]; look_at: [yaw, pitch, 0] rad; periodic: [sin, cos, size]",
  "period_s": 0.0,
  "max_deg": 30.0,
  "metadata": {
-  "trained_at": "2026-11-22T18:49:05",
+  "trained_at": "2026-11-27T08:30:20",
   "skill": "hold_centre",
   "iters": 120,
   "num_envs": 512,
   "horizon": 24,
   "seed": 0,
-  "git": "ff2a314",
+  "git": "7a24889",
   "device": "cuda",
   "env": "HeadSkillEnv",
-  "train_time_s": 58.9,
+  "train_time_s": 305.8,
   "joint_map_sha256": "df0a086ae8017262"
  },
  "validation": {
   "passed": true,
   "failures": [],
-  "policy_sha256": "d3527c35f6c6638da8d622f881403d0b3d194abdaea3f1cc3d746c0e7a2c24ed",
-  "validated_at": "2026-11-22T18:58:26",
+  "policy_sha256": "f03ddfe0599cb883ecfbb6caa92f9931d58625bee1489503a52fae60761b929c",
+  "validated_at": "2026-11-27T08:30:22",
   "metrics": {
-   "onnx_parity": 1.430511474609375e-06,
+   "onnx_parity": 2.384185791015625e-07,
    "nominal": {
-    "mean_err_deg": 0.101,
-    "max_err_deg": 0.101,
+    "mean_err_deg": 0.225,
+    "max_err_deg": 0.226,
     "other_joint_max_deg": 1.324,
-    "max_torque_nm": 1.377
+    "max_torque_nm": 0.948
    },
    "randomised": {
-    "mean_err_deg": 0.101,
-    "max_err_deg": 0.194,
+    "mean_err_deg": 0.225,
+    "max_err_deg": 0.265,
     "other_joint_max_deg": 1.584,
-    "max_torque_nm": 3.93
+    "max_torque_nm": 2.142
    },
    "runtime": {
     "exit_code": 0,
     "abort": "",
-    "mean_err_deg": 0.107,
-    "max_err_deg": 0.265,
-    "log": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoRobotTrain\\logs\\head_skills\\validate_hold_centre.csv"
+    "mean_err_deg": 0.229,
+    "max_err_deg": 0.396,
+    "log": "logs/head_skills/validate_hold_centre.csv"
    },
-   "track_err_deg": 0.107
+   "track_err_deg": 0.229
   }
  },
  "desc": "Trained: holds the head still, facing forward. Head pitch + yaw only.",
@@ -187,5 +208,6 @@
  "glance_move": 0.4,
  "yaw_range": 0.0,
  "pitch_range": 0.0,
- "version": 1
+ "pose": null,
+ "version": 2
 }

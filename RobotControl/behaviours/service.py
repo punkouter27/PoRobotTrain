@@ -447,7 +447,17 @@ class Service:
                 self._record_robot_copy(pu.group(1), int(pu.group(2)), pu.group(3))
             pm = PROGRESS_RE.match(line)
             if pm:
-                self.progress = {"job": job, "done": int(pm.group(1)), "total": int(pm.group(2))}
+                prev = self.progress if isinstance(self.progress, dict) else {}
+                self.progress = {**prev, "job": job, "done": int(pm.group(1)), "total": int(pm.group(2))}
+                continue
+            if line.startswith("@train_stats "):
+                try:
+                    stats = json.loads(line[13:].strip())
+                    if isinstance(stats, dict):
+                        prev = self.progress if isinstance(self.progress, dict) else {"job": job, "done": 0, "total": 0}
+                        self.progress = {**prev, **stats, "job": job}
+                except ValueError:
+                    pass
                 continue
             if "post-quantum" in line or "store now" in line or "pq.html" in line or not line.strip():
                 continue

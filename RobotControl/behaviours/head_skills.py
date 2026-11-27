@@ -43,6 +43,49 @@ SOFT_LIMIT_FACTOR = 0.9
 NUM_CMD = 3
 SKILLS_SUBDIR = "head_skills"
 
+# UNITE cross-platform portable contract (unitree_r1_a5: 131 obs -> 28 role-ordered actions)
+UNITE_N_OBS = 131
+UNITE_N_ACT = 28
+UNITE_ROLE_INDEX = {HEAD_PITCH: 25, HEAD_YAW: 26}
+UNITE_ROLE_MASK = np.array(
+    [1.0 if i not in (13, 27) else 0.0 for i in range(UNITE_N_ACT)],
+    dtype=np.float32,
+)
+
+
+def pack_unite_obs(
+    powered: Sequence[str],
+    q_rel: np.ndarray,
+    dq: np.ndarray,
+    last_action: np.ndarray,
+    cmd: np.ndarray,
+) -> np.ndarray:
+    """Pack head-skill observations into the canonical UNITE 131-dim role-ordered vector."""
+    q_rel = np.asarray(q_rel, dtype=np.float32)
+    batched = q_rel.ndim == 2
+    n = q_rel.shape[0] if batched else 1
+    q2 = q_rel if batched else q_rel[None, :]
+    dq2 = np.asarray(dq, dtype=np.float32).reshape(n, -1)
+    la2 = np.asarray(last_action, dtype=np.float32).reshape(n, -1)
+    c2 = np.asarray(cmd, dtype=np.float32).reshape(n, -1)
+    obs = np.zeros((n, UNITE_N_OBS), dtype=np.float32)
+    obs[:, 8] = -1.0  # projected_gravity = [0, 0, -1] upright on stand
+    for k, j in enumerate(powered):
+        r = UNITE_ROLE_INDEX[j]
+        obs[:, 9 + r] = q2[:, k]
+        obs[:, 37 + r] = dq2[:, k]
+        obs[:, 65 + r] = la2[:, k]
+    obs[:, 93:121] = UNITE_ROLE_MASK
+    obs[:, 121 : 121 + c2.shape[1]] = c2
+    return obs if batched else obs[0]
+
+
+def unpack_unite_action(powered: Sequence[str], action: np.ndarray) -> np.ndarray:
+    """Extract the powered head-joint actions from a 28-dim UNITE action vector."""
+    a = np.asarray(action, dtype=np.float64)
+    idx = [UNITE_ROLE_INDEX[j] for j in powered]
+    return a[:, idx] if a.ndim == 2 else a[idx]
+
 
 @dataclass(frozen=True)
 class HeadSkill:
@@ -246,8 +289,11 @@ class OnnxPolicy:
         self.sess = ort.InferenceSession(str(path), sess_options=opts, providers=["CPUExecutionProvider"])
         self.inp = self.sess.get_inputs()[0].name
         shape = self.sess.get_inputs()[0].shape
-        if shape[-1] != num_obs:
-            raise RuntimeError(f"{path.name} expects {shape[-1]} observations, this skill builds {num_obs}")
+        got = shape[-1]
+        if got not in (num_obs, UNITE_N_OBS):
+            raise RuntimeError(f"{path.name} expects {got} observations, this skill builds {num_obs} (or {UNITE_N_OBS})")
+        self.num_obs = int(got)
+        self.is_unite = self.num_obs == UNITE_N_OBS
 
     def __call__(self, obs: np.ndarray) -> np.ndarray:
         return self.sess.run(None, {self.inp: obs.reshape(1, -1).astype(np.float32)})[0][0]
@@ -354,8 +400,13 @@ class TrainedHeadBehaviour:
 
     def _policy_step(self, t: float, q: np.ndarray, dq: np.ndarray) -> None:
         self.cmd = self.command_at(t)
-        obs = np.concatenate([q - self.default, dq, self.last_action, self.cmd]).astype(np.float32)
-        a = np.clip(np.asarray(self.policy(obs), dtype=np.float64).reshape(-1), -ACTION_CLIP, ACTION_CLIP)
+        if getattr(self.policy, "is_unite", False):
+            obs = pack_unite_obs(self.skill.powered, q - self.default, dq, self.last_action, self.cmd)
+            raw = np.asarray(self.policy(obs), dtype=np.float64).reshape(-1)
+            a = np.clip(unpack_unite_action(self.skill.powered, raw), -ACTION_CLIP, ACTION_CLIP)
+        else:
+            obs = np.concatenate([q - self.default, dq, self.last_action, self.cmd]).astype(np.float32)
+            a = np.clip(np.asarray(self.policy(obs), dtype=np.float64).reshape(-1), -ACTION_CLIP, ACTION_CLIP)
         if not np.all(np.isfinite(a)):
             raise FloatingPointError("policy produced a non-finite action")
         self.last_action = a

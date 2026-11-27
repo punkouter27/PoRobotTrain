@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import List, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
-VERIFY = ROOT.parent / "global" / "UNITE" / "tools" / "verify_policy.py"
+VERIFY = ROOT.parent / "GLOBAL" / "rl_training" / "standards" / "unite" / "tools" / "verify_policy.py"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "configs"))
 import contract as contract_mod  # noqa: E402

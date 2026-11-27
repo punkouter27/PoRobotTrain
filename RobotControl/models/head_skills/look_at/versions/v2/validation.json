@@ -1,0 +1,40 @@
+{
+  "skill": "look_at",
+  "passed": false,
+  "failures": [
+    "nominal mean error 51.77 deg >= 2.0 deg",
+    "randomised mean error 51.76 deg >= 3.0 deg",
+    "runtime twin run stopped: ABORT at t=1.10s: head_pitch_joint tracking error +33.1 deg for >1.0 s (blocked or wrong direction)"
+  ],
+  "policy_sha256": "0c2306eb0b03f2e2f6826407304d994c0430174d05616fd091c36efa8f6c5b57",
+  "validated_at": "2026-11-27T09:03:29",
+  "bars_deg": {
+    "nominal": 2.0,
+    "randomised": 3.0,
+    "runtime": 3.0,
+    "other_joints": 5.0
+  },
+  "metrics": {
+    "onnx_parity": 7.152557373046875e-07,
+    "nominal": {
+      "mean_err_deg": 51.766,
+      "max_err_deg": 67.599,
+      "other_joint_max_deg": 1.335,
+      "max_torque_nm": 3.62
+    },
+    "randomised": {
+      "mean_err_deg": 51.759,
+      "max_err_deg": 67.668,
+      "other_joint_max_deg": 1.946,
+      "max_torque_nm": 4.489
+    },
+    "runtime": {
+      "exit_code": 2,
+      "abort": "ABORT at t=1.10s: head_pitch_joint tracking error +33.1 deg for >1.0 s (blocked or wrong direction)",
+      "mean_err_deg": null,
+      "max_err_deg": null,
+      "log": "logs/head_skills/validate_look_at.csv"
+    },
+    "track_err_deg": null
+  }
+}

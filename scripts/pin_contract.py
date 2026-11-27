@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "contracts.lock.json"
 CREATURE = "unitree_r1_a5"
-CONTRACT = ROOT.parent / "global" / "UNITE" / "creatures" / CREATURE / "contract.json"
+CONTRACT = ROOT.parent / "GLOBAL" / "rl_training" / "standards" / "unite" / "creatures" / CREATURE / "contract.json"
 
 
 def build() -> dict:
@@ -30,7 +30,7 @@ def build() -> dict:
         "Regenerate with scripts/pin_contract.py after a contract change (that is a breaking change).",
         "contract_version": 1,
         "creature": c["name"],
-        "contract_path": f"global/UNITE/creatures/{c['name']}/contract.json",
+        "contract_path": f"GLOBAL/rl_training/standards/unite/creatures/{c['name']}/contract.json",
         "n_obs": c["observation"]["n_obs"],
         "n_action": c["action"]["n_action"],
         "control_dt": c["physics"]["control_dt"],
