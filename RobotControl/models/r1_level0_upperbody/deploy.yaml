@@ -102,13 +102,13 @@ held_joints:
 - left_wrist_roll_joint
 presettle_s: 2.0
 metadata:
-  trained_at: '2026-11-09T15:18:27'
+  trained_at: '2026-11-27T10:22:52'
   iters: 1500
   num_envs: 512
   horizon: 24
   seed: 0
-  git: nogit
-  device: cuda
+  git: 7a24889
+  device: cpu
   env: Level0StandEnv
-  joint_map_sha256: df0a086ae8017262
+  joint_map_sha256: c57c713fbd263d43
   presettle_s: 2.0
