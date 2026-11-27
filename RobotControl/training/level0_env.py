@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import sys
 from dataclasses import dataclass, field
 
 import mujoco
@@ -22,8 +23,13 @@ import numpy as np
 import yaml
 from mujoco import rollout
 
-from ..configs.joint_map import JointMap
-from ..configs.sim_calibration import SimCalibration
+try:  # imported as robotcontrol.training.level0_env
+    from ..configs.joint_map import JointMap
+    from ..configs.sim_calibration import SimCalibration
+except ImportError:  # imported as a top-level module by train_level0.py / export_level0.py / validate_level0.py
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from configs.joint_map import JointMap
+    from configs.sim_calibration import SimCalibration
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 # mesh-free variant (identical physics; visual geoms carry no mass/collision) so 512 per-env model copies fit in RAM
