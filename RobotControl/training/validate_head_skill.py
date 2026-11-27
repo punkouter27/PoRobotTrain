@@ -62,11 +62,11 @@ def _score_mask(sk: hs.HeadSkill, t: np.ndarray) -> np.ndarray:
     return t >= 0.5
 
 
-def _env_rollout(skill_id: str, policy, num_envs: int, randomised: bool, seed: int) -> dict:
+def _env_rollout(skill_id: str, policy, num_envs: int, randomised: bool, seed: int, portable: bool = False) -> dict:
     from .head_skill_env import HeadSkillConfig, HeadSkillEnv
 
     sk = hs.SKILLS[skill_id]
-    env = HeadSkillEnv(HeadSkillConfig(skill=skill_id, num_envs=num_envs, seed=seed))
+    env = HeadSkillEnv(HeadSkillConfig(skill=skill_id, num_envs=num_envs, seed=seed, portable=portable))
     try:
         env.set_eval(not randomised)  # randomised: physics, sensor noise, delay and start pose all randomised
         rng = np.random.default_rng(seed)
@@ -155,13 +155,14 @@ def _runtime_rollout(skill_id: str, onnx_path: Path, seed: int = 0) -> dict:
     }
 
 
-def _parity(folder: Path, sk: hs.HeadSkill) -> float:
+def _parity(folder: Path, sk: hs.HeadSkill, portable: bool = False) -> float:
     import torch
 
     from .ppo import ActorCritic
 
-    n_obs = hs.obs_size(sk)
-    ac = ActorCritic(n_obs, len(sk.powered), hidden=(128, 64))
+    n_obs = hs.UNITE_N_OBS if portable else hs.obs_size(sk)
+    n_act = hs.UNITE_N_ACT if portable else len(sk.powered)
+    ac = ActorCritic(n_obs, n_act, hidden=(128, 64), use_obs_norm=not portable)
     ac.load_state_dict(torch.load(folder / "model.pt", map_location="cpu"))
     ac.eval()
     pol = hs.OnnxPolicy(folder / "policy.onnx", n_obs)
@@ -176,17 +177,18 @@ def validate(skill_id: str, folder: Path) -> dict:
     sk = hs.SKILLS[skill_id]
     onnx_path = folder / "policy.onnx"
     pol = hs.OnnxPolicy(onnx_path, hs.obs_size(sk))
+    portable = pol.is_unite
 
     def batch_policy(obs):
         return pol.sess.run(None, {pol.inp: obs.astype(np.float32)})[0]
 
     bar_nom, bar_dr, bar_rt = bars(skill_id)
     failures = []
-    parity = _parity(folder, sk)
+    parity = _parity(folder, sk, portable=portable)
     if not parity < 1e-4:
         failures.append(f"ONNX/PyTorch mismatch {parity:.2e}")
-    nominal = _env_rollout(skill_id, batch_policy, 1, randomised=False, seed=123)
-    randomised = _env_rollout(skill_id, batch_policy, 8, randomised=True, seed=7)
+    nominal = _env_rollout(skill_id, batch_policy, 1, randomised=False, seed=123, portable=portable)
+    randomised = _env_rollout(skill_id, batch_policy, 8, randomised=True, seed=7, portable=portable)
     runtime = _runtime_rollout(skill_id, onnx_path)
     for name, res, bar in (("nominal", nominal, bar_nom), ("randomised", randomised, bar_dr)):
         if not res["mean_err_deg"] < bar:

@@ -343,7 +343,7 @@ void UR1SkillBrainComponent::StartSkill(int32 SkillIndex, float InSizeDeg, float
 	Target = S.Default;
 	Ref.SetNumZeroed(K);
 	Obs.SetNumZeroed(S.NumObs);
-	Action.SetNumZeroed(K);
+	Action.SetNumZeroed(S.bUnitePortable ? R1Skills::UniteNumAct : K);
 	PrevRef.SetNumZeroed(K);
 	DelayQueue.SetNum(5);   // up to 4 steps (80 ms) of extra delay
 	for (TArray<float>& D : DelayQueue)
@@ -954,19 +954,42 @@ void UR1SkillBrainComponent::PolicyStep()
 	}
 	Readout.OtherMaxDeg = FMath::Max(Readout.OtherMaxDeg, FMath::RadiansToDegrees(Other));
 
-	// observation: [q - default (+ sensor noise), dq, last_action, command]
+	// observation: UNITE 131-dim role-ordered or legacy [q - default (+ sensor noise), dq, last_action, command]
 	float Cmd[R1Skills::NumCmd];
 	FillCommand(S, T, Cmd);
 	const float Noise = FMath::DegreesToRadians(NoiseDeg);
-	for (int32 i = 0; i < K; ++i)
+	if (S.bUnitePortable)
 	{
-		Obs[i] = Q[i] - S.Default[i] + (Noise > 0.f ? NoiseRng.FRandRange(-Noise, Noise) : 0.f);
-		Obs[K + i] = Dq[i];
-		Obs[2 * K + i] = LastAction[i];
+		FMemory::Memzero(Obs.GetData(), Obs.Num() * sizeof(float));
+		Obs[8] = -1.f;   // projected_gravity = [0, 0, -1] upright on stand
+		for (int32 i = 0; i < K; ++i)
+		{
+			const int32 R = S.RoleIndices[i];
+			Obs[9 + R] = Q[i] - S.Default[i] + (Noise > 0.f ? NoiseRng.FRandRange(-Noise, Noise) : 0.f);
+			Obs[37 + R] = Dq[i];
+			Obs[65 + R] = LastAction[i];
+		}
+		for (int32 j = 0; j < R1Skills::UniteNumAct; ++j)
+		{
+			Obs[93 + j] = (j != 13 && j != 27) ? 1.f : 0.f;   // R1 A5 role_mask
+		}
+		for (int32 c = 0; c < R1Skills::NumCmd; ++c)
+		{
+			Obs[121 + c] = Cmd[c];
+		}
 	}
-	for (int32 c = 0; c < R1Skills::NumCmd; ++c)
+	else
 	{
-		Obs[3 * K + c] = Cmd[c];
+		for (int32 i = 0; i < K; ++i)
+		{
+			Obs[i] = Q[i] - S.Default[i] + (Noise > 0.f ? NoiseRng.FRandRange(-Noise, Noise) : 0.f);
+			Obs[K + i] = Dq[i];
+			Obs[2 * K + i] = LastAction[i];
+		}
+		for (int32 c = 0; c < R1Skills::NumCmd; ++c)
+		{
+			Obs[3 * K + c] = Cmd[c];
+		}
 	}
 
 	// bindings are views onto the preallocated buffers: no heap work in the policy loop
@@ -980,13 +1003,14 @@ void UR1SkillBrainComponent::PolicyStep()
 	TArray<float>& Tgt = DelayQueue[DelayHead];
 	for (int32 i = 0; i < K; ++i)
 	{
-		if (!bOk || !FMath::IsFinite(Action[i]))
+		const float RawAct = S.bUnitePortable ? Action[S.RoleIndices[i]] : Action[i];
+		if (!bOk || !FMath::IsFinite(RawAct))
 		{
 			Readout.RobotWouldStop = TEXT("policy produced a non-finite action");
 			Stop();
 			return;
 		}
-		const float A = FMath::Clamp(Action[i], -R1Skills::ActionClip, R1Skills::ActionClip);
+		const float A = FMath::Clamp(RawAct, -R1Skills::ActionClip, R1Skills::ActionClip);
 		LastAction[i] = A;
 		Tgt[i] = FMath::Clamp(S.Default[i] + S.ActionScale[i] * A, S.SoftLo[i], S.SoftHi[i]);
 	}

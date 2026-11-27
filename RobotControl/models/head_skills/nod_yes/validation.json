@@ -2,8 +2,8 @@
   "skill": "nod_yes",
   "passed": true,
   "failures": [],
-  "policy_sha256": "73332eda91b317ec36538a49b52ff61292ca3051f3653cc67a627039a9e9c88f",
-  "validated_at": "2026-11-22T20:10:26",
+  "policy_sha256": "05a72ef71745f67acb9768842948ede08cbcc8170fe9dccce1b3cb49e2fc0290",
+  "validated_at": "2026-11-27T08:51:46",
   "bars_deg": {
     "nominal": 3.0,
     "randomised": 4.0,
@@ -11,26 +11,26 @@
     "other_joints": 5.0
   },
   "metrics": {
-    "onnx_parity": 9.5367431640625e-07,
+    "onnx_parity": 7.152557373046875e-07,
     "nominal": {
-      "mean_err_deg": 0.192,
-      "max_err_deg": 0.391,
-      "other_joint_max_deg": 1.325,
-      "max_torque_nm": 0.578
+      "mean_err_deg": 0.464,
+      "max_err_deg": 0.984,
+      "other_joint_max_deg": 1.326,
+      "max_torque_nm": 0.768
     },
     "randomised": {
-      "mean_err_deg": 0.286,
-      "max_err_deg": 0.75,
+      "mean_err_deg": 0.502,
+      "max_err_deg": 1.244,
       "other_joint_max_deg": 1.685,
-      "max_torque_nm": 1.579
+      "max_torque_nm": 1.43
     },
     "runtime": {
       "exit_code": 0,
       "abort": "",
-      "mean_err_deg": 0.397,
-      "max_err_deg": 0.948,
-      "log": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoRobotTrain\\logs\\head_skills\\validate_nod_yes.csv"
+      "mean_err_deg": 0.625,
+      "max_err_deg": 1.323,
+      "log": "logs/head_skills/validate_nod_yes.csv"
     },
-    "track_err_deg": 0.397
+    "track_err_deg": 0.625
   }
 }

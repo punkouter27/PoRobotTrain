@@ -42,7 +42,37 @@
             <div class="rb-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@pct.ToString("0", Inv)">
                 <div class="rb-progress__bar" style="width:@pct.ToString("0.#", Inv)%"></div>
             </div>
-            <div class="po-muted">Training: @(pct.ToString("0", Inv))%@(Ui.Advanced ? $" · {LastTrainLine}" : string.Empty)</div>
+            <div class="sk-metrics" style="margin-top:8px;flex-wrap:wrap;gap:12px;">
+                <span><b>@(string.IsNullOrEmpty(p?.Skill) ? "Starting…" : p.Skill.Replace('_', ' '))</b> · @(pct.ToString("0", Inv))%@(p?.Iter is int it && p.Iters is int tot ? $" (iter {it}/{tot})" : string.Empty)</span>
+                @if (string.Equals(p?.Phase, "validating", StringComparison.OrdinalIgnoreCase))
+                {
+                    <span class="po-pill po-pill--blue">VALIDATING ONNX…</span>
+                }
+                @if (p?.TrackErrDeg is double err)
+                {
+                    <span>Track error: <b>@err.ToString("0.00", Inv)°</b></span>
+                }
+                @if (p?.Reward is double rew)
+                {
+                    <span>Reward: <b>@rew.ToString("0.000", Inv)</b></span>
+                }
+                @if (p?.Fps is double fps)
+                {
+                    <span>Speed: <b>@fps.ToString("N0", Inv)</b> steps/s@(!string.IsNullOrEmpty(p.Device) ? $" ({p.Device})" : string.Empty)</span>
+                }
+                @if (p?.ElapsedS is double el)
+                {
+                    <span>Elapsed: <b>@FmtDur(el)</b>@(p.EtaS is double eta && eta > 0.5 ? $" · ETA ~{FmtDur(eta)}" : string.Empty)</span>
+                }
+                @if (p?.Std is double std)
+                {
+                    <span>Std: <b>@std.ToString("0.000", Inv)</b></span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(LastTrainLine))
+            {
+                <div class="po-muted" style="font-family:monospace;font-size:0.8rem;margin-top:4px;">@LastTrainLine</div>
+            }
         }
         @if (!string.IsNullOrEmpty(_toast))
         {
@@ -147,6 +177,7 @@
     private string LastTrainLine => _status?.Lines.LastOrDefault(l => l.StartsWith('[')) ?? string.Empty;
 
     private static string Deg(double? v) => v is double d ? $"{d.ToString("0.0", Inv)}°" : "—";
+    private static string FmtDur(double s) => s < 60 ? $"{s.ToString("0", Inv)}s" : $"{(int)(s / 60)}m {(int)(s % 60):00}s";
     private static string Short(string? iso) => string.IsNullOrEmpty(iso) ? "—" : iso.Replace('T', ' ');
     /// <summary>The service's descriptions start with "Trained: "; every card here is a trained skill.</summary>
     private static string Plain(string desc) => desc.StartsWith("Trained: ", StringComparison.Ordinal) ? char.ToUpperInvariant(desc[9]) + desc[10..] : desc;

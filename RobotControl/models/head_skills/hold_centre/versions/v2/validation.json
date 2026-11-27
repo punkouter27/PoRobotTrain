@@ -1,0 +1,36 @@
+{
+  "skill": "hold_centre",
+  "passed": true,
+  "failures": [],
+  "policy_sha256": "f03ddfe0599cb883ecfbb6caa92f9931d58625bee1489503a52fae60761b929c",
+  "validated_at": "2026-11-27T08:30:22",
+  "bars_deg": {
+    "nominal": 1.0,
+    "randomised": 1.5,
+    "runtime": 1.5,
+    "other_joints": 5.0
+  },
+  "metrics": {
+    "onnx_parity": 2.384185791015625e-07,
+    "nominal": {
+      "mean_err_deg": 0.225,
+      "max_err_deg": 0.226,
+      "other_joint_max_deg": 1.324,
+      "max_torque_nm": 0.948
+    },
+    "randomised": {
+      "mean_err_deg": 0.225,
+      "max_err_deg": 0.265,
+      "other_joint_max_deg": 1.584,
+      "max_torque_nm": 2.142
+    },
+    "runtime": {
+      "exit_code": 0,
+      "abort": "",
+      "mean_err_deg": 0.229,
+      "max_err_deg": 0.396,
+      "log": "logs/head_skills/validate_hold_centre.csv"
+    },
+    "track_err_deg": 0.229
+  }
+}

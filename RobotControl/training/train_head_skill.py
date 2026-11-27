@@ -106,23 +106,38 @@ def export(ac: ActorCritic, env: HeadSkillEnv, out: Path, meta: dict) -> Path:
         "policy_name": f"r1_head_{sk.id}",
         "skill": sk.id,
         "label": sk.label,
+        "interface": "unite_131_28" if env.portable else "legacy_head_skill",
         "step_dt": hs.POLICY_DT,
         "num_obs": env.num_obs,
         "num_actions": env.num_actions,
         "joint_names": list(sk.powered),
+        "role_indices": [hs.UNITE_ROLE_INDEX[j] for j in sk.powered] if env.portable else [],
         "motor_slots": [int(jm.motor_slots[i]) for i in idx],
         "default_joint_pos": [float(jm.defaults[i]) for i in idx],
         "kp": [float(jm.kp[i]) for i in idx],
         "kd": [float(jm.kd[i]) for i in idx],
         "action_scale": [float(jm.action_scale[i]) for i in idx],
-        "action_clip": [hs.ACTION_CLIP] * env.num_actions,
+        "action_clip": [hs.ACTION_CLIP] * len(sk.powered),
         "soft_limit_factor": hs.SOFT_LIMIT_FACTOR,
-        "observations": [
-            {"name": "joint_pos_rel", "size": env.num_actions},
-            {"name": "joint_vel", "size": env.num_actions},
-            {"name": "last_action", "size": env.num_actions},
-            {"name": "command", "size": hs.NUM_CMD},
-        ],
+        "observations": (
+            [
+                {"name": "root_lin_vel", "size": 3},
+                {"name": "root_ang_vel", "size": 3},
+                {"name": "projected_gravity", "size": 3},
+                {"name": "joint_pos_rel", "size": hs.UNITE_N_ACT},
+                {"name": "joint_vel", "size": hs.UNITE_N_ACT},
+                {"name": "last_action", "size": hs.UNITE_N_ACT},
+                {"name": "role_mask", "size": hs.UNITE_N_ACT},
+                {"name": "command", "size": 10},
+            ]
+            if env.portable
+            else [
+                {"name": "joint_pos_rel", "size": env.num_actions},
+                {"name": "joint_vel", "size": env.num_actions},
+                {"name": "last_action", "size": env.num_actions},
+                {"name": "command", "size": hs.NUM_CMD},
+            ]
+        ),
         "command": "hold: [0,0,0]; look_at: [yaw, pitch, 0] rad; periodic: [sin, cos, size]",
         "period_s": sk.period_s,
         "max_deg": sk.max_deg,
@@ -130,9 +145,9 @@ def export(ac: ActorCritic, env: HeadSkillEnv, out: Path, meta: dict) -> Path:
     }
     (out / "deploy.yaml").write_text(yaml.safe_dump(deploy, sort_keys=False), encoding="utf-8")
 
-    from policy_guard import check as guard_check  # UNITE R10/R11: gate every export
+    from .policy_guard import check as guard_check  # UNITE R10/R11: gate every export
 
-    guard_check(onnx_path)
+    guard_check(onnx_path, write_sidecar=env.portable)
     return onnx_path
 
 
@@ -145,14 +160,17 @@ def train(
     progress=(0, 1),
     checkpoint_every: int = 0,
     scratch: Optional[Path] = None,
+    portable: bool = False,
 ) -> Path:
     """Train, export into a staging folder, validate, then move it into place. Returns the policy folder.
 
     ``scratch``: export + validate into that folder only (no version stored or activated)."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(seed)
-    env = HeadSkillEnv(HeadSkillConfig(skill=skill_id, num_envs=num_envs, seed=seed))
-    ac = ActorCritic(env.num_obs, env.num_actions, hidden=(128, 64), init_noise_std=0.8)
+    env = HeadSkillEnv(HeadSkillConfig(skill=skill_id, num_envs=num_envs, seed=seed, portable=portable))
+    ac = ActorCritic(
+        env.num_obs, env.num_actions, hidden=(128, 64), init_noise_std=0.8, use_obs_norm=not portable
+    )
     ppo = PPO(ac, device)
     N, T = num_envs, horizon
     print(f"[{skill_id}] device={device} envs={N} obs={env.num_obs} act={env.num_actions} iters={iters}", flush=True)
@@ -198,6 +216,30 @@ def train(
             w.writerow([f"{x:.5g}" if isinstance(x, float) else x for x in row])
             logf.flush()
             print(f"@progress {k0 + it}/{ktot}", flush=True)
+            elapsed_s = time.time() - t0
+            eta_s = (elapsed_s / it) * max(iters - it, 0)
+            import json as _json
+
+            print(
+                "@train_stats "
+                + _json.dumps(
+                    {
+                        "skill": skill_id,
+                        "iter": it,
+                        "iters": iters,
+                        "reward": round(float(row[2]), 3),
+                        "track_err_deg": round(float(err), 2),
+                        "fps": round(float(fps), 0),
+                        "elapsed_s": round(float(elapsed_s), 1),
+                        "eta_s": round(float(eta_s), 1),
+                        "std": round(float(std), 3),
+                        "device": str(device),
+                        "phase": "training",
+                    },
+                    separators=(",", ":"),
+                ),
+                flush=True,
+            )
             if checkpoint_every > 0 and (it == 1 or it % checkpoint_every == 0 or it == iters):
                 save_checkpoint(ac, ckpt_dir, it)
             if it == 1 or it % 10 == 0 or it == iters:
@@ -224,6 +266,17 @@ def train(
         "joint_map_sha256": hashlib.sha256((PROJECT_ROOT / "RobotControl/configs/r1_joint_map.yaml").read_bytes())
         .hexdigest()[:16],
     }  # fmt: skip
+    print(
+        "@train_stats "
+        + '{"skill":"'
+        + skill_id
+        + '","iter":'
+        + str(iters)
+        + ',"iters":'
+        + str(iters)
+        + ',"phase":"validating"}',
+        flush=True,
+    )
     export(ac, env, stage, meta)
     from ..behaviours import skill_versions as sv
     from .validate_head_skill import validate
@@ -259,6 +312,7 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--checkpoint-every", type=int, default=0, help="save weights every N iterations (montage)")
     ap.add_argument("--scratch", type=Path, default=None, help="train into this folder only; store no version")
+    ap.add_argument("--portable", action="store_true", help="train on the UNITE 131->28 portable contract (no baked obs_norm)")
     args = ap.parse_args(argv)
     if args.checkpoint_every < 0:
         ap.error("--checkpoint-every must be >= 0")
@@ -270,7 +324,7 @@ def main(argv=None) -> int:
         ap.error("--scratch trains one skill")
     for s, n in plan:
         dest = train(s, n, args.num_envs, seed=args.seed, progress=(done, total),
-                     checkpoint_every=args.checkpoint_every, scratch=args.scratch)  # fmt: skip
+                     checkpoint_every=args.checkpoint_every, scratch=args.scratch, portable=args.portable)  # fmt: skip
         done += n
         if args.scratch:
             return 0

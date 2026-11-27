@@ -36,6 +36,9 @@ struct R1TWIN_API FR1SkillDef
 	TArray<float> HoldKd;
 
 	int32 NumObs = 0;
+	int32 NumActions = 0;
+	bool bUnitePortable = false;    // UNITE 131->28 role-ordered portable contract
+	TArray<int32> RoleIndices;      // canonical 28-role index per powered joint
 	float PeriodS = 0.f;      // periodic skills: one cycle; 0 = command driven
 	float MaxDeg = 30.f;
 	float YawRange = 0.f;     // look_at training range (rad)
@@ -70,6 +73,8 @@ namespace R1Skills
 	constexpr float PolicyDt = 0.02f;
 	constexpr float ActionClip = 5.f;
 	constexpr int32 NumCmd = 3;
+	constexpr int32 UniteNumObs = 131;
+	constexpr int32 UniteNumAct = 28;
 
 	/** RobotControl/models/head_skills next to UnrealProject/, or -R1SkillsDir=<path>. */
 	R1TWIN_API FString DefaultDir();

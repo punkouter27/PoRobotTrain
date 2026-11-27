@@ -1,0 +1,39 @@
+{
+  "skill": "glance_around",
+  "passed": false,
+  "failures": [
+    "nominal mean error 4.37 deg >= 4.0 deg",
+    "runtime twin run stopped: ABORT at t=2.74s: head_yaw_joint tracking error +17.5 deg for >0.4 s (blocked or wrong direction)"
+  ],
+  "policy_sha256": "e4fb18274b98556468a7b3f22006e7f74d1077ae83b628e1602ea645114de623",
+  "validated_at": "2026-11-27T09:10:22",
+  "bars_deg": {
+    "nominal": 4.0,
+    "randomised": 5.0,
+    "runtime": 5.0,
+    "other_joints": 5.0
+  },
+  "metrics": {
+    "onnx_parity": 2.384185791015625e-07,
+    "nominal": {
+      "mean_err_deg": 4.373,
+      "max_err_deg": 13.068,
+      "other_joint_max_deg": 1.327,
+      "max_torque_nm": 0.563
+    },
+    "randomised": {
+      "mean_err_deg": 4.362,
+      "max_err_deg": 13.221,
+      "other_joint_max_deg": 1.675,
+      "max_torque_nm": 1.394
+    },
+    "runtime": {
+      "exit_code": 2,
+      "abort": "ABORT at t=2.74s: head_yaw_joint tracking error +17.5 deg for >0.4 s (blocked or wrong direction)",
+      "mean_err_deg": 1.886,
+      "max_err_deg": 8.858,
+      "log": "logs/head_skills/validate_glance_around.csv"
+    },
+    "track_err_deg": 1.886
+  }
+}

@@ -60,6 +60,7 @@ class HeadSkillConfig:
     acc_limit: float = 80.0
     w_acc_violation: float = -0.1
     seed: int = 0
+    portable: bool = False
     nthread: int = field(default_factory=lambda: max(1, (os.cpu_count() or 4) - 1))
 
 
@@ -79,8 +80,9 @@ class HeadSkillEnv:
         self.ctrl_idx = np.array([jm.index_of(j) for j in self.skill.powered])
         self.k = len(self.ctrl_idx)
         self.passive_idx = np.array(jm.groups["left_leg"] + jm.groups["right_leg"])
-        self.num_actions = self.k
-        self.num_obs = hs.obs_size(self.skill)
+        self.portable = bool(cfg.portable)
+        self.num_actions = hs.UNITE_N_ACT if self.portable else self.k
+        self.num_obs = hs.UNITE_N_OBS if self.portable else hs.obs_size(self.skill)
 
         self.kp_all, self.kd_all, self.effort_all = jm.kp.copy(), jm.kd.copy(), jm.effort.copy()
         self.default_all = jm.defaults.copy()
@@ -225,6 +227,8 @@ class HeadSkillEnv:
         if not self._eval:
             q = q + self.rng.uniform(-self.cfg.obs_noise_pos, self.cfg.obs_noise_pos, q.shape)
             dq = dq + self.rng.uniform(-self.cfg.obs_noise_vel, self.cfg.obs_noise_vel, dq.shape)
+        if self.portable:
+            return hs.pack_unite_obs(self.skill.powered, q - self.default, dq, self.last_action, self.cmd)
         return np.concatenate([q - self.default, dq, self.last_action, self.cmd], axis=1).astype(np.float32)
 
     def targets_from_action(self, action: np.ndarray) -> np.ndarray:
@@ -234,6 +238,8 @@ class HeadSkillEnv:
     def step(self, action: np.ndarray):
         c = self.cfg
         action = np.asarray(action, dtype=np.float64)
+        if self.portable and action.shape[-1] == hs.UNITE_N_ACT:
+            action = hs.unpack_unite_action(self.skill.powered, action)
         ref = self.reference()  # what this step's observation asked for
         self.prev_action[:] = self.last_action
         self.last_action[:] = action

@@ -43,10 +43,20 @@ def mlp(inp, hidden, out):
     return nn.Sequential(*layers)
 
 
+class _IdentityNorm(nn.Module):
+    """No-op normaliser for UNITE R9-conforming portable policies (raw physical obs)."""
+
+    def forward(self, x):
+        return x
+
+    def update(self, x):
+        return None
+
+
 class ActorCritic(nn.Module):
-    def __init__(self, num_obs, num_actions, hidden=(256, 128, 64), init_noise_std=1.0):
+    def __init__(self, num_obs, num_actions, hidden=(256, 128, 64), init_noise_std=1.0, use_obs_norm=True):
         super().__init__()
-        self.obs_norm = EmpiricalNormalization(num_obs)
+        self.obs_norm = EmpiricalNormalization(num_obs) if use_obs_norm else _IdentityNorm()
         self.actor = mlp(num_obs, hidden, num_actions)
         self.critic = mlp(num_obs, hidden, 1)
         self.log_std = nn.Parameter(torch.full((num_actions,), float(np.log(init_noise_std))))

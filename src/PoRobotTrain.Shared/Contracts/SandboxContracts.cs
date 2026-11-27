@@ -93,11 +93,22 @@ public sealed record RobustnessReportDto(
     [property: JsonPropertyName("interaction")] RobustnessInteractionDto? Interaction = null,
     [property: JsonPropertyName("summary")] RobustnessSummaryDto? Summary = null);
 
-/// <summary>Background job progress in /status (e.g. the robustness sweep), null when idle.</summary>
+/// <summary>Background job progress in /status (e.g. skill training or robustness sweep), null when idle.</summary>
 public sealed record JobProgressDto(
     [property: JsonPropertyName("job")] string? Job,
     [property: JsonPropertyName("done")] int Done,
-    [property: JsonPropertyName("total")] int Total);
+    [property: JsonPropertyName("total")] int Total,
+    [property: JsonPropertyName("skill")] string? Skill = null,
+    [property: JsonPropertyName("iter")] int? Iter = null,
+    [property: JsonPropertyName("iters")] int? Iters = null,
+    [property: JsonPropertyName("reward")] double? Reward = null,
+    [property: JsonPropertyName("track_err_deg")] double? TrackErrDeg = null,
+    [property: JsonPropertyName("fps")] double? Fps = null,
+    [property: JsonPropertyName("elapsed_s")] double? ElapsedS = null,
+    [property: JsonPropertyName("eta_s")] double? EtaS = null,
+    [property: JsonPropertyName("std")] double? Std = null,
+    [property: JsonPropertyName("device")] string? Device = null,
+    [property: JsonPropertyName("phase")] string? Phase = null);
 
 // ------------------------------------------------------------------------------------- walk sandbox (#20)
 

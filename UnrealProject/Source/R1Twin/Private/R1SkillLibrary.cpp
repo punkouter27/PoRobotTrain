@@ -111,6 +111,7 @@ namespace
 		J->TryGetStringField(TEXT("desc"), S.Desc);
 		double D = 0.0;
 		if (J->TryGetNumberField(TEXT("num_obs"), D)) S.NumObs = static_cast<int32>(D);
+		if (J->TryGetNumberField(TEXT("num_actions"), D)) S.NumActions = static_cast<int32>(D);
 		if (J->TryGetNumberField(TEXT("period_s"), D)) S.PeriodS = static_cast<float>(D);
 		if (J->TryGetNumberField(TEXT("max_deg"), D)) S.MaxDeg = static_cast<float>(D);
 		if (J->TryGetNumberField(TEXT("yaw_range"), D)) S.YawRange = static_cast<float>(D);
@@ -123,8 +124,25 @@ namespace
 			&& NameArray(J, TEXT("hold_joints"), S.HoldJoints) && FloatArray(J, TEXT("hold_default"), S.HoldDefault)
 			&& FloatArray(J, TEXT("hold_kp"), S.HoldKp) && FloatArray(J, TEXT("hold_kd"), S.HoldKd);
 		const int32 K = S.Joints.Num();
+		if (S.NumActions <= 0) S.NumActions = K;
+		TArray<float> RawRoles;
+		if (FloatArray(J, TEXT("role_indices"), RawRoles))
+		{
+			for (float R : RawRoles) S.RoleIndices.Add(static_cast<int32>(R));
+		}
+		S.bUnitePortable = (S.NumObs == R1Skills::UniteNumObs && S.NumActions == R1Skills::UniteNumAct);
+		if (S.bUnitePortable && S.RoleIndices.Num() != K)
+		{
+			S.RoleIndices.Reset();
+			for (const FName& N : S.Joints)
+			{
+				if (N == R1Skills::HeadPitch) S.RoleIndices.Add(25);
+				else if (N == R1Skills::HeadYaw) S.RoleIndices.Add(26);
+			}
+		}
+		const bool bObsOk = (S.NumObs == 3 * K + R1Skills::NumCmd) || (S.bUnitePortable && S.RoleIndices.Num() == K);
 		if (!bShape || K == 0 || S.Default.Num() != K || S.ActionScale.Num() != K || S.Kp.Num() != K || S.Effort.Num() != K
-			|| S.SoftLo.Num() != K || S.SoftHi.Num() != K || S.HoldDefault.Num() != S.HoldJoints.Num() || S.NumObs != 3 * K + R1Skills::NumCmd)
+			|| S.SoftLo.Num() != K || S.SoftHi.Num() != K || S.HoldDefault.Num() != S.HoldJoints.Num() || !bObsOk)
 		{
 			S.Reason = TEXT("deploy.json does not match the head-skill contract");
 			return true;
