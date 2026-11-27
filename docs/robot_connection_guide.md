@@ -114,7 +114,37 @@ up/down = arm; `r` reset, `q` quit).
 
 ## Stage 6: compare with the twin
 
-Copy the robot log back and compare it with the same sweep in the twin:
+Do this in two steps, calibration first. The twin's friction, damping and zero offsets have never been measured
+(`sim_calibration.yaml` still reads `last_calibrated_at: null`), so a policy sweep compared before calibration
+measures the twin's guesses, not the robot.
+
+**6a. Calibrate with the safest behaviour you have.** `neck_turn` powers *only* `head_yaw` (0.86 Nm), so nothing
+else can move even if something is wrong. Robot on its stand, head facing forward:
+
+```powershell
+# on the laptop, robot connected; writes <name>.csv AND <name>.json beside it
+.venv\Scripts\python.exe -m robotcontrol.behaviours.runner neck_turn --target real --go --duration 6 --amplitude 10
+copy \\path\to\log\neck_turn_real_*.csv logs\robot\
+copy \\path\to\log\neck_turn_real_*.json logs\robot\
+
+.venv\Scripts\python.exe -m robotcontrol.tools.calibrate_sim noise logs\robot\neck_turn_real_*.csv
+.venv\Scripts\python.exe -m robotcontrol.tools.calibrate_sim fit   logs\robot\neck_turn_real_*.csv --write
+.venv\Scripts\python.exe -m robotcontrol.tools.calibrate_sim verify logs\robot\neck_turn_real_*.csv
+```
+
+`fit --write` is what fills in `last_calibrated_at`, `parity_rms_deg` and the per-joint armature/damping/friction/
+zero-offset. `verify` must pass at 5 deg on every joint, `head_yaw` included.
+
+The `.json` sidecar is not optional: it carries the behaviour, amplitude, frequency and sweep duration, and `verify`
+replays with those. Without it the replay guesses a different sweep and the moving joint reports a ~6 deg failure
+that is really two different motions being compared. If you only have the CSV, pass `--amplitude`/`--freq` and
+expect the tool to warn about the override.
+
+**Mass, before you trust the fit.** The twin is 30.15 kg; the training model and your A5 are 28.93 kg, all of the
+difference above the pelvis (RULES.md §9.1). `fit` absorbs an uncorrected mass error into friction and zero offset,
+which then hides it. Correct the mass *first* or treat the fitted numbers as provisional.
+
+**6b. Then compare a policy sweep**, which is the number that gates a brain:
 
 ```powershell
 scp unitree@192.168.123.164:porobot/logs/*.npz logs\robot\

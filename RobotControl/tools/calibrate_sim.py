@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import time
 from pathlib import Path
@@ -44,6 +45,38 @@ def load_behaviour_or_traj_log(path: str | Path, jm: JointMap) -> Tuple[np.ndarr
     return arr[:, 0], arr[:, 1:], list(jm.names)
 
 
+def log_meta(path: str | Path) -> dict:
+    """The sidecar a behaviour log is written with (empty when there is none)."""
+    p = Path(path).with_suffix(".json")
+    return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+
+
+def resolve_sweep(path: str | Path, behaviour=None, amplitude=None, freq=None, duration=None):
+    """Behaviour parameters for a replay: the log's own sidecar first, an explicit CLI value second.
+
+    A replay with different parameters is not a parity check — it is two different motions. The sidecar is
+    therefore authoritative; a CLI value that disagrees is honoured but reported as an override.
+    """
+    meta = log_meta(path)
+    name = behaviour or meta.get("behaviour") or "neck_turn"
+    amp = float(amplitude if amplitude is not None else meta.get("amplitude_deg", 10.0))
+    hz = float(freq if freq is not None else meta.get("freq_hz", 0.2))
+    dur = duration if duration is not None else meta.get("duration_s")
+    dur = None if dur is None else float(dur)
+    overrides = []
+    if (
+        amplitude is not None
+        and "amplitude_deg" in meta
+        and abs(float(amplitude) - float(meta["amplitude_deg"])) > 1e-9
+    ):
+        overrides.append(f"amplitude {amplitude} vs logged {meta['amplitude_deg']}")
+    if freq is not None and "freq_hz" in meta and abs(float(freq) - float(meta["freq_hz"])) > 1e-9:
+        overrides.append(f"freq {freq} vs logged {meta['freq_hz']}")
+    if duration is not None and "duration_s" in meta and abs(float(duration) - float(meta["duration_s"])) > 1e-9:
+        overrides.append(f"duration {duration} vs logged {meta['duration_s']}")
+    return name, amp, hz, dur, overrides
+
+
 def measure_idle_noise(t: np.ndarray, q: np.ndarray) -> Dict[str, float]:
     """Estimate encoder position noise and finite-diff velocity jitter from an idle holding segment."""
     if len(t) < 5:
@@ -66,10 +99,16 @@ def simulate_behaviour_trajectory(
     freq_hz: float = 0.2,
     duration_s: Optional[float] = None,
     start_q: Optional[Dict[str, float]] = None,
+    stop_s: Optional[float] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Run an offline headless rollout in calibrated `SimBackend` and return `(t, q[T, 26])`."""
+    """Run an offline headless rollout in calibrated `SimBackend` and return `(t, q[T, 26])`.
+
+    ``duration_s`` is the behaviour's own sweeping time (fades excluded); ``stop_s`` truncates the rollout.
+    The two are separate on purpose: a replay has to use the recorded sweep parameters or it compares a
+    different motion.
+    """
     spec = BEHAVIOUR_SPECS[behaviour]
-    params = SweepParams(amplitude_deg=amplitude_deg, freq_hz=freq_hz, duration_s=duration_s or 10.0)
+    params = SweepParams(amplitude_deg=amplitude_deg, freq_hz=freq_hz, duration_s=duration_s or 20.0)
     beh = spec.cls(jm, params, check_tracking=False)
     backend = SimBackend(jm, beh.powered, start_q=start_q, calibration=cal, realistic=True, settle_s=0.5)
     try:
@@ -78,7 +117,7 @@ def simulate_behaviour_trajectory(
         beh.start(dict(zip(jm.names, q0)))
         ts, qs = [], []
         t, k = 0.0, 0
-        total = min(beh.duration_s, duration_s) if duration_s is not None else beh.duration_s
+        total = beh.duration_s if stop_s is None else min(beh.duration_s, stop_s)
         while t <= total + 1e-9:
             q, dq, age = backend.read()
             ts.append(t)
@@ -97,22 +136,32 @@ def simulate_behaviour_trajectory(
 
 def fit_calibration(
     real_log: Path,
-    behaviour: str,
-    amplitude_deg: float = 10.0,
-    freq_hz: float = 0.2,
+    behaviour: Optional[str] = None,
+    amplitude_deg: Optional[float] = None,
+    freq_hz: Optional[float] = None,
     cal_path: Path = DEFAULT_CALIBRATION_PATH,
     write: bool = False,
+    duration_s: Optional[float] = None,
 ) -> dict:
-    """Fit zero-offset biases + powered-joint (armature, damping, frictionloss) against a real log."""
+    """Fit zero-offset biases + powered-joint (armature, damping, frictionloss) against a real log.
+
+    Parameters come from the log's sidecar unless the caller overrides them; a replay with different
+    parameters would fit against a motion the robot never made.
+    """
     jm = JointMap.load()
     cal = SimCalibration.load(cal_path, jm=jm)
+    behaviour, amplitude_deg, freq_hz, duration_s, overrides = resolve_sweep(
+        real_log, behaviour, amplitude_deg, freq_hz, duration_s
+    )
+    for o in overrides:
+        print(f"WARNING: overriding the logged sweep: {o}")
     t_real, q_real, _ = load_behaviour_or_traj_log(real_log, jm)
     start_q = dict(zip(jm.names, q_real[0].tolist()))
     dur = float(t_real[-1] - t_real[0])
 
     # Baseline parity before fitting
     t_b, q_b = simulate_behaviour_trajectory(
-        jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=dur, start_q=start_q
+        jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=duration_s, start_q=start_q
     )
     before = compare(t_real, q_real, t_b, q_b, align_start=True)
 
@@ -126,7 +175,14 @@ def fit_calibration(
 
     def loss(c: SimCalibration) -> float:
         ts, qs = simulate_behaviour_trajectory(
-            jm, c, behaviour, amplitude_deg, freq_hz, duration_s=min(dur, 4.0), start_q=start_q
+            jm,
+            c,
+            behaviour,
+            amplitude_deg,
+            freq_hz,
+            duration_s=duration_s,
+            start_q=start_q,
+            stop_s=min(dur, 4.0),
         )
         res = compare(t_real[t_real <= t_real[0] + 4.0], q_real[t_real <= t_real[0] + 4.0], ts, qs, align_start=True)
         return float(np.sqrt(np.mean(res["rms_deg"][pidx] ** 2)))
@@ -145,7 +201,7 @@ def fit_calibration(
                 arr[pidx] = cand_arr[pidx]
 
     t_a, q_a = simulate_behaviour_trajectory(
-        jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=dur, start_q=start_q
+        jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=duration_s, start_q=start_q
     )
     after = compare(t_real, q_real, t_a, q_a, align_start=True)
 
@@ -185,16 +241,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_fit = sub.add_parser("fit", help="Fit joint friction/damping/armature & zero-offset against a real log")
     p_fit.add_argument("real_log", type=Path)
-    p_fit.add_argument("--behaviour", default="neck_turn", choices=sorted(BEHAVIOUR_SPECS))
-    p_fit.add_argument("--amplitude", type=float, default=10.0)
-    p_fit.add_argument("--freq", type=float, default=0.2)
+    p_fit.add_argument("--behaviour", default=None, choices=sorted(BEHAVIOUR_SPECS))
+    p_fit.add_argument("--amplitude", type=float, default=None, help="deg (default: the log's sidecar)")
+    p_fit.add_argument("--freq", type=float, default=None, help="Hz (default: the log's sidecar)")
     p_fit.add_argument("--write", action="store_true", help="Save fitted parameters to sim_calibration.yaml")
 
     p_ver = sub.add_parser("verify", help="Verify calibrated SimBackend trajectory parity against a real log")
     p_ver.add_argument("real_log", type=Path)
-    p_ver.add_argument("--behaviour", default="neck_turn", choices=sorted(BEHAVIOUR_SPECS))
-    p_ver.add_argument("--amplitude", type=float, default=10.0)
-    p_ver.add_argument("--freq", type=float, default=0.2)
+    p_ver.add_argument("--behaviour", default=None, choices=sorted(BEHAVIOUR_SPECS))
+    p_ver.add_argument("--amplitude", type=float, default=None, help="deg (default: the log's sidecar)")
+    p_ver.add_argument("--freq", type=float, default=None, help="Hz (default: the log's sidecar)")
     p_ver.add_argument("--tol-deg", type=float, default=5.0)
 
     args = ap.parse_args(argv)
@@ -212,10 +268,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(res["table"])
         return 0
     cal = SimCalibration.load(jm=jm)
+    behaviour, amplitude_deg, freq_hz, duration_s, overrides = resolve_sweep(
+        args.real_log, args.behaviour, args.amplitude, args.freq
+    )
+    for o in overrides:
+        print(f"WARNING: overriding the logged sweep: {o}")
     t_real, q_real, _ = load_behaviour_or_traj_log(args.real_log, jm)
     start_q = dict(zip(jm.names, q_real[0].tolist()))
     ts, qs = simulate_behaviour_trajectory(
-        jm, cal, args.behaviour, args.amplitude, args.freq, duration_s=float(t_real[-1] - t_real[0]), start_q=start_q
+        jm, cal, behaviour, amplitude_deg, freq_hz, duration_s=duration_s, start_q=start_q
     )
     cmp = compare(t_real, q_real, ts, qs, align_start=True)
     print(format_table(jm.names, cmp, args.tol_deg))

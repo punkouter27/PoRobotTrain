@@ -49,9 +49,9 @@ Called at the end of every export (`export_level0.py`, `train_head_skill.py`). I
 | **legacy** | matches a recorded legacy interface | **export allowed**, logged as non-portable |
 | **foreign** | neither | **abort** — a new interface nobody signed off on |
 
-`UNITE_STRICT=1` turns legacy into an abort. Flip it the day the trainer moves to the role-ordered
-interface, not before — the twin cannot yet feed 131 observations, so strict mode would stop every
-export in the repo.
+`UNITE_STRICT=1` turns legacy into an abort. The runtime prerequisite is now met — the twin feeds 131 and
+drives 28 roles (section 5) — so flip it when the next policy is retrained on the role interface, knowing
+it will then stop the grandfathered Level 0 and head-skill exports on purpose.
 
 If `global/UNITE` is absent (CI, fresh clone) the guard prints **NOT VERIFIED** and continues; the lock
 still pins the shapes, so nothing is silently unguarded.
@@ -76,13 +76,44 @@ Current state (2026-11-26): **12 files on disk, 6 distinct policies, 0 conformin
 Every one of these carries normalisation **inside** the ONNX graph, which the guard reports as an R9
 violation. That is why they are grandfathered and can never be ported — only retrained.
 
+## 5. `RobotControl/execution/role_interface.py` — the runtime that consumes the interface
+
+The 131-float builder and the 28-role action map, in one module, reading every number from the pinned
+contract. `PolicyRunner` selects it automatically when the ONNX is exactly `contract.n_obs -> n_action`
+**and** a sidecar beside it matches; otherwise the deploy.yaml `ObservationBuilder` path is used exactly
+as before, which is what every grandfathered policy needs.
+
+| Piece | What it does | Rule |
+|---|---|---|
+| `RoleObs.build` | nine contract slots, role order, masked roles exactly 0, `role_mask` + `morphology_onehot` | R6/R8 |
+| `RoleActionMap.targets` | `clip(default + a*action_scale, soft_lo, soft_hi)`, masked roles PD-held | R7 |
+| `RoleActionMap.kp/kd` | per-joint gains from the contract, not from `deploy.yaml` | layer 6 |
+| `sidecar_problems` | refuses a policy whose hashes disagree with the contract | R10/R14 |
+| `for_policy` | `None` for a legacy shape, `RoleInterface` for a conforming one, raise for a stale one | R13/R22 |
+
+Evidence, both runnable today:
+
+```powershell
+.venv/Scripts/python.exe -m pytest RobotControl/tests/test_role_interface.py -q   # 12 passed, incl. golden parity
+.venv/Scripts/python.exe -m robotcontrol.main_runner --target sim --command-mode zero --duration 2 `
+    --no-realtime --no-log --policy ..\global\UNITE\runs\ppo-r1-edu-stand `
+    --deploy RobotControl\models\r1_role_stand\deploy.yaml
+```
+
+A fresh clone has no `global/` folder, so the module returns `None` in lock-only mode and the tests skip
+rather than inventing a layout. The golden file is the authority; this builder is one implementation that
+must reproduce it, not a copy of the reference.
+
 ## What is still missing
 
-- **Nothing trains on the 131 / 28 interface yet.** The trainer, the observation builder and the UE twin
-  all still speak the legacy shapes.
-- **The twin cannot feed 131 observations.** That has to land before the first role-ordered policy is
-  trained, otherwise the result cannot be played.
-- **`UNITE_STRICT` is off.** Correct for now; wrong after the first conforming policy ships.
+- **`global/UNITE/tools/check_cross_app.py` lists this repo as the first app that can produce the 131
+  floats.** It scans for a builder that names all nine slots; `RobotControl/execution/role_interface.py`
+  does, and `tests/test_role_interface.py` proves it against `golden_role_obs.npz` to 1e-5.
+- **The conforming example lives in `global/UNITE/runs/ppo-r1-edu-stand`**, not in this repo, and is run
+  with `--deploy RobotControl/models/r1_role_stand/deploy.yaml`. It is a balance seed, not a walking
+  policy; its behaviour is reported beside its motor command so it is not mistaken for one.
+- **No conforming policy is in `agents/registry.json` yet**, because none is deployed from this repo's
+  `models/` folder. Nothing promotes the example to the robot without the `deploy.json` gate.
 
 Order of work is in the RULES.md §5 sequence and was agreed here: Parts 1 and 5 (this file), then the
 guard in the export path (done), then the twin, then one end-to-end head skill.

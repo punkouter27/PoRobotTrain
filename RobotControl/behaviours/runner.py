@@ -21,6 +21,7 @@ import signal
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -33,13 +34,21 @@ BEHAVIOURS = {k: spec.cls for k, spec in BEHAVIOUR_SPECS.items()}
 
 
 class CsvLog:
-    def __init__(self, path: Path, powered, joint_names):
+    def __init__(self, path: Path, powered, joint_names, meta: Optional[dict] = None):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.f = open(path, "w", newline="", encoding="utf-8")
         self.w = csv.writer(self.f)
         self.w.writerow(["t", "phase"] + [f"target_{n}" for n in powered] + list(joint_names))
         self._last_flush = time.monotonic()
+        # The sidecar is what makes the log replayable: without the behaviour's own parameters a re-run in the
+        # twin cannot reproduce the trajectory, and a sim-vs-real diff compares two different motions.
+        if meta is not None:
+            payload = dict(meta)
+            payload.setdefault("created_at", time.strftime("%Y-%m-%dT%H:%M:%S"))
+            payload.setdefault("powered", list(powered))
+            payload.setdefault("joint_names", list(joint_names))
+            path.with_suffix(".json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     def row(self, t, phase, targets, q_all):
         self.w.writerow([f"{t:.4f}", phase] + [f"{v:.5f}" for v in targets] + [f"{v:.5f}" for v in q_all])
@@ -221,6 +230,17 @@ def main(argv=None) -> int:
         Path(args.log_dir) / f"{beh.name}_{args.target}{'_readonly' if read_only else ''}_{stamp}.csv",
         beh.powered,
         jm.names,
+        meta={
+            "behaviour": beh.name,
+            "target": args.target,
+            "read_only": read_only,
+            "amplitude_deg": args.amplitude,
+            "freq_hz": args.freq,
+            "duration_s": args.duration,
+            "start_q_deg": [round(math.degrees(v), 4) for v in (start_q_map or {}).values()] or None,
+            "sim_start_deg": args.sim_start_deg if args.target == "sim" else None,
+            "rate_hz": getattr(backend, "rate_hz", None),
+        },
     )
     stop = {"flag": False}
     signal.signal(signal.SIGINT, lambda *_: stop.__setitem__("flag", True))

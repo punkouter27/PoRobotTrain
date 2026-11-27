@@ -22,6 +22,7 @@ from .. import LOGS_DIR
 from ..configs.deploy_config import DeployConfig, find_deploy_yaml
 from ..configs.joint_map import JointMap
 from ..interfaces.base_interface import LowStateData, RobotHardwareInterface
+from . import role_interface
 from .safety_guard import SafetyConfig, SafetyGuard, SafetyReport
 
 log = logging.getLogger(__name__)
@@ -389,25 +390,47 @@ class PolicyRunner:
         self.reset_count = 0
         self.dt = float(deploy.step_dt)
 
-        problems = deploy.validate(self.jm)
-        if problems:
-            raise ValueError("deploy.yaml invalid:\n  " + "\n  ".join(problems))
-        if policy.num_obs != deploy.num_obs or policy.num_actions != deploy.num_actions:
+        self.role = role_interface.for_policy(policy, self.jm)
+        if self.role is None:
+            problems = deploy.validate(self.jm)
+            if problems:
+                raise ValueError("deploy.yaml invalid:\n  " + "\n  ".join(problems))
+            if policy.num_obs != deploy.num_obs or policy.num_actions != deploy.num_actions:
+                raise ValueError(
+                    f"ONNX io ({policy.num_obs}->{policy.num_actions}) != deploy "
+                    f"({deploy.num_obs}->{deploy.num_actions})"
+                )
+        elif deploy.num_obs and deploy.num_obs != self.role.n_obs:
             raise ValueError(
-                f"ONNX io ({policy.num_obs}->{policy.num_actions}) != deploy ({deploy.num_obs}->{deploy.num_actions})"
+                f"deploy.yaml declares num_obs={deploy.num_obs}; this is a role policy ({self.role.n_obs} obs). "
+                "The role layout comes from contract.json, not from observations terms."
             )
 
-        self.act_idx = deploy.policy_indices(self.jm)
+        self.act_idx = (
+            np.arange(self.jm.num_joints, dtype=int) if self.role is not None else deploy.policy_indices(self.jm)
+        )
         self.passive_idx = deploy.passive_indices(self.jm)
-        self.default_act = np.asarray(deploy.default_joint_pos, dtype=np.float64)
-        self.scale_act = np.asarray(deploy.action_scale, dtype=np.float64)
+        self.default_act = (
+            self.role.action.q_default.copy()
+            if self.role is not None
+            else np.asarray(deploy.default_joint_pos, dtype=np.float64)
+        )
+        self.scale_act = (
+            self.role.action.scale.copy()
+            if self.role is not None
+            else np.asarray(deploy.action_scale, dtype=np.float64)
+        )
         self.clip_act = None if deploy.action_clip is None else np.asarray(deploy.action_clip, dtype=np.float64)
         self.soft_lo, self.soft_hi = self.jm.soft_limits(self.safety.cfg.soft_limit_fraction)
 
-        self.kp_full = self.jm.kp.copy()
-        self.kd_full = self.jm.kd.copy()
-        self.kp_full[self.act_idx] = deploy.kp
-        self.kd_full[self.act_idx] = deploy.kd
+        if self.role is not None:
+            self.kp_full = self.role.kp.copy()
+            self.kd_full = self.role.kd.copy()
+        else:
+            self.kp_full = self.jm.kp.copy()
+            self.kd_full = self.jm.kd.copy()
+            self.kp_full[self.act_idx] = deploy.kp
+            self.kd_full[self.act_idx] = deploy.kd
         self.kp_full[self.passive_idx] = 0.0
         self.kd_full[self.passive_idx] = (
             deploy.passive_kd if deploy.passive_kd is not None else self.jm.kd[self.passive_idx]
@@ -415,7 +438,7 @@ class PolicyRunner:
         self.hold_full = self.jm.defaults.copy()
         self.hold_non_policy = hold_non_policy_joints
 
-        self.obs_builder = ObservationBuilder(deploy, self.jm)
+        self.obs_builder = None if self.role is not None else ObservationBuilder(deploy, self.jm)
         self.last_action = np.zeros(deploy.num_actions, dtype=np.float32)
         self.command = np.zeros(deploy.command_dim)
         self.logger = TrajectoryLogger(log_dir, log_stem, joint_names=self.jm.names) if log_dir else None
@@ -438,16 +461,21 @@ class PolicyRunner:
         self.last_state = state
         if self.command_fn is not None:
             self.command = np.asarray(self.command_fn(t, state), dtype=np.float64)
-        obs = self.obs_builder.build(state, self.last_action, self.command, t)
+        if self.role is not None:
+            obs = self.role.build(state, self.last_action, self.command, t)
+        else:
+            obs = self.obs_builder.build(state, self.last_action, self.command, t)
         action = self.policy.infer(obs)
         if self.clip_act is not None:
             np.clip(action, -self.clip_act, self.clip_act, out=action)
-        target_act = self.default_act + self.scale_act * action
-        target_act = np.clip(target_act, self.soft_lo[self.act_idx], self.soft_hi[self.act_idx])
-
-        target = self.hold_full.copy() if self.hold_non_policy else state.q.copy()
+        if self.role is not None:
+            target = self.role.targets(action)
+        else:
+            target_act = self.default_act + self.scale_act * action
+            target_act = np.clip(target_act, self.soft_lo[self.act_idx], self.soft_hi[self.act_idx])
+            target = self.hold_full.copy() if self.hold_non_policy else state.q.copy()
+            target[self.act_idx] = target_act
         target[self.passive_idx] = state.q[self.passive_idx]
-        target[self.act_idx] = target_act
 
         safe_q, rep = self.safety.apply(target, state, self.kp_full, self.kd_full, t=state.timestamp)
         self.itf.send_low_cmd(safe_q, rep.kp, rep.kd)
@@ -563,6 +591,9 @@ class PolicyRunner:
             "tripped": self.tripped,
             "resets": self.reset_count,
             "rpy_deg": None if st is None else np.degrees(st.rpy()),
+            "role_interface": self.role is not None,
+            "foreign_policy": bool(self.role is not None and self.role.foreign),
+            "trained_for": None if self.role is None else self.role.trained_for,
         }
 
 

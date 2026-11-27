@@ -17,6 +17,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+# The reference trainer in global/UNITE and RobotControl/training/* need torch; the runtime never does.
+train = ["torch>=2.4"]
 
 # The RobotControl/ directory *is* the `robotcontrol` package; the existing
 # sub-folders are its sub-packages.  `uv pip install -e RobotControl`.

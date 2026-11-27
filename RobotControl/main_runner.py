@@ -310,6 +310,15 @@ def main(argv: Optional[list] = None) -> int:
             realtime=not args.no_realtime,
             status_hz=args.status_hz,
         )
+        if runner.role is not None and runner.role.foreign:
+            log.warning(
+                "policy was trained for %s, not %s: loadable here, correct only on its own body",
+                runner.role.trained_for,
+                runner.role.contract["creature"],
+            )
+            if args.target == "real" and not args.observe:
+                log.error("refusing to drive the robot with a foreign brain (R13/R21); retrain or re-target")
+                return 4
         if args.target == "real" and not args.dry_run and not args.observe:
             log.info("moving to the policy default pose over 3 s")
             itf.move_to(runner.hold_full, duration_s=3.0, kp=runner.kp_full, kd=runner.kd_full, stop_event=stop_event)

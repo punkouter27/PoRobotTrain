@@ -1,5 +1,6 @@
 """Tests covering all 10 sim-to-real digital twin fidelity upgrades and calibration CLI."""
 
+import json
 import math
 import tempfile
 from pathlib import Path
@@ -14,9 +15,12 @@ from robotcontrol.configs.sim_calibration import SimCalibration
 from robotcontrol.interfaces.mujoco_interface import MujocoInterface
 from robotcontrol.tools.calibrate_sim import (
     fit_calibration,
+    load_behaviour_or_traj_log,
     measure_idle_noise,
+    resolve_sweep,
     simulate_behaviour_trajectory,
 )
+from robotcontrol.tools.sim_real_diff import compare
 from robotcontrol.training.level0_env import Level0Config, Level0StandEnv
 
 
@@ -80,12 +84,71 @@ def test_calibrate_sim_noise_and_fit_against_simulated_real_log():
         for t, qrow in zip(ts, qs):
             lines.append(",".join([f"{t:.4f}", "sweep", "0.0"] + [f"{v:.5f}" for v in qrow]))
         real_csv.write_text("\n".join(lines), encoding="utf-8")
+        # a runner log always ships this sidecar; without it the replay cannot know the sweep it must reproduce
+        real_csv.with_suffix(".json").write_text(
+            json.dumps({"behaviour": "neck_turn", "amplitude_deg": 10.0, "freq_hz": 0.2, "duration_s": 3.0}),
+            encoding="utf-8",
+        )
 
-        res = fit_calibration(real_csv, "neck_turn", amplitude_deg=10.0, freq_hz=0.2, cal_path=cal_copy, write=True)
+        res = fit_calibration(real_csv, cal_path=cal_copy, write=True)
         assert res["rms_after_deg"] <= res["rms_before_deg"] + 1e-6
         assert res["max_after_deg"] < 5.0
         updated = SimCalibration.load(cal_copy, jm=jm)
         assert updated.last_calibrated_at is not None
+
+
+def test_runner_log_sidecar_makes_the_replay_reproducible(tmp_path):
+    """The gate's own dry run: a behaviour log replays to itself, because the sidecar carries the parameters.
+
+    Without this the replay guesses the sweep length and the moving joint reports a ~6 deg "failure" that is
+    really two different motions being compared.
+    """
+    from robotcontrol.behaviours.neck_turn import NeckTurn, SweepParams
+    from robotcontrol.behaviours.runner import CsvLog, run
+
+    jm = JointMap.load()
+    cal = SimCalibration.load(jm=jm)
+    params = SweepParams(amplitude_deg=8.0, freq_hz=0.25, duration_s=1.0)
+    beh = NeckTurn(jm, params, check_tracking=False)
+    backend = SimBackend(jm, beh.powered, calibration=cal, realistic=True, settle_s=0.3)
+    csv_path = tmp_path / "neck_turn_sim.csv"
+    log = CsvLog(
+        csv_path,
+        beh.powered,
+        jm.names,
+        meta={
+            "behaviour": "neck_turn",
+            "amplitude_deg": params.amplitude_deg,
+            "freq_hz": params.freq_hz,
+            "duration_s": params.duration_s,
+        },
+    )
+    try:
+        assert run(backend, beh, jm, log, {"flag": False}) == 0  # run() closes the log itself
+    finally:
+        backend.close()
+    assert csv_path.with_suffix(".json").is_file()
+
+    name, amp, hz, dur, overrides = resolve_sweep(csv_path)
+    assert (name, amp, hz, dur) == ("neck_turn", 8.0, 0.25, 1.0) and not overrides
+    t_real, q_real, _ = load_behaviour_or_traj_log(csv_path, jm)
+    ts, qs = simulate_behaviour_trajectory(
+        jm, cal, name, amp, hz, duration_s=dur, start_q=dict(zip(jm.names, q_real[0].tolist()))
+    )
+    res = compare(t_real, q_real, ts, qs)
+    assert res["max_deg"].max() < 1.0, f"replay of its own log drifted {res['max_deg'].max():.2f} deg"
+
+
+def test_resolve_sweep_prefers_the_log_and_reports_overrides(tmp_path):
+    log = tmp_path / "behaviour.csv"
+    log.write_text("t,phase\n0.0,sweep\n", encoding="utf-8")
+    log.with_suffix(".json").write_text(
+        json.dumps({"behaviour": "neck_turn", "amplitude_deg": 12.0, "freq_hz": 0.3, "duration_s": 5.0}),
+        encoding="utf-8",
+    )
+    assert resolve_sweep(log) == ("neck_turn", 12.0, 0.3, 5.0, [])
+    name, amp, hz, dur, overrides = resolve_sweep(log, None, 20.0)
+    assert amp == 20.0 and overrides and "amplitude" in overrides[0]
 
 
 def test_level0_env_randomizes_calibrated_friction_and_damping():
