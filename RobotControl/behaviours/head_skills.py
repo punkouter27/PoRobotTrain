@@ -291,7 +291,9 @@ class OnnxPolicy:
         shape = self.sess.get_inputs()[0].shape
         got = shape[-1]
         if got not in (num_obs, UNITE_N_OBS):
-            raise RuntimeError(f"{path.name} expects {got} observations, this skill builds {num_obs} (or {UNITE_N_OBS})")
+            raise RuntimeError(
+                f"{path.name} expects {got} observations, this skill builds {num_obs} (or {UNITE_N_OBS})"
+            )
         self.num_obs = int(got)
         self.is_unite = self.num_obs == UNITE_N_OBS
 

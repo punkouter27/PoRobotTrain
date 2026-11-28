@@ -28,10 +28,10 @@ Everything that needs an interface number reads it from here instead of hard-cod
 ```python
 from robotcontrol.configs import contract as C
 
-c = C.load()                    # 131 / 28, 50 Hz, 4-step decimation
-c.assert_io(env.num_obs, env.num_actions)   # raises ContractMismatch on a wrong width
-c.describe_io(23, 7)            # "legacy"
-c.role_of("left_hip_pitch_joint")           # "hip_pitch_l"  (needs PoPunkouterSoftware/docs/unite present)
+c = C.load()  # 131 / 28, 50 Hz, 4-step decimation
+c.assert_io(env.num_obs, env.num_actions)  # raises ContractMismatch on a wrong width
+c.describe_io(23, 7)  # "legacy"
+c.role_of("left_hip_pitch_joint")  # "hip_pitch_l"  (needs PoPunkouterSoftware/docs/unite present)
 ```
 
 Two modes: **lock-only** (always available, used by CI) and **full** (adds roles, joint table, motor
