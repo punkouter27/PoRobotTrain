@@ -165,12 +165,18 @@ def train(
     """Train, export into a staging folder, validate, then move it into place. Returns the policy folder.
 
     ``scratch``: export + validate into that folder only (no version stored or activated)."""
+    if portable:
+        # behaviours.head_skills.pack_unite_obs writes the retired 526e01aa 131 layout (gravity at 6..8,
+        # joints from 9). The pinned contract is 94377eba (joints from 0). The export guard only sees shapes,
+        # so a 131/28 export from this packer would pass it while meaning something else (R6/R8/R11).
+        raise SystemExit(
+            "train_head_skill --portable is disabled: pack_unite_obs emits the retired 526e01aa layout. "
+            "Rebuild it on RobotControl/execution/role_interface.py (the 94377eba builder) first."
+        )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(seed)
     env = HeadSkillEnv(HeadSkillConfig(skill=skill_id, num_envs=num_envs, seed=seed, portable=portable))
-    ac = ActorCritic(
-        env.num_obs, env.num_actions, hidden=(128, 64), init_noise_std=0.8, use_obs_norm=not portable
-    )
+    ac = ActorCritic(env.num_obs, env.num_actions, hidden=(128, 64), init_noise_std=0.8, use_obs_norm=not portable)
     ppo = PPO(ac, device)
     N, T = num_envs, horizon
     print(f"[{skill_id}] device={device} envs={N} obs={env.num_obs} act={env.num_actions} iters={iters}", flush=True)
@@ -312,7 +318,9 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--checkpoint-every", type=int, default=0, help="save weights every N iterations (montage)")
     ap.add_argument("--scratch", type=Path, default=None, help="train into this folder only; store no version")
-    ap.add_argument("--portable", action="store_true", help="train on the UNITE 131->28 portable contract (no baked obs_norm)")
+    ap.add_argument(
+        "--portable", action="store_true", help="train on the UNITE 131->28 portable contract (no baked obs_norm)"
+    )
     args = ap.parse_args(argv)
     if args.checkpoint_every < 0:
         ap.error("--checkpoint-every must be >= 0")

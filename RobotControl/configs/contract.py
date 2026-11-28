@@ -1,13 +1,13 @@
 """The UNITE contract for this repo's creature -- the single source of interface shape.
 
-RULES.md R1/R2 in `global/UNITE/RULES.md`; the pinned copy is `contracts.lock.json` at the repo root.
+RULES.md R1/R2 in `PoPunkouterSoftware/docs/unite/RULES.md`; the pinned copy is `contracts.lock.json` at the repo root.
 
 Two modes, on purpose:
 
 * **Lock-only (always available, including CI from a fresh clone).** `contracts.lock.json` carries
   `n_obs`, `n_action`, the three hashes, the timing and the legacy interface list. Everything that only
-  needs shapes and rates works without `global/UNITE` on disk.
-* **Full contract (local only).** When `../global/UNITE/creatures/<id>/contract.json` exists, the roles,
+  needs shapes and rates works without `PoPunkouterSoftware/docs/unite` on disk.
+* **Full contract (local only).** When `../PoPunkouterSoftware/docs/unite/creatures/<id>/contract.json` exists, the roles,
   joint table, motor slots and per-slot rules are loaded too, and its hashes are checked against the lock.
   A mismatch raises: the lock is stale, and pinning is a deliberate act (R27).
 

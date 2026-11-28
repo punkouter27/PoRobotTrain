@@ -25,18 +25,48 @@
       "note": "not cross-compatible; do not reuse"
     },
     {
+      "name": "v2",
+      "sha256": "e4fb18274b98556468a7b3f22006e7f74d1077ae83b628e1602ea645114de623",
+      "n_obs": 131,
+      "n_action": 28,
+      "status": "legacy",
+      "legacy_interface": "unite_131_28@526e01aaf5153f7f",
+      "paths": [
+        "RobotControl/models/head_skills/glance_around/versions/v2/policy.onnx"
+      ],
+      "sidecars": [
+        "RobotControl/models/head_skills/glance_around/versions/v2/deploy.json"
+      ],
+      "note": "not cross-compatible; do not reuse"
+    },
+    {
       "name": "hold_centre",
+      "sha256": "f03ddfe0599cb883ecfbb6caa92f9931d58625bee1489503a52fae60761b929c",
+      "n_obs": 131,
+      "n_action": 28,
+      "status": "legacy",
+      "legacy_interface": "unite_131_28@526e01aaf5153f7f",
+      "paths": [
+        "RobotControl/models/head_skills/hold_centre/policy.onnx",
+        "RobotControl/models/head_skills/hold_centre/versions/v2/policy.onnx"
+      ],
+      "sidecars": [
+        "RobotControl/models/head_skills/hold_centre/deploy.json",
+        "RobotControl/models/head_skills/hold_centre/versions/v2/deploy.json"
+      ],
+      "note": "not cross-compatible; do not reuse"
+    },
+    {
+      "name": "v1",
       "sha256": "d3527c35f6c6638da8d622f881403d0b3d194abdaea3f1cc3d746c0e7a2c24ed",
       "n_obs": 9,
       "n_action": 2,
       "status": "legacy",
       "legacy_interface": "r1_head_skill",
       "paths": [
-        "RobotControl/models/head_skills/hold_centre/policy.onnx",
         "RobotControl/models/head_skills/hold_centre/versions/v1/policy.onnx"
       ],
       "sidecars": [
-        "RobotControl/models/head_skills/hold_centre/deploy.json",
         "RobotControl/models/head_skills/hold_centre/versions/v1/deploy.json"
       ],
       "note": "not cross-compatible; do not reuse"
@@ -59,18 +89,48 @@
       "note": "not cross-compatible; do not reuse"
     },
     {
+      "name": "v2",
+      "sha256": "0c2306eb0b03f2e2f6826407304d994c0430174d05616fd091c36efa8f6c5b57",
+      "n_obs": 131,
+      "n_action": 28,
+      "status": "legacy",
+      "legacy_interface": "unite_131_28@526e01aaf5153f7f",
+      "paths": [
+        "RobotControl/models/head_skills/look_at/versions/v2/policy.onnx"
+      ],
+      "sidecars": [
+        "RobotControl/models/head_skills/look_at/versions/v2/deploy.json"
+      ],
+      "note": "not cross-compatible; do not reuse"
+    },
+    {
       "name": "nod_yes",
+      "sha256": "05a72ef71745f67acb9768842948ede08cbcc8170fe9dccce1b3cb49e2fc0290",
+      "n_obs": 131,
+      "n_action": 28,
+      "status": "legacy",
+      "legacy_interface": "unite_131_28@526e01aaf5153f7f",
+      "paths": [
+        "RobotControl/models/head_skills/nod_yes/policy.onnx",
+        "RobotControl/models/head_skills/nod_yes/versions/v2/policy.onnx"
+      ],
+      "sidecars": [
+        "RobotControl/models/head_skills/nod_yes/deploy.json",
+        "RobotControl/models/head_skills/nod_yes/versions/v2/deploy.json"
+      ],
+      "note": "not cross-compatible; do not reuse"
+    },
+    {
+      "name": "v1",
       "sha256": "73332eda91b317ec36538a49b52ff61292ca3051f3653cc67a627039a9e9c88f",
       "n_obs": 6,
       "n_action": 1,
       "status": "legacy",
       "legacy_interface": "r1_head_skill_single",
       "paths": [
-        "RobotControl/models/head_skills/nod_yes/policy.onnx",
         "RobotControl/models/head_skills/nod_yes/versions/v1/policy.onnx"
       ],
       "sidecars": [
-        "RobotControl/models/head_skills/nod_yes/deploy.json",
         "RobotControl/models/head_skills/nod_yes/versions/v1/deploy.json"
       ],
       "note": "not cross-compatible; do not reuse"
@@ -93,27 +153,54 @@
       "note": "not cross-compatible; do not reuse"
     },
     {
+      "name": "v2",
+      "sha256": "114157a55e77c65121c5f15634e2343c4ca5c55b9e8366a2cb6643c7b384f190",
+      "n_obs": 131,
+      "n_action": 28,
+      "status": "legacy",
+      "legacy_interface": "unite_131_28@526e01aaf5153f7f",
+      "paths": [
+        "RobotControl/models/head_skills/shake_no/versions/v2/policy.onnx"
+      ],
+      "sidecars": [
+        "RobotControl/models/head_skills/shake_no/versions/v2/deploy.json"
+      ],
+      "note": "not cross-compatible; do not reuse"
+    },
+    {
       "name": "r1_level0_upperbody",
+      "sha256": "dbbb5ebc206f7c5ea2e122a63c5974ed1f9732a5cfbf7448893793fa4ddec599",
+      "n_obs": 23,
+      "n_action": 7,
+      "status": "legacy",
+      "legacy_interface": "r1_level0_upperbody",
+      "paths": [
+        "RobotControl/models/r1_level0_upperbody/policy.onnx"
+      ],
+      "sidecars": [
+        "RobotControl/models/r1_level0_upperbody/deploy.yaml"
+      ],
+      "note": "not cross-compatible; do not reuse"
+    },
+    {
+      "name": "twin",
       "sha256": "e6e201a10e57ddbd54ccd72b68ee15deca8273d9089a7e73365cc7ddcfd19fee",
       "n_obs": 23,
       "n_action": 7,
       "status": "legacy",
       "legacy_interface": "r1_level0_upperbody",
       "paths": [
-        "RobotControl/models/r1_level0_upperbody/policy.onnx",
         "src/PoRobotTrain.Client/wwwroot/twin/policy.onnx"
       ],
-      "sidecars": [
-        "RobotControl/models/r1_level0_upperbody/deploy.yaml"
-      ],
+      "sidecars": [],
       "note": "not cross-compatible; do not reuse"
     }
   ],
   "summary": {
-    "files_on_disk": 12,
-    "distinct_policies": 6,
+    "files_on_disk": 17,
+    "distinct_policies": 12,
     "conforming": 0,
-    "legacy": 6,
+    "legacy": 12,
     "foreign": 0
   }
 }

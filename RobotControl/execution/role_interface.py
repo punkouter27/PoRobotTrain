@@ -1,6 +1,6 @@
 """The role-ordered interface: 131 observations in, 28 role actions out, straight from ``contract.json``.
 
-RULES.md R6-R8 (layout) and R13/R14 (adopt-or-refuse) in ``global/UNITE/RULES.md``. This is the app-side
+RULES.md R6-R8 (layout) and R13/R14 (adopt-or-refuse) in ``PoPunkouterSoftware/docs/unite/RULES.md``. This is the app-side
 half of the contract: it builds the observation the creature contract defines, then turns the 28 actions
 into joint targets with ``clip(default + a*scale, soft_lo, soft_hi)``. Role order, mask, defaults, gains,
 scales, limits and the one-hot index all come from the pinned contract — nothing is hand-copied, so a

@@ -1,5 +1,5 @@
 # The role interface. No joint_names and no observation terms on purpose: both come from
-# global/UNITE/creatures/unitree_r1_a5/contract.json, pinned here by contracts.lock.json.
+# PoPunkouterSoftware/docs/unite/creatures/unitree_r1_a5/contract.json, pinned here by contracts.lock.json.
 # Observations are 131 floats (9 contract slots); actions are 28 canonical roles.
 # Gains and action scales are per-joint contract values, so this file only carries timing.
 policy_name: r1_role_stand
@@ -22,4 +22,4 @@ passive_joints: []
 metadata:
   interface_sha256_16: 94377ebae772ff6c
   creature: unitree_r1_a5
-  note: trained by global/UNITE/tools/role_ppo.py; sidecar policy.json is written by the export guard
+  note: trained by PoPunkouterSoftware/docs/unite/tools/role_ppo.py; sidecar policy.json is written by the export guard

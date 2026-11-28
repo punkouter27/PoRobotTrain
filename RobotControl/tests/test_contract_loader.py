@@ -25,7 +25,7 @@ def test_shape_and_rate_come_from_the_lock():
     assert c.control_dt == pytest.approx(0.02)
     assert c.decimation == 4
     assert c.timestep == pytest.approx(0.005)
-    assert c.hashes["interface_sha256_16"] == "526e01aaf5153f7f"
+    assert c.hashes["interface_sha256_16"] == "94377ebae772ff6c"
 
 
 def test_assert_io_accepts_the_contract_width_and_rejects_everything_else():
@@ -51,7 +51,7 @@ def test_every_existing_interface_is_classified():
 def test_full_contract_exposes_roles_and_motor_slots():
     c = C.load()
     if not c.has_full:
-        pytest.skip("global/UNITE not present in this checkout (lock-only mode)")
+        pytest.skip("PoPunkouterSoftware/docs/unite not present in this checkout (lock-only mode)")
     assert len(c.roles) == 28
     assert sum(c.mask) == 26
     assert len(c.joints) == 26
@@ -61,7 +61,7 @@ def test_full_contract_exposes_roles_and_motor_slots():
 
 
 def test_lock_only_mode_still_answers_shapes(monkeypatch):
-    """CI has no global/UNITE, so the lock alone must be enough for the guards."""
+    """CI has no PoPunkouterSoftware/docs/unite, so the lock alone must be enough for the guards."""
     monkeypatch.setattr(C, "_global_contract_path", lambda pinned: Path("Z:/definitely/absent.json"))
     c = C.load()
     assert c.has_full is False
@@ -77,7 +77,7 @@ def test_a_stale_lock_is_refused(tmp_path, monkeypatch):
     bad = tmp_path / "contracts.lock.json"
     bad.write_text(json.dumps(pinned), encoding="utf-8")
     monkeypatch.setattr(C, "LOCK_PATH", bad)
-    real = C.ROOT.parent / "GLOBAL" / "rl_training" / "standards" / "unite" / "creatures" / C.CREATURE / "contract.json"
+    real = C.ROOT.parent / "PoPunkouterSoftware" / "docs" / "unite" / "creatures" / C.CREATURE / "contract.json"
     if not real.exists():
         pytest.skip("needs the full contract to prove the hash comparison")
     with pytest.raises(C.ContractMismatch) as e:

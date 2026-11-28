@@ -54,6 +54,21 @@ def sidecar_shape(policy: Path):
     return None, None, None
 
 
+def _sidecar_interface(paths):
+    """interface_sha256 from a UNITE sidecar beside any copy of the policy (policy.unite.json / policy.json)."""
+    for rel in paths:
+        p = ROOT / rel
+        for sc in (p.with_suffix(".unite.json"), p.with_suffix(".json")):
+            if sc.exists():
+                try:
+                    d = json.loads(sc.read_text(encoding="utf-8"))
+                except ValueError:
+                    continue
+                if "interface_sha256" in d:
+                    return d["interface_sha256"]
+    return None
+
+
 def onnx_shape(policy: Path):
     try:
         from onnx import load
@@ -67,16 +82,33 @@ def onnx_shape(policy: Path):
         return None, None
 
     def flat(vi):
-        dims = [d.dim_value for d in vi.type.tensor_type.shape.dim if d.dim_value != 1]
-        return dims[0] if len(dims) == 1 else None
+        # dim 0 is batch: 1, or symbolic ('batch' -> dim_value 0). Drop it by position, as policy_guard does.
+        dims = [d.dim_value for d in vi.type.tensor_type.shape.dim][1:]
+        return dims[0] if len(dims) == 1 and dims[0] > 0 else None
 
     return flat(ins[0]), flat(outs[0])
+
+
+def _tracked_onnx():
+    """Policies under version control only, so the registry is the same locally and in CI.
+
+    Untracked files (vendored third-party exports under external/, scratch runs under logs/) are not this
+    repo's policies. Falls back to a disk walk when git is unavailable."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "-z", "--", "*.onnx"], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout
+        return sorted(ROOT / f for f in out.split("\0") if f)
+    except (OSError, subprocess.CalledProcessError):
+        return sorted(ROOT.rglob("*.onnx"))
 
 
 def build() -> dict:
     c = contract_mod.load()
     policies = {}
-    for p in sorted(ROOT.rglob("*.onnx")):
+    for p in _tracked_onnx():
         rel = p.relative_to(ROOT).as_posix()
         if any(
             part in p.parts
@@ -102,7 +134,13 @@ def build() -> dict:
         if n_obs is None or n_action is None:
             status, legacy_name = "foreign", None
         elif (n_obs, n_action) == (c.n_obs, c.n_action):
-            status, legacy_name = "conforming", None
+            # Same shape is not the same interface: a UNITE sidecar records which layout it was exported
+            # against. 131/28 policies pinned to an older contract are legacy (R13/R22), not conforming.
+            pinned = _sidecar_interface(e["paths"])
+            if pinned is not None and pinned != c.hashes["interface_sha256"]:
+                status, legacy_name = "legacy", f"unite_131_28@{pinned[:16]}"
+            else:
+                status, legacy_name = "conforming", None
         else:
             match = [i for i in c.legacy_interfaces if int(i["n_obs"]) == n_obs and int(i["n_action"]) == n_action]
             status = "legacy" if match else "foreign"

@@ -1,6 +1,6 @@
 """Re-pin `contracts.lock.json` from the UNITE contract.
 
-    .venv/Scripts/python.exe scripts/pin_contract.py            # re-pin from global/UNITE
+    .venv/Scripts/python.exe scripts/pin_contract.py            # re-pin from PoPunkouterSoftware/docs/unite
     .venv/Scripts/python.exe scripts/pin_contract.py --check     # exit 1 if the lock is stale
 
 Pinning is a deliberate act (RULES.md R27). Run it only when you mean to move to a new contract, and
@@ -19,18 +19,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "contracts.lock.json"
 CREATURE = "unitree_r1_a5"
-CONTRACT = ROOT.parent / "GLOBAL" / "rl_training" / "standards" / "unite" / "creatures" / CREATURE / "contract.json"
+CONTRACT = ROOT.parent / "PoPunkouterSoftware" / "docs" / "unite" / "creatures" / CREATURE / "contract.json"
 
 
 def build() -> dict:
     c = json.loads(CONTRACT.read_text(encoding="utf-8"))
     return {
         "_comment": "Pinned reference to the UNITE contract this repo's trainers and runtimes must match. "
-        "Required fields let CI check shapes and hashes without global/UNITE present. "
+        "Required fields let CI check shapes and hashes without PoPunkouterSoftware/docs/unite present. "
         "Regenerate with scripts/pin_contract.py after a contract change (that is a breaking change).",
         "contract_version": 1,
         "creature": c["name"],
-        "contract_path": f"GLOBAL/rl_training/standards/unite/creatures/{c['name']}/contract.json",
+        "contract_path": f"PoPunkouterSoftware/docs/unite/creatures/{c['name']}/contract.json",
         "n_obs": c["observation"]["n_obs"],
         "n_action": c["action"]["n_action"],
         "control_dt": c["physics"]["control_dt"],

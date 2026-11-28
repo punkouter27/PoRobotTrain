@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest"]
-# The reference trainer in global/UNITE and RobotControl/training/* need torch; the runtime never does.
+# The reference trainer in PoPunkouterSoftware/docs/unite and RobotControl/training/* need torch; the runtime never does.
 train = ["torch>=2.4"]
 
 # The RobotControl/ directory *is* the `robotcontrol` package; the existing

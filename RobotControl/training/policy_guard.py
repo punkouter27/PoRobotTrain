@@ -1,6 +1,6 @@
 """The export guard this repo puts in front of every new `.onnx` (RULES.md R10/R11/R23).
 
-It shells out to `global/UNITE/tools/verify_policy.py` rather than importing it, so the repo references
+It shells out to `PoPunkouterSoftware/docs/unite/tools/verify_policy.py` rather than importing it, so the repo references
 the shared tool by path and hash instead of vendoring a copy (R26/R27).
 
 Three behaviours, deliberately different:
@@ -15,7 +15,7 @@ Three behaviours, deliberately different:
 `STRICT=1` (or `--strict`) turns legacy warnings into errors. Flip it the day the trainer moves to the
 role-ordered interface.
 
-The tool is optional in CI: a fresh clone has no `global/UNITE`, and then the check reports
+The tool is optional in CI: a fresh clone has no `PoPunkouterSoftware/docs/unite`, and then the check reports
 "not verified" instead of failing the build. `contracts.lock.json` still pins the shapes, so nothing is
 silently unguarded.
 """
@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import List, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
-VERIFY = ROOT.parent / "GLOBAL" / "rl_training" / "standards" / "unite" / "tools" / "verify_policy.py"
+VERIFY = ROOT.parent / "PoPunkouterSoftware" / "docs" / "unite" / "tools" / "verify_policy.py"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "configs"))
 import contract as contract_mod  # noqa: E402
@@ -53,7 +53,7 @@ def check(
 
     if not VERIFY.exists():
         print(
-            f"policy guard: {policy.name} NOT VERIFIED — {VERIFY} is absent (no global/UNITE here). "
+            f"policy guard: {policy.name} NOT VERIFIED — {VERIFY} is absent (no PoPunkouterSoftware/docs/unite here). "
             f"Lock still pins n_obs {c.n_obs} / n_action {c.n_action}."
         )
         return "unverified"

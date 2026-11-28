@@ -24,7 +24,7 @@ The guide has three parts: **1. Coding standard** (project contracts, the .NET c
 ### Cross-app agent format (applies to every policy trained from now on)
 
 PoRobotTrain is one app in a family that shares agents. The rules live in
-`global/UNITE/RULES.md`; this repo is the first to conform. Four things decide whether a brain can be used
+`PoPunkouterSoftware/docs/unite/RULES.md`; this repo is the first to conform. Four things decide whether a brain can be used
 anywhere else, and all four are enforced, not documented:
 
 - **One interface for every creature.** Role-ordered, not joint-ordered: **131 observations**
@@ -32,7 +32,7 @@ anywhere else, and all four are enforced, not documented:
   `velocity_commands` 3, `gait_phase` 2, `role_mask` 28, `morphology_onehot` 8) and **28 actions**
   (`clip(default + a*action_scale, soft_lo, hi)`). Roles this creature lacks are zero-filled and
   PD-held at nominal. Get the numbers from `RobotControl/configs/contract.py`, never from a literal.
-- **The observation is shared data, the builder is not.** `global/UNITE/tools/role_obs.py` writes
+- **The observation is shared data, the builder is not.** `PoPunkouterSoftware/docs/unite/tools/role_obs.py` writes
   `golden_role_obs.npz` (100 states per creature). Any runtime that builds the 131 floats — C++ twin,
   web twin, a Unity plugin — must reproduce that golden to 1e-5. Two implementations agreeing is
   evidence; one library imported from two places is not.
@@ -51,9 +51,9 @@ Where each piece lives:
 | the 131-float builder + action map | `RobotControl/execution/role_interface.py` (proved against the goldens in `tests/test_role_interface.py`) |
 | the export gate | `RobotControl/training/policy_guard.py` (warns on legacy, aborts on foreign) |
 | the policy inventory | `agents/registry.json` (`scripts/agent_registry.py`) |
-| the reference builder + goldens | `global/UNITE/tools/role_obs.py`, `global/UNITE/creatures/*/golden_role_obs.npz` |
-| one env for every creature | `global/UNITE/tools/role_env.py` |
-| a reference trainer | `global/UNITE/tools/role_ppo.py` |
+| the reference builder + goldens | `PoPunkouterSoftware/docs/unite/tools/role_obs.py`, `PoPunkouterSoftware/docs/unite/creatures/*/golden_role_obs.npz` |
+| one env for every creature | `PoPunkouterSoftware/docs/unite/tools/role_env.py` |
+| a reference trainer | `PoPunkouterSoftware/docs/unite/tools/role_ppo.py` |
 
 Training a new policy: build observations through `role_obs`, export a plain MLP, and let
 `policy_guard.check()` run at the end of the export. `UNITE_STRICT=1` makes a legacy shape fatal — the
